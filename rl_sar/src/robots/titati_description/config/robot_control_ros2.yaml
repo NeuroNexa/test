@@ -1,0 +1,24 @@
+controller_manager:
+    ros__parameters:
+        update_rate: 1000  # Hz
+        # 控制循环频率，1000Hz 表示 1ms 一次更新。
+        # 注意要和训练时的仿真控制频率匹配或成整数倍。
+        # 过高/过低都会让 RL 策略表现异常（如抖动/延迟）。
+
+        joint_state_broadcaster:
+            type: joint_state_broadcaster/JointStateBroadcaster
+            # 发布 /joint_states 话题，提供关节角度、速度、力矩等状态信息。
+
+        imu_sensor_broadcaster:
+            type: imu_sensor_broadcaster/ImuSensorBroadcaster
+            # 发布 /imu 话题，提供 IMU 传感器数据（角速度、加速度、姿态等）。
+
+        robot_joint_controller:
+            type: robot_joint_controller/RobotJointControllerGroup
+            # 自定义控制器，用于批量管理机器人多个关节的控制。
+            # 它会接收 RL/FSM 产生的 motor_command，并下发给 Gazebo 的每个关节。
+
+imu_sensor_broadcaster:
+    ros__parameters:
+        sensor_name: "imu_sensor"  # 传感器名称
+        frame_id: imu_link         # IMU 所属坐标系（URDF 中的 imu_link）

@@ -1,0 +1,76 @@
+# Copyright (c) 2024-2025 Ziqi Fan
+# SPDX-License-Identifier: Apache-2.0
+
+titati_gazebo:                                   # 命名空间，对应这个机器人在 Gazebo 里的控制配置
+    # Publish all joint states -----------------------------------
+    joint_state_controller:
+        type: joint_state_controller/JointStateController
+        publish_rate: 1000                       # 发布 /joint_states 话题的频率 (Hz)，这里是 1000Hz
+
+    # FL Controllers ---------------------------------------
+    FL_hip_controller:
+        type: robot_joint_controller/RobotJointController
+        joint: FL_hip_joint                      # 左前腿 髋关节控制器
+
+    FL_thigh_controller:
+        type: robot_joint_controller/RobotJointController
+        joint: FL_thigh_joint                    # 左前腿 大腿关节控制器
+
+    FL_calf_controller:
+        type: robot_joint_controller/RobotJointController
+        joint: FL_calf_joint                     # 左前腿 小腿关节控制器
+
+    FL_foot_controller:
+        type: robot_joint_controller/RobotJointController
+        joint: FL_foot_joint                     # 左前腿 脚/轮关节控制器
+
+    # FR Controllers ---------------------------------------
+    FR_hip_controller:
+        type: robot_joint_controller/RobotJointController
+        joint: FR_hip_joint                      # 右前腿 髋关节控制器
+
+    FR_thigh_controller:
+        type: robot_joint_controller/RobotJointController
+        joint: FR_thigh_joint                    # 右前腿 大腿关节控制器
+
+    FR_calf_controller:
+        type: robot_joint_controller/RobotJointController
+        joint: FR_calf_joint                     # 右前腿 小腿关节控制器
+
+    FR_foot_controller:
+        type: robot_joint_controller/RobotJointController
+        joint: FR_foot_joint                     # 右前腿 脚/轮关节控制器
+
+    # RL Controllers ---------------------------------------
+    RL_hip_controller:
+        type: robot_joint_controller/RobotJointController
+        joint: RL_hip_joint                      # 左后腿 髋关节控制器
+
+    RL_thigh_controller:
+        type: robot_joint_controller/RobotJointController
+        joint: RL_thigh_joint                    # 左后腿 大腿关节控制器
+
+    RL_calf_controller:
+        type: robot_joint_controller/RobotJointController
+        joint: RL_calf_joint                     # 左后腿 小腿关节控制器
+
+    RL_foot_controller:
+        type: robot_joint_controller/RobotJointController
+        joint: RL_foot_joint                     # 左后腿 脚/轮关节控制器
+
+    # RR Controllers ---------------------------------------
+    RR_hip_controller:
+        type: robot_joint_controller/RobotJointController
+        joint: RR_hip_joint                      # 右后腿 髋关节控制器
+
+    RR_thigh_controller:
+        type: robot_joint_controller/RobotJointController
+        joint: RR_thigh_joint                    # 右后腿 大腿关节控制器
+
+    RR_calf_controller:
+        type: robot_joint_controller/RobotJointController
+        joint: RR_calf_joint                     # 右后腿 小腿关节控制器
+
+    RR_foot_controller:
+        type: robot_joint_controller/RobotJointController
+        joint: RR_foot_joint                     # 右后腿 脚/轮关节控制器
