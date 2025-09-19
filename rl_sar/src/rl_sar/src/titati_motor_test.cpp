@@ -217,6 +217,17 @@ int main(int argc, char **argv)
     std::signal(SIGINT, SignalHandler);
     running = true;
 
+    std::cout << LOGGER::INFO << "Using Titati CAN interfaces (feedback '" << opts.feedback_can << "', command '"
+              << opts.command_can << "')." << std::endl;
+    if (opts.mode != "monitor" && opts.feedback_can == opts.command_can)
+    {
+        std::cout << LOGGER::WARNING
+                  << "Feedback and command share the same CAN bus. If your wiring splits them (for example CAN0 for feedback"
+                     " and CAN1 for torque commands), rerun with --feedback-can/--command-can so the commands reach the motor"
+                     " controller."
+                  << std::endl;
+    }
+
     tita_robot robot(opts.num_dofs, opts.feedback_can, opts.command_can);
 
     const bool require_direct_control = opts.mode != "monitor";
@@ -232,6 +243,8 @@ int main(int argc, char **argv)
                       << opts.command_can << "'." << std::endl;
             return -1;
         }
+        std::cout << LOGGER::INFO << "Titati MCU switched to FORCE_DIRECT (SDK) control on '" << opts.command_can
+                  << "'." << std::endl;
     }
 
     auto cleanup = [&]() {
@@ -239,6 +252,7 @@ int main(int argc, char **argv)
         {
             robot.set_target_joint_t(zero_torque);
             robot.set_motors_sdk(false);
+            std::cout << LOGGER::INFO << "Restored Titati MCU to AUTO_LOCOMOTION and cleared commanded torques." << std::endl;
         }
     };
 
@@ -248,6 +262,8 @@ int main(int argc, char **argv)
         cleanup();
         return -1;
     }
+    std::cout << LOGGER::INFO << "Feedback stream detected for " << opts.num_dofs
+              << " joints. Continuing with requested mode." << std::endl;
 
     const std::chrono::duration<double> period(1.0 / opts.rate_hz);
     std::vector<double> dq(opts.num_dofs, 0.0);
@@ -317,7 +333,13 @@ int main(int argc, char **argv)
             auto start = std::chrono::steady_clock::now();
             while (running && std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count() < opts.duration)
             {
-                robot.set_target_joint_mit(target, dq, kp, kd, tau);
+                if (!robot.set_target_joint_mit(target, dq, kp, kd, tau))
+                {
+                    std::cout << LOGGER::ERROR
+                              << "Failed to push MIT command frame. Check the command CAN interface and retry." << std::endl;
+                    cleanup();
+                    return -1;
+                }
                 std::this_thread::sleep_for(period);
             }
 
@@ -372,7 +394,13 @@ int main(int argc, char **argv)
             start = std::chrono::steady_clock::now();
             while (running && std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count() < opts.settle)
             {
-                robot.set_target_joint_mit(target, dq, kp, kd, tau);
+                if (!robot.set_target_joint_mit(target, dq, kp, kd, tau))
+                {
+                    std::cout << LOGGER::ERROR
+                              << "Failed to push MIT command frame. Check the command CAN interface and retry." << std::endl;
+                    cleanup();
+                    return -1;
+                }
                 std::this_thread::sleep_for(period);
             }
         }
@@ -384,10 +412,20 @@ int main(int argc, char **argv)
             auto start = std::chrono::steady_clock::now();
             while (running && std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count() < opts.duration)
             {
-                robot.set_target_joint_t(torques);
+                if (!robot.set_target_joint_t(torques))
+                {
+                    std::cout << LOGGER::ERROR
+                              << "Failed to push torque command frame. Check the command CAN interface and retry." << std::endl;
+                    cleanup();
+                    return -1;
+                }
                 std::this_thread::sleep_for(period);
             }
-            robot.set_target_joint_t(zero_torque);
+            if (!robot.set_target_joint_t(zero_torque))
+            {
+                std::cout << LOGGER::WARNING
+                          << "Unable to send zero torque command at the end of the test. Ensure the CAN link is healthy." << std::endl;
+            }
         }
 
         cleanup();

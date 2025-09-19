@@ -396,7 +396,7 @@ The build places the hardware tools in `cmake_build/bin/`, most importantly `rl_
     ./cmake_build/bin/titati_motor_test --mode torque --joint 5 --torque 3.0
     ```
 
-    All diagnostics accept `--can`, `--feedback-can`, and `--command-can` so you can point the tool at any CAN FD interface (for example `--can can1`).
+    All diagnostics accept `--can`, `--feedback-can`, and `--command-can` so you can point the tool at any CAN FD interface (for example `--can can1`). If the motors do not react but feedback streaming works, double-check that the **command** option targets the actuator bus (many Titati builds use `can0` for feedback and `can1` for torque commands).
 
 #### Running the RL policy on hardware
 
