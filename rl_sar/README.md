@@ -133,6 +133,12 @@ If simulation is not needed and you only want to run on the robot, you can compi
 ./build.sh -m  # or ./build.sh --cmake
 ```
 
+If you only need the Titati hardware controller (and want to skip building Unitree, Lite3, etc.), enable the dedicated CMake option (any arguments placed after `--` are forwarded to the CMake configure step):
+
+```bash
+./build.sh -m -- -DRL_SAR_BUILD_TITATI_ONLY=ON
+```
+
 For detailed usage instructions, you can check them via `./build.sh -h`:
 
 ```bash
@@ -149,6 +155,7 @@ Examples:
   ./build.sh -c                 # Clean all symlinks and build artifacts
   ./build.sh --clean package1   # Clean specific package and build artifacts
   ./build.sh -m                 # Build with CMake for hardware deployment
+  ./build.sh -m -- <ARGS>       # Pass extra CMake configure arguments
 ```
 
 > [!TIP]

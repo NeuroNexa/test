@@ -64,11 +64,12 @@ ask_confirmation() {
 # ========================
 
 run_cmake_build() {
+    local cmake_args=("$@")
     print_header "[Running CMake Build]"
     print_warning "NOTE: CMake build is for hardware deployment only, not for simulation."
     print_separator
 
-    cmake src/rl_sar/ -B cmake_build -DUSE_CMAKE=ON
+    cmake src/rl_sar/ -B cmake_build -DUSE_CMAKE=ON "${cmake_args[@]}"
     cmake --build cmake_build -j4
 
     print_success "CMake build completed!"
@@ -325,10 +326,11 @@ show_usage() {
     echo -e "  $0 -c                 # Clean all symlinks and build artifacts"
     echo -e "  $0 --clean package1   # Clean specific package and build artifacts"
     echo -e "  $0 -m                 # Build with CMake for hardware deployment"
+    echo -e "  $0 -m -- <ARGS>       # Forward extra arguments to the CMake configure step"
 }
 
 main() {
-    local packages=()
+    local positional_args=()
     local clean_mode=false
     local cmake_mode=false
 
@@ -338,21 +340,21 @@ main() {
             -c|--clean) clean_mode=true; shift ;;
             -m|--cmake) cmake_mode=true; shift ;;
             -h|--help) show_usage; exit 0 ;;
-            --) shift; packages+=("$@"); break ;;
+            --) shift; positional_args+=("$@"); break ;;
             -*) print_error "Unknown option: $1"; show_usage; exit 1 ;;
-            *) packages+=("$1"); shift ;;
+            *) positional_args+=("$1"); shift ;;
         esac
     done
 
     # Handle CMake build mode
     if [ "$cmake_mode" = true ]; then
-        run_cmake_build
+        run_cmake_build "${positional_args[@]}"
         exit 0
     fi
 
     # Handle clean mode
     if [ "$clean_mode" = true ]; then
-        clean_workspace "${packages[@]}"
+        clean_workspace "${positional_args[@]}"
         exit 0
     fi
 
@@ -363,7 +365,7 @@ main() {
         exit 1
     fi
 
-    run_ros_build "${packages[@]}"
+    run_ros_build "${positional_args[@]}"
 }
 
 main "$@"
