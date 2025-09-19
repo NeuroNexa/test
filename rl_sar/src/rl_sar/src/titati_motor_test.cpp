@@ -271,10 +271,7 @@ int main(int argc, char **argv)
               << " joints. Continuing with requested mode." << std::endl;
 
     const std::chrono::duration<double> period(1.0 / opts.rate_hz);
-    std::vector<double> dq(opts.num_dofs, 0.0);
-    std::vector<double> kp(opts.num_dofs, 0.0);
-    std::vector<double> kd(opts.num_dofs, 0.0);
-    std::vector<double> tau(opts.num_dofs, 0.0);
+    std::vector<double> torque_cmd(opts.num_dofs, 0.0);
 
     if (opts.mode == "monitor")
     {
@@ -327,11 +324,6 @@ int main(int argc, char **argv)
         {
             std::cout << LOGGER::INFO << "Testing joint " << joint << std::endl;
             auto target = initial;
-            kp.assign(opts.num_dofs, 0.0);
-            kd.assign(opts.num_dofs, 0.0);
-            kp[joint] = opts.kp;
-            kd[joint] = opts.kd;
-
             double desired = opts.absolute ? opts.offset : initial[joint] + opts.offset;
             target[joint] = desired;
             double observed_peak = 0.0;
@@ -339,18 +331,27 @@ int main(int argc, char **argv)
             auto start = std::chrono::steady_clock::now();
             while (running && std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count() < opts.duration)
             {
-                if (!robot.set_target_joint_mit(target, dq, kp, kd, tau))
+                auto q = robot.get_joint_q();
+                auto v = robot.get_joint_v();
+                if (q.size() != opts.num_dofs || v.size() != opts.num_dofs)
                 {
                     std::cout << LOGGER::ERROR
-                              << "Failed to push MIT command frame. Check the command CAN interface and retry." << std::endl;
+                              << "Feedback vector size mismatch while issuing PD torque. Check CAN wiring and retry." << std::endl;
                     cleanup();
                     return -1;
                 }
-                auto q = robot.get_joint_q();
-                if (q.size() == opts.num_dofs)
+
+                torque_cmd.assign(opts.num_dofs, 0.0);
+                torque_cmd[joint] = opts.kp * (target[joint] - q[joint]) - opts.kd * v[joint];
+
+                if (!robot.set_target_joint_t(torque_cmd))
                 {
-                    observed_peak = std::max(observed_peak, std::abs(q[joint] - initial[joint]));
+                    std::cout << LOGGER::ERROR
+                              << "Failed to push torque command frame. Check the command CAN interface and retry." << std::endl;
+                    cleanup();
+                    return -1;
                 }
+                observed_peak = std::max(observed_peak, std::abs(q[joint] - initial[joint]));
                 std::this_thread::sleep_for(period);
             }
 
@@ -358,9 +359,23 @@ int main(int argc, char **argv)
             start = std::chrono::steady_clock::now();
             while (running && std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count() < opts.settle)
             {
-                robot.set_target_joint_mit(target, dq, kp, kd, tau);
+                auto q = robot.get_joint_q();
+                auto v = robot.get_joint_v();
+                if (q.size() != opts.num_dofs || v.size() != opts.num_dofs)
+                {
+                    std::cout << LOGGER::ERROR
+                              << "Feedback vector size mismatch while issuing PD torque. Check CAN wiring and retry." << std::endl;
+                    cleanup();
+                    return -1;
+                }
+
+                torque_cmd.assign(opts.num_dofs, 0.0);
+                torque_cmd[joint] = opts.kp * (target[joint] - q[joint]) - opts.kd * v[joint];
+                robot.set_target_joint_t(torque_cmd);
                 std::this_thread::sleep_for(period);
             }
+
+            robot.set_target_joint_t(zero_torque);
 
             if (observed_peak < kMotionThresholdRad)
             {
@@ -398,10 +413,6 @@ int main(int argc, char **argv)
             }
 
             auto target = initial;
-            kp.assign(opts.num_dofs, 0.0);
-            kd.assign(opts.num_dofs, 0.0);
-            kp[opts.joint] = opts.kp;
-            kd[opts.joint] = opts.kd;
             double desired = opts.absolute ? opts.offset : initial[opts.joint] + opts.offset;
             target[opts.joint] = desired;
             double observed_peak = 0.0;
@@ -410,12 +421,20 @@ int main(int argc, char **argv)
             auto start = std::chrono::steady_clock::now();
             while (running && std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count() < opts.duration)
             {
-                robot.set_target_joint_mit(target, dq, kp, kd, tau);
                 auto q = robot.get_joint_q();
-                if (q.size() == opts.num_dofs)
+                auto v = robot.get_joint_v();
+                if (q.size() != opts.num_dofs || v.size() != opts.num_dofs)
                 {
-                    observed_peak = std::max(observed_peak, std::abs(q[opts.joint] - initial[opts.joint]));
+                    std::cout << LOGGER::ERROR
+                              << "Feedback vector size mismatch while issuing PD torque. Check CAN wiring and retry." << std::endl;
+                    cleanup();
+                    return -1;
                 }
+
+                torque_cmd.assign(opts.num_dofs, 0.0);
+                torque_cmd[opts.joint] = opts.kp * (target[opts.joint] - q[opts.joint]) - opts.kd * v[opts.joint];
+                robot.set_target_joint_t(torque_cmd);
+                observed_peak = std::max(observed_peak, std::abs(q[opts.joint] - initial[opts.joint]));
                 std::this_thread::sleep_for(period);
             }
 
@@ -423,15 +442,23 @@ int main(int argc, char **argv)
             start = std::chrono::steady_clock::now();
             while (running && std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count() < opts.settle)
             {
-                if (!robot.set_target_joint_mit(target, dq, kp, kd, tau))
+                auto q = robot.get_joint_q();
+                auto v = robot.get_joint_v();
+                if (q.size() != opts.num_dofs || v.size() != opts.num_dofs)
                 {
                     std::cout << LOGGER::ERROR
-                              << "Failed to push MIT command frame. Check the command CAN interface and retry." << std::endl;
+                              << "Feedback vector size mismatch while issuing PD torque. Check CAN wiring and retry." << std::endl;
                     cleanup();
                     return -1;
                 }
+
+                torque_cmd.assign(opts.num_dofs, 0.0);
+                torque_cmd[opts.joint] = opts.kp * (target[opts.joint] - q[opts.joint]) - opts.kd * v[opts.joint];
+                robot.set_target_joint_t(torque_cmd);
                 std::this_thread::sleep_for(period);
             }
+
+            robot.set_target_joint_t(zero_torque);
 
             if (observed_peak < kMotionThresholdRad)
             {

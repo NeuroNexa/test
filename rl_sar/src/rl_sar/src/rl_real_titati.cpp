@@ -179,23 +179,19 @@ void RL_Real::SetCommand(const RobotCommand<double> *command)
         return;
     }
     std::scoped_lock<std::mutex> lock(command_mutex_);
-    std::vector<double> q(this->params.num_of_dofs, 0.0);
-    std::vector<double> dq(this->params.num_of_dofs, 0.0);
-    std::vector<double> kp(this->params.num_of_dofs, 0.0);
-    std::vector<double> kd(this->params.num_of_dofs, 0.0);
-    std::vector<double> tau(this->params.num_of_dofs, 0.0);
+    std::vector<double> torque_cmd(this->params.num_of_dofs, 0.0);
 
     for (int i = 0; i < this->params.num_of_dofs; ++i)
     {
-        int idx = this->params.joint_mapping[i];
-        q[idx] = command->motor_command.q[i];
-        dq[idx] = command->motor_command.dq[i];
-        kp[idx] = command->motor_command.kp[i];
-        kd[idx] = command->motor_command.kd[i];
-        tau[idx] = command->motor_command.tau[i];
+        const int idx = this->params.joint_mapping[i];
+        const double q_measured = idx < static_cast<int>(joint_positions_.size()) ? joint_positions_[idx] : 0.0;
+        const double dq_measured = idx < static_cast<int>(joint_velocities_.size()) ? joint_velocities_[idx] : 0.0;
+        const double pd_term = command->motor_command.kp[i] * (command->motor_command.q[i] - q_measured)
+                             + command->motor_command.kd[i] * (command->motor_command.dq[i] - dq_measured);
+        torque_cmd[idx] = command->motor_command.tau[i] + pd_term;
     }
 
-    titati_robot_->set_target_joint_mit(q, dq, kp, kd, tau);
+    titati_robot_->set_target_joint_t(torque_cmd);
 }
 
 void RL_Real::ApplyZeroTorque()
@@ -296,12 +292,9 @@ void RL_Real::ReleaseEstop(const std::string &source)
         current_dq = std::vector<double>(this->params.num_of_dofs, 0.0);
     }
 
-    std::vector<double> kp(this->params.num_of_dofs, 0.0);
-    std::vector<double> kd(this->params.num_of_dofs, 0.0);
-
     {
         std::scoped_lock<std::mutex> lock(command_mutex_);
-        titati_robot_->set_target_joint_mit(current_q, current_dq, kp, kd, zero_torque_cmd_);
+        titati_robot_->set_target_joint_t(zero_torque_cmd_);
     }
 
     ClearCommandQueues();
