@@ -65,7 +65,9 @@ RL_Real::RL_Real(const std::string &feedback_can_interface, const std::string &c
         else
         {
             std::cout << LOGGER::ERROR << "Failed to switch Titati motors to SDK control on CAN interface '"
-                      << command_can_interface_ << "'." << std::endl;
+                      << command_can_interface_
+                      << "'. Confirm the interface exists (try 'ip link show') and that the command bus is wired to this port."
+                      << std::endl;
             estop_engaged_ = true;
         }
     }

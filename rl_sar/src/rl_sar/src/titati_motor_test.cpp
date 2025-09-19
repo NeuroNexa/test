@@ -242,8 +242,10 @@ int main(int argc, char **argv)
         motors_enabled = robot.set_motors_sdk(true);
         if (!motors_enabled)
         {
-            std::cout << LOGGER::ERROR << "Unable to switch Titati to SDK control mode on CAN interface '"
-                      << opts.command_can << "'." << std::endl;
+        std::cout << LOGGER::ERROR << "Unable to switch Titati to SDK control mode on CAN interface '"
+                  << opts.command_can
+                  << "'. Verify that the interface exists (e.g. run 'ip link show') and that the command bus wiring is correct."
+                  << std::endl;
             return -1;
         }
         std::cout << LOGGER::INFO << "Titati MCU switched to FORCE_DIRECT (SDK) control on '" << opts.command_can

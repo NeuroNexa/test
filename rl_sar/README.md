@@ -352,9 +352,12 @@ Pull the code and compile it. The process is the same as above.
 
 <summary>Titati quadruped (Click to expand)</summary>
 
+> [!NOTE]
+> A step-by-step walkthrough for Jetson Orin NX 16 GB controllers (including master/slave bring-up, CAN routing and smoke tests) lives in [`docs/titati_jetson_orin_setup.md`](docs/titati_jetson_orin_setup.md).  Refer to that guide if you are deploying directly on the robot hardware.
+
 #### Preparing the CAN FD interface
 
-The Titati stack assumes a CAN FD interface named `can0`. Bring the bus up before starting any controller (adjust the interface name if you are using a USB-CAN adapter that enumerates differently):
+The Titati stack assumes a CAN FD interface named `can0`. Start by confirming which interfaces exist – on many harnesses only `can0` is wired, so the command bus also shares `can0` and `can1` never shows up.  Use `ip link show | grep -E "can[0-9]"` to inspect the available devices, then bring the bus up before starting any controller (adjust the interface name if you are using a USB-CAN adapter that enumerates differently):
 
 ```bash
 sudo systemctl stop tita-bringup.service  # stop any previously running vendor service
@@ -404,7 +407,7 @@ The build places the hardware tools in `cmake_build/bin/`, most importantly `rl_
     ./cmake_build/bin/titati_motor_test --mode torque --joint 5 --torque 3.0
     ```
 
-    All diagnostics accept `--can`, `--feedback-can`, and `--command-can` so you can point the tool at any CAN FD interface (for example `--can can1`). If the motors do not react but feedback streaming works, double-check that the **command** option targets the actuator bus (many Titati builds use `can0` for feedback and `can1` for torque commands).
+    All diagnostics accept `--can`, `--feedback-can`, and `--command-can` so you can point the tool at any CAN FD interface (for example `--can can1`). If the motors do not react but feedback streaming works, double-check that the **command** option targets the actuator bus (many Titati builds use `can0` for both directions, so `--command-can can1` will fail with `if_nametoindex: No such device`).
 
     When the scan/single/torque helpers report "joint barely moved" or "reported only X Nm", no motion was detected in the feedback stream. Inspect the command bus with
 
