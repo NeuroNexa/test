@@ -192,6 +192,18 @@ if(NOT USE_CMAKE)
     endif()
 endif()
 
+add_library(titati_hardware
+    library/hardware/titati/titati_hardware.cpp
+)
+target_include_directories(titati_hardware PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/hardware/titati
+)
+set_target_properties(titati_hardware PROPERTIES
+    CXX_STANDARD 14
+    CXX_STANDARD_REQUIRED ON
+)
+target_link_libraries(titati_hardware PUBLIC Threads::Threads)
+
 if(NOT USE_CMAKE)
     add_executable(rl_sim src/rl_sim.cpp)
     target_link_libraries(rl_sim
@@ -318,6 +330,25 @@ if(NOT USE_CMAKE)
             geometry_msgs
         )
         install(TARGETS rl_real_l4w4 DESTINATION lib/${PROJECT_NAME})
+    endif()
+endif()
+
+add_executable(rl_real_titati src/rl_real_titati.cpp)
+target_link_libraries(rl_real_titati
+    titati_hardware
+    rl_sdk
+    observation_buffer
+    yaml-cpp
+)
+if(NOT USE_CMAKE)
+    if($ENV{ROS_DISTRO} MATCHES "noetic")
+        target_link_libraries(rl_real_titati ${catkin_LIBRARIES})
+    elseif($ENV{ROS_DISTRO} MATCHES "foxy|humble")
+        ament_target_dependencies(rl_real_titati
+            rclcpp
+            geometry_msgs
+        )
+        install(TARGETS rl_real_titati DESTINATION lib/${PROJECT_NAME})
     endif()
 endif()
 

@@ -343,6 +343,43 @@ Pull the code and compile it. The process is the same as above.
 
 <details>
 
+<summary>DDTRobot Titati (Click to expand)</summary>
+
+Titati is assembled from two Tita robots that share a single CAN-FD backbone. The real robot controller in this repository exposes a new binary `rl_real_titati` that talks directly to the hardware interface without any dependency on the legacy `titati_control` stack. The program drives both half-robots from the master Jetson and automatically enables direct motor control on the MCU router.
+
+1. **Bring up CAN-FD on both Jetsons** (master and slave) after powering the robots:
+
+   ```bash
+   sudo ip link set can0 down
+   sudo ip link set can0 up type can bitrate 1000000 sample-point 0.80 dbitrate 8000000 dsample-point 0.80 fd on restart-ms 100
+   sudo ifconfig can0 txqueuelen 1000
+   ```
+
+   These commands must be executed on both Jetsons so that the CAN-FD router forwards frames between the two Tita platforms.
+
+2. **Launch the Titati controller on the master Jetson** (the slave Jetson only needs the CAN interface from step 1):
+
+   ```bash
+   # ROS1
+   source devel/setup.bash
+   rosrun rl_sar rl_real_titati
+
+   # ROS2
+   source install/setup.bash
+   ros2 run rl_sar rl_real_titati
+
+   # CMake (standalone)
+   ./cmake_build/bin/rl_real_titati
+   ```
+
+   The executable assumes the CAN device is named `can0`. To override this (for example when using a USB-to-CAN adapter), export `CAN_INTERFACE=<device>` before running the controller.
+
+3. **Operate Titati using keyboard/joystick commands** (see the control table above). The controller reads joint states from both robots, publishes MIT-style torque commands through the CAN router, and keeps the MCU router locked in `FORCE_DIRECT` mode for RL execution. No additional helper nodes are required on the slave Jetson.
+
+</details>
+
+<details>
+
 <summary>Deeprobotics Lite3 (Click to expand)</summary>
 
 Deeprobotics Lite3 can be connected using wireless method.
