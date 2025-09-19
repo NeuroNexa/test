@@ -362,14 +362,15 @@ sudo ifconfig can0 txqueuelen 1000
 Build the standalone executables that run directly on the robot controller PC:
 
 ```bash
-./build.sh -m rl_sar
+./build.sh -m
 ```
 
+The CMake target relies on LibTorch. Make sure `Torch_DIR` points to your LibTorch installation before running the build. If the variable is missing CMake will stop with `TorchConfig.cmake` not found; follow the preparation section above to install LibTorch and export `Torch_DIR` on both the master and slave control PCs.
 The build places the hardware tools in `cmake_build/bin/`, most importantly `rl_real_titati` (RL controller) and `titati_motor_test` (diagnostics).
 
 #### Smoke tests before running RL
 
-1. **Verify feedback** – stream the raw joint state to confirm the CAN wiring:
+1. **Verify feedback** – stream the raw joint state to confirm the CAN wiring (run once on both the master and the slave controller PCs if you keep the factory dual-computer setup):
 
     ```bash
     ./cmake_build/bin/titati_motor_test --mode monitor
@@ -393,7 +394,7 @@ The build places the hardware tools in `cmake_build/bin/`, most importantly `rl_
 #### Running the RL policy on hardware
 
 1. Copy the trained TorchScript policy to `rl_sar/src/rl_sar/policy/titati/<YOUR_CONFIG>/` and update `config.yaml` as usual.
-2. Launch the real-time controller with the appropriate CAN interface mapping:
+2. Launch the real-time controller with the appropriate CAN interface mapping. Keep the vendor `titati_canfd_router` process running on the slave controller (or execute the RPC sequence manually) so that both MCU boards stay in `FORCE_DIRECT` mode while the RL policy is active:
 
     ```bash
     ./cmake_build/bin/rl_real_titati --can can0
