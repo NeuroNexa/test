@@ -134,6 +134,16 @@ if($ENV{ROS_DISTRO} MATCHES "foxy|humble")
     )
 endif()
 
+add_library(titati_sdk
+    library/thirdparty/titati_sdk/src/can_receiver.cpp
+    library/thirdparty/titati_sdk/src/can_sender.cpp
+    library/thirdparty/titati_sdk/src/tita_robot.cpp
+)
+target_include_directories(titati_sdk PUBLIC
+    library/thirdparty/titati_sdk/include
+)
+target_link_libraries(titati_sdk PUBLIC Threads::Threads)
+
 # Retroid Gamepad
 set(GAMEPAD_SRC
     ${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/gamepad/src/gamepad.cpp
@@ -176,8 +186,22 @@ else()
 endif()
 if(NOT USE_CMAKE)
     if($ENV{ROS_DISTRO} MATCHES "foxy|humble")
-        install(TARGETS rl_sdk DESTINATION lib/${PROJECT_NAME})
-    endif()
+      file(GLOB GLOB_LITE3_SDK_SO "${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/Lite3_MotionSDK/lib/libdeeprobotics_legged_sdk_${ARCH_DIR}.so")
+      install(FILES
+          ${GLOB_LITE3_SDK_SO}
+          DESTINATION lib/
+      )
+  endif()
+
+add_library(titati_sdk
+    library/thirdparty/titati_sdk/src/can_receiver.cpp
+    library/thirdparty/titati_sdk/src/can_sender.cpp
+    library/thirdparty/titati_sdk/src/tita_robot.cpp
+)
+target_include_directories(titati_sdk PUBLIC
+    library/thirdparty/titati_sdk/include
+)
+target_link_libraries(titati_sdk PUBLIC Threads::Threads)
 endif()
 
 add_library(observation_buffer library/core/observation_buffer/observation_buffer.cpp)
@@ -318,6 +342,25 @@ if(NOT USE_CMAKE)
             geometry_msgs
         )
         install(TARGETS rl_real_l4w4 DESTINATION lib/${PROJECT_NAME})
+    endif()
+endif()
+
+add_executable(rl_real_titati src/rl_real_titati.cpp)
+target_link_libraries(rl_real_titati
+    titati_sdk
+    rl_sdk
+    observation_buffer
+    yaml-cpp
+)
+if(NOT USE_CMAKE)
+    if($ENV{ROS_DISTRO} MATCHES "noetic")
+        target_link_libraries(rl_real_titati ${catkin_LIBRARIES})
+    elseif($ENV{ROS_DISTRO} MATCHES "foxy|humble")
+        ament_target_dependencies(rl_real_titati
+            rclcpp
+            geometry_msgs
+        )
+        install(TARGETS rl_real_titati DESTINATION lib/${PROJECT_NAME})
     endif()
 endif()
 

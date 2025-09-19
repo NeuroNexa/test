@@ -28,6 +28,7 @@ Support List:
 |GoldenRetriever-L4W4 (l4w4)|legged_gym (IsaacGym)</br>robot_lab (IsaacSim)|✅</br>✅|
 |Deeprobotics-Lite3 (lite3)|himloco (IsaacGym)|✅|
 |DDTRobot-Tita (tita)|robot_lab (IsaacSim)|⚪|
+|DDTRobot-Titati (titati)|robot_lab (IsaacSim)|✅|
 
 > [!IMPORTANT]
 > Python version temporarily suspended maintenance, please use [v2.3](https://github.com/fan-ziqi/rl_sar/releases/tag/v2.3) if necessary, may be re-released in the future.
@@ -373,6 +374,50 @@ ros2 run rl_sar rl_real_lite3
 # CMake
 ./cmake_build/bin/rl_real_lite3
 ```
+
+<details>
+
+<summary>DDTRobot Titati (Click to expand)</summary>
+
+The Titati platform is composed of two coupled Tita bases. The new `rl_real_titati` binary
+provides the sim2real bridge so that a learned policy can command all 16 actuators directly through
+CAN FD.
+
+1. **Prepare each Jetson (master & slave)**
+   - Connect the two motion-control computers with the Titati CAN FD bridge and make sure the CAN
+     cable is attached to `can0`.
+   - Bring up the CAN interface (repeat on both hosts):
+     ```bash
+     sudo ip link set can0 down
+     sudo ip link set can0 up type can bitrate 1000000 sample-point 0.80 \ 
+       dbitrate 8000000 dsample-point 0.80 fd on restart-ms 100
+     sudo ifconfig can0 txqueuelen 1000
+     ```
+   - It is recommended to keep a dedicated terminal running `candump can0` while validating the
+     wiring.
+2. **Start the hardware bridge**
+   - The RL runtime toggles the MCU into `FORCE_DIRECT` mode automatically. No additional ROS2
+     controller is required. When a dual-computer setup is used, the CAN bridge must forward all
+     frames between the two sides (the stock Titati CAN FD router service can remain running on the
+     slave board).
+3. **Launch the RL controller on the master host**
+   - After building `rl_sar`, run:
+     ```bash
+     # ROS 2
+     source install/setup.bash
+     ros2 run rl_sar rl_real_titati can0
+
+     # or use the plain CMake build
+     ./cmake_build/bin/rl_real_titati can0
+     ```
+   - Keyboard shortcuts match the other locomotion controllers: `W/S` adjust forward velocity,
+     `A/D` strafe, `Q/E` rotate, `Space` stops the command, `N` toggles navigation mode.
+   - For ROS deployments you may stream velocity commands to `/cmd_vel`.
+4. **Safety**
+   - The program refuses to send commands until joint feedback and IMU data are detected.
+   - An emergency stop can be triggered by terminating the process (`Ctrl+C`).
+
+</details>
 
 </details>
 

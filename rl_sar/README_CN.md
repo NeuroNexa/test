@@ -28,6 +28,7 @@
 |GoldenRetriever-L4W4 (l4w4)|legged_gym (IsaacGym)</br>robot_lab (IsaacSim)|✅</br>✅|
 |Deeprobotics-Lite3 (lite3)|himloco (IsaacGym)|✅|
 |DDTRobot-Tita (tita)|robot_lab (IsaacSim)|⚪|
+|DDTRobot-Titati (titati)|robot_lab (IsaacSim)|✅|
 
 > [!IMPORTANT]
 > Python版本暂时停止维护，如有需要请使用[v2.3](https://github.com/fan-ziqi/rl_sar/releases/tag/v2.3)版本，后续可能会重新上线。
@@ -373,6 +374,44 @@ ros2 run rl_sar rl_real_lite3
 # CMake
 ./cmake_build/bin/rl_real_lite3
 ```
+
+<details>
+
+<summary>DDTRobot Titati（点击展开）</summary>
+
+Titati 由两台 Tita 组合而成，共 16 个驱动关节。`rl_real_titati` 二进制提供了直接通过 CAN FD
+控制实物的通道。
+
+1. **准备主/从机**
+   - 确保两台运动控制主机通过 Titati 随机附带的 CAN FD 网桥相连，并且驱动线连接在 `can0` 接口。
+   - 在两台主机上分别执行以下命令初始化 CAN（如需其他接口名称可自行替换 `can0`）：
+     ```bash
+     sudo ip link set can0 down
+     sudo ip link set can0 up type can bitrate 1000000 sample-point 0.80 \ 
+       dbitrate 8000000 dsample-point 0.80 fd on restart-ms 100
+     sudo ifconfig can0 txqueuelen 1000
+     ```
+   - 建议在调试阶段使用 `candump can0` 监视总线状态。
+2. **保持硬件桥运行**
+   - 运行本程序会自动向 MCU 发送 `FORCE_DIRECT` 指令。若使用双主机架构，需要保证两侧的 CAN FD 路由服务
+     持续转发总线报文（官方提供的 Titati CAN FD router 可继续在从机运行）。
+3. **在主机启动 RL 控制程序**
+   - 编译完成后可以选择 ROS 或纯 CMake 方式运行：
+     ```bash
+     # ROS 2
+     source install/setup.bash
+     ros2 run rl_sar rl_real_titati can0
+
+     # 或直接执行 CMake 产物
+     ./cmake_build/bin/rl_real_titati can0
+     ```
+   - 键盘控制方式与其他机器人一致：`W/S` 控制前后速度，`A/D` 横移，`Q/E` 旋转，`Space` 清零命令，`N` 切换导航模式。
+   - 若使用 ROS，可向 `/cmd_vel` 发送速度指令。
+4. **安全注意事项**
+   - 程序会在检测到关节与 IMU 数据后才开始下发命令。
+   - 终止进程（`Ctrl+C`）即可触发急停。
+
+</details>
 
 </details>
 
