@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.5)
 project(rl_sar VERSION 3.0.0 LANGUAGES CXX)
 
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
 set(USE_CMAKE OFF CACHE BOOL "Use Cmake build system")
 message(STATUS "USE_CMAKE: ${USE_CMAKE}")
 if(USE_CMAKE)
@@ -143,6 +147,10 @@ target_include_directories(titati_sdk PUBLIC
     library/thirdparty/titati_sdk/include
 )
 target_link_libraries(titati_sdk PUBLIC Threads::Threads)
+set_target_properties(titati_sdk PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+)
 
 # Retroid Gamepad
 set(GAMEPAD_SRC
@@ -169,7 +177,7 @@ include_directories(
 
 add_library(rl_sdk library/core/rl_sdk/rl_sdk.cpp)
 set_target_properties(rl_sdk PROPERTIES
-    CXX_STANDARD 14
+    CXX_STANDARD 17
     CXX_STANDARD_REQUIRED ON
 )
 target_link_libraries(rl_sdk PUBLIC
@@ -193,21 +201,25 @@ if(NOT USE_CMAKE)
       )
   endif()
 
-add_library(titati_sdk
-    library/thirdparty/titati_sdk/src/can_receiver.cpp
-    library/thirdparty/titati_sdk/src/can_sender.cpp
-    library/thirdparty/titati_sdk/src/tita_robot.cpp
-)
-target_include_directories(titati_sdk PUBLIC
-    library/thirdparty/titati_sdk/include
-)
-target_link_libraries(titati_sdk PUBLIC Threads::Threads)
+  add_library(titati_sdk
+      library/thirdparty/titati_sdk/src/can_receiver.cpp
+      library/thirdparty/titati_sdk/src/can_sender.cpp
+      library/thirdparty/titati_sdk/src/tita_robot.cpp
+  )
+  target_include_directories(titati_sdk PUBLIC
+      library/thirdparty/titati_sdk/include
+  )
+  target_link_libraries(titati_sdk PUBLIC Threads::Threads)
+  set_target_properties(titati_sdk PROPERTIES
+      CXX_STANDARD 17
+      CXX_STANDARD_REQUIRED ON
+  )
 endif()
 
 add_library(observation_buffer library/core/observation_buffer/observation_buffer.cpp)
 target_link_libraries(observation_buffer PUBLIC "${TORCH_LIBRARIES}")
 set_target_properties(observation_buffer PROPERTIES
-    CXX_STANDARD 14
+    CXX_STANDARD 17
     CXX_STANDARD_REQUIRED ON
 )
 if(NOT USE_CMAKE)
