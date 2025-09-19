@@ -5,6 +5,7 @@
 
 #include "tita_robot/tita_robot.hpp"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <csignal>
@@ -233,6 +234,8 @@ int main(int argc, char **argv)
     const bool require_direct_control = opts.mode != "monitor";
     bool motors_enabled = false;
     std::vector<double> zero_torque(opts.num_dofs, 0.0);
+    constexpr double kMotionThresholdRad = 0.03; // ~1.7 deg
+    constexpr double kTorqueThresholdNm = 0.5;
 
     if (require_direct_control)
     {
@@ -329,6 +332,7 @@ int main(int argc, char **argv)
 
             double desired = opts.absolute ? opts.offset : initial[joint] + opts.offset;
             target[joint] = desired;
+            double observed_peak = 0.0;
 
             auto start = std::chrono::steady_clock::now();
             while (running && std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count() < opts.duration)
@@ -340,6 +344,11 @@ int main(int argc, char **argv)
                     cleanup();
                     return -1;
                 }
+                auto q = robot.get_joint_q();
+                if (q.size() == opts.num_dofs)
+                {
+                    observed_peak = std::max(observed_peak, std::abs(q[joint] - initial[joint]));
+                }
                 std::this_thread::sleep_for(period);
             }
 
@@ -349,6 +358,18 @@ int main(int argc, char **argv)
             {
                 robot.set_target_joint_mit(target, dq, kp, kd, tau);
                 std::this_thread::sleep_for(period);
+            }
+
+            if (observed_peak < kMotionThresholdRad)
+            {
+                std::cout << LOGGER::ERROR
+                          << "Joint " << joint
+                          << " barely moved (" << observed_peak
+                          << " rad). Verify that the command CAN bus is correct (many Titati builds use"
+                             " --command-can can1) and that the slave 'titati_canfd_router' is running."
+                          << std::endl;
+                cleanup();
+                return -1;
             }
         }
         cleanup();
@@ -381,12 +402,18 @@ int main(int argc, char **argv)
             kd[opts.joint] = opts.kd;
             double desired = opts.absolute ? opts.offset : initial[opts.joint] + opts.offset;
             target[opts.joint] = desired;
+            double observed_peak = 0.0;
 
             std::cout << LOGGER::INFO << "Driving joint " << opts.joint << " toward target " << desired << " rad." << std::endl;
             auto start = std::chrono::steady_clock::now();
             while (running && std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count() < opts.duration)
             {
                 robot.set_target_joint_mit(target, dq, kp, kd, tau);
+                auto q = robot.get_joint_q();
+                if (q.size() == opts.num_dofs)
+                {
+                    observed_peak = std::max(observed_peak, std::abs(q[opts.joint] - initial[opts.joint]));
+                }
                 std::this_thread::sleep_for(period);
             }
 
@@ -403,12 +430,25 @@ int main(int argc, char **argv)
                 }
                 std::this_thread::sleep_for(period);
             }
+
+            if (observed_peak < kMotionThresholdRad)
+            {
+                std::cout << LOGGER::ERROR
+                          << "Joint " << opts.joint
+                          << " barely moved (" << observed_peak
+                          << " rad). Verify the command CAN assignment (try --command-can can1) and confirm the slave"
+                             " controller keeps Titati in FORCE_DIRECT mode."
+                          << std::endl;
+                cleanup();
+                return -1;
+            }
         }
         else // torque mode
         {
             std::cout << LOGGER::INFO << "Applying " << opts.torque << " Nm torque to joint " << opts.joint << "." << std::endl;
             auto torques = zero_torque;
             torques[opts.joint] = opts.torque;
+            double observed_tau = 0.0;
             auto start = std::chrono::steady_clock::now();
             while (running && std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count() < opts.duration)
             {
@@ -419,12 +459,29 @@ int main(int argc, char **argv)
                     cleanup();
                     return -1;
                 }
+                auto tau_measured = robot.get_joint_t();
+                if (tau_measured.size() == opts.num_dofs)
+                {
+                    observed_tau = std::max(observed_tau, std::abs(tau_measured[opts.joint]));
+                }
                 std::this_thread::sleep_for(period);
             }
             if (!robot.set_target_joint_t(zero_torque))
             {
                 std::cout << LOGGER::WARNING
                           << "Unable to send zero torque command at the end of the test. Ensure the CAN link is healthy." << std::endl;
+            }
+
+            if (observed_tau < kTorqueThresholdNm)
+            {
+                std::cout << LOGGER::ERROR
+                          << "Joint " << opts.joint
+                          << " reported only " << observed_tau
+                          << " Nm during torque mode. The actuator likely did not receive the command. Double-check the"
+                             " command CAN interface and that the Titati slave router is active."
+                          << std::endl;
+                cleanup();
+                return -1;
             }
         }
 

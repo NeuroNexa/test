@@ -375,6 +375,14 @@ Build the standalone executables that run directly on the robot controller PC:
 The CMake target relies on LibTorch. Make sure `Torch_DIR` points to your LibTorch installation before running the build. If the variable is missing CMake will stop with `TorchConfig.cmake` not found; follow the preparation section above to install LibTorch and export `Torch_DIR` on both the master and slave control PCs.
 The build places the hardware tools in `cmake_build/bin/`, most importantly `rl_real_titati` (RL controller) and `titati_motor_test` (diagnostics).
 
+#### Jetson Orin deployment checklist (master or slave controller)
+
+1. **Source the environment** – export `Torch_DIR` and CUDA paths in `~/.bashrc` (see the template earlier in the README). Reload the shell with `source ~/.bashrc`.
+2. **Install required packages** – `sudo apt install libyaml-cpp-dev liblcm-dev libtbb-dev python3-dev` ensures the CMake dependencies are available on JetPack 6.x.
+3. **Verify LibTorch visibility** – run `python3 -c "import torch, sys; print(sys.version); print(torch.__file__)"`. If Python can import Torch from the same prefix as `Torch_DIR`, the C++ build will succeed.
+4. **Compile the hardware targets** – execute `./build.sh -m -- -DRL_SAR_BUILD_TITATI_ONLY=ON` when you only need the Titati binaries. The script reuses the cached build tree, so later incremental builds only require `./build.sh -m`.
+5. **Copy policies and configs** – place your TorchScript model under `src/rl_sar/policy/titati/<CONFIG>/` and update `config.yaml` / `base.yaml` before launching `rl_real_titati`.
+
 #### Smoke tests before running RL
 
 1. **Verify feedback** – stream the raw joint state to confirm the CAN wiring (run once on both the master and the slave controller PCs if you keep the factory dual-computer setup):
@@ -397,6 +405,20 @@ The build places the hardware tools in `cmake_build/bin/`, most importantly `rl_
     ```
 
     All diagnostics accept `--can`, `--feedback-can`, and `--command-can` so you can point the tool at any CAN FD interface (for example `--can can1`). If the motors do not react but feedback streaming works, double-check that the **command** option targets the actuator bus (many Titati builds use `can0` for feedback and `can1` for torque commands).
+
+    When the scan/single/torque helpers report "joint barely moved" or "reported only X Nm", no motion was detected in the feedback stream. Inspect the command bus with
+
+    ```bash
+    sudo candump -L <command-can>
+    ```
+
+    You should see frames `0x120`–`0x127` at the chosen rate. If the log stays empty, rerun the test with `--command-can can1` (or whichever interface carries actuator commands on your wiring harness) and confirm that the slave Jetson keeps `titati_canfd_router` alive:
+
+    ```bash
+    ps -ef | grep titati_canfd_router
+    ```
+
+    The router repeatedly enforces `FORCE_DIRECT` mode so external MIT commands take effect.
 
 #### Running the RL policy on hardware
 
