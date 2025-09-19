@@ -27,12 +27,12 @@ public:
         float forward_accel;
         float yaw_accel;
     };
-    tita_robot(size_t num_motors)
+    tita_robot(size_t num_motors, std::string feedback_interface = "can0", std::string command_interface = "can0")
+        : motor_num_(num_motors)
     {
-        // Initialize the CAN receiver
-        can_receiver_ = std::make_unique<can_device::MotorsImuCanReceiveApi>(num_motors);
-        can_sender_ = std::make_unique<can_device::MotorsCanSendApi>(num_motors);
-        motor_num_ = num_motors;
+        // Initialize the CAN receiver and sender
+        can_receiver_ = std::make_unique<can_device::MotorsImuCanReceiveApi>(num_motors, std::move(feedback_interface));
+        can_sender_ = std::make_unique<can_device::MotorsCanSendApi>(num_motors, std::move(command_interface));
     }
 
     /**

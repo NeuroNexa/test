@@ -16,7 +16,11 @@
 #include "fsm.hpp"
 
 #include "tita_robot/tita_robot.hpp"
+#include <atomic>
 #include <csignal>
+#include <mutex>
+#include <string>
+#include <vector>
 
 #if defined(USE_ROS1) && defined(USE_ROS)
 #include <ros/ros.h>
@@ -37,7 +41,7 @@ class RL_Real : public RL
 #endif
 {
 public:
-    RL_Real();
+    RL_Real(const std::string &feedback_can_interface = "can0", const std::string &command_can_interface = "can0");
     ~RL_Real();
 
 private:
@@ -47,6 +51,10 @@ private:
     void SetCommand(const RobotCommand<double> *command) override;
     void RunModel();
     void RobotControl();
+    void EngageEstop(const std::string &source);
+    void ReleaseEstop(const std::string &source);
+    void ApplyZeroTorque();
+    void ClearCommandQueues();
 
     // loop
     std::shared_ptr<LoopFunc> loop_keyboard;
@@ -66,9 +74,15 @@ private:
 
     // titati interface
     std::unique_ptr<tita_robot> titati_robot_;
+    std::string feedback_can_interface_;
+    std::string command_can_interface_;
     std::vector<double> joint_positions_;
     std::vector<double> joint_velocities_;
     std::vector<double> joint_torques_;
+    std::vector<double> zero_torque_cmd_;
+    std::atomic<bool> estop_engaged_{false};
+    std::atomic<bool> motors_sdk_enabled_{false};
+    std::mutex command_mutex_;
 
     // others
     int motiontime = 0;

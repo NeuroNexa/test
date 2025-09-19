@@ -352,6 +352,13 @@ if(NOT USE_CMAKE)
     endif()
 endif()
 
+add_executable(titati_motor_test src/titati_motor_test.cpp)
+target_link_libraries(titati_motor_test
+    titati_robot
+    yaml-cpp
+)
+target_compile_features(titati_motor_test PRIVATE cxx_std_17)
+
 if(NOT USE_CMAKE)
     if($ENV{ROS_DISTRO} MATCHES "noetic")
         catkin_install_python(PROGRAMS

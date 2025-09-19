@@ -1,5 +1,8 @@
 #include "tita_robot/tita_robot.hpp"
 
+#include <chrono>
+#include <thread>
+
 std::vector<double> tita_robot::get_joint_q() const
 {
   auto infos = can_receiver_->get_motors_in();

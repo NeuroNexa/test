@@ -6,10 +6,16 @@
 #include "rl_real_titati.hpp"
 
 #include <cmath>
+#include <vector>
 
-RL_Real::RL_Real()
+RL_Real::RL_Real(const std::string &feedback_can_interface, const std::string &command_can_interface)
 #if defined(USE_ROS2) && defined(USE_ROS)
     : rclcpp::Node("rl_real_node")
+    , feedback_can_interface_(feedback_can_interface)
+    , command_can_interface_(command_can_interface)
+#else
+    : feedback_can_interface_(feedback_can_interface)
+    , command_can_interface_(command_can_interface)
 #endif
 {
 #if defined(USE_ROS1) && defined(USE_ROS)
@@ -46,8 +52,23 @@ RL_Real::RL_Real()
     torch::set_num_threads(4);
 
     // init robot hardware
-    titati_robot_ = std::make_unique<tita_robot>(this->params.num_of_dofs);
-    titati_robot_->set_motors_sdk(true);
+    titati_robot_ = std::make_unique<tita_robot>(this->params.num_of_dofs, feedback_can_interface_, command_can_interface_);
+    zero_torque_cmd_.assign(this->params.num_of_dofs, 0.0);
+    if (titati_robot_)
+    {
+        motors_sdk_enabled_ = titati_robot_->set_motors_sdk(true);
+        if (motors_sdk_enabled_)
+        {
+            std::cout << LOGGER::INFO << "Titati motors switched to SDK control via CAN interfaces ('"
+                      << feedback_can_interface_ << "' feedback / '" << command_can_interface_ << "' command)." << std::endl;
+        }
+        else
+        {
+            std::cout << LOGGER::ERROR << "Failed to switch Titati motors to SDK control on CAN interface '"
+                      << command_can_interface_ << "'." << std::endl;
+            estop_engaged_ = true;
+        }
+    }
     joint_positions_.resize(this->params.num_of_dofs, 0.0);
     joint_velocities_.resize(this->params.num_of_dofs, 0.0);
     joint_torques_.resize(this->params.num_of_dofs, 0.0);
@@ -87,9 +108,12 @@ RL_Real::~RL_Real()
 #endif
     if (titati_robot_)
     {
-        std::vector<double> zero_torque(this->params.num_of_dofs, 0.0);
-        titati_robot_->set_target_joint_t(zero_torque);
-        titati_robot_->set_motors_sdk(false);
+        ApplyZeroTorque();
+        if (motors_sdk_enabled_.load())
+        {
+            titati_robot_->set_motors_sdk(false);
+            motors_sdk_enabled_ = false;
+        }
     }
     std::cout << LOGGER::INFO << "RL_Real exit" << std::endl;
 }
@@ -148,10 +172,11 @@ void RL_Real::GetState(RobotState<double> *state)
 
 void RL_Real::SetCommand(const RobotCommand<double> *command)
 {
-    if (!command || !titati_robot_)
+    if (!command || !titati_robot_ || estop_engaged_.load() || !motors_sdk_enabled_.load())
     {
         return;
     }
+    std::scoped_lock<std::mutex> lock(command_mutex_);
     std::vector<double> q(this->params.num_of_dofs, 0.0);
     std::vector<double> dq(this->params.num_of_dofs, 0.0);
     std::vector<double> kp(this->params.num_of_dofs, 0.0);
@@ -171,9 +196,134 @@ void RL_Real::SetCommand(const RobotCommand<double> *command)
     titati_robot_->set_target_joint_mit(q, dq, kp, kd, tau);
 }
 
+void RL_Real::ApplyZeroTorque()
+{
+    if (!titati_robot_)
+    {
+        return;
+    }
+    if (zero_torque_cmd_.size() != static_cast<size_t>(this->params.num_of_dofs))
+    {
+        zero_torque_cmd_.assign(this->params.num_of_dofs, 0.0);
+    }
+    std::scoped_lock<std::mutex> lock(command_mutex_);
+    titati_robot_->set_target_joint_t(zero_torque_cmd_);
+}
+
+void RL_Real::ClearCommandQueues()
+{
+    torch::Tensor dump;
+    while (output_dof_pos_queue.try_pop(dump))
+    {
+    }
+    while (output_dof_vel_queue.try_pop(dump))
+    {
+    }
+    while (output_dof_tau_queue.try_pop(dump))
+    {
+    }
+}
+
+void RL_Real::EngageEstop(const std::string &source)
+{
+    bool expected = false;
+    if (!estop_engaged_.compare_exchange_strong(expected, true))
+    {
+        return;
+    }
+
+    std::cout << LOGGER::WARNING << "Soft e-stop engaged by " << source << "." << std::endl;
+    ApplyZeroTorque();
+    ClearCommandQueues();
+
+    if (titati_robot_)
+    {
+        std::scoped_lock<std::mutex> lock(command_mutex_);
+        if (motors_sdk_enabled_.load())
+        {
+            if (!titati_robot_->set_motors_sdk(false))
+            {
+                std::cout << LOGGER::WARNING << "Titati did not acknowledge SDK disable request during e-stop." << std::endl;
+            }
+            motors_sdk_enabled_ = false;
+        }
+    }
+}
+
+void RL_Real::ReleaseEstop(const std::string &source)
+{
+    bool expected = true;
+    if (!estop_engaged_.compare_exchange_strong(expected, false))
+    {
+        return;
+    }
+
+    std::cout << LOGGER::INFO << "Soft e-stop cleared by " << source << "." << std::endl;
+
+    if (!titati_robot_)
+    {
+        std::cout << LOGGER::ERROR << "Titati hardware interface is not initialised; unable to clear e-stop." << std::endl;
+        estop_engaged_ = true;
+        return;
+    }
+
+    bool sdk_enabled = motors_sdk_enabled_.load();
+    if (!sdk_enabled)
+    {
+        std::scoped_lock<std::mutex> lock(command_mutex_);
+        sdk_enabled = titati_robot_->set_motors_sdk(true);
+        motors_sdk_enabled_ = sdk_enabled;
+    }
+
+    if (!sdk_enabled)
+    {
+        std::cout << LOGGER::ERROR << "Unable to re-enable Titati SDK control after e-stop; keeping motors disabled." << std::endl;
+        ClearCommandQueues();
+        estop_engaged_ = true;
+        return;
+    }
+
+    auto current_q = titati_robot_->get_joint_q();
+    auto current_dq = titati_robot_->get_joint_v();
+    if (current_q.size() != static_cast<size_t>(this->params.num_of_dofs))
+    {
+        current_q = std::vector<double>(this->params.num_of_dofs, 0.0);
+    }
+    if (current_dq.size() != static_cast<size_t>(this->params.num_of_dofs))
+    {
+        current_dq = std::vector<double>(this->params.num_of_dofs, 0.0);
+    }
+
+    std::vector<double> kp(this->params.num_of_dofs, 0.0);
+    std::vector<double> kd(this->params.num_of_dofs, 0.0);
+
+    {
+        std::scoped_lock<std::mutex> lock(command_mutex_);
+        titati_robot_->set_target_joint_mit(current_q, current_dq, kp, kd, zero_torque_cmd_);
+    }
+
+    ClearCommandQueues();
+}
+
 void RL_Real::RobotControl()
 {
     this->motiontime++;
+
+    if (this->control.current_keyboard == Input::Keyboard::M)
+    {
+        EngageEstop("keyboard 'M'");
+        this->control.current_keyboard = this->control.last_keyboard;
+    }
+    if (this->control.current_keyboard == Input::Keyboard::Escape)
+    {
+        EngageEstop("keyboard 'ESC'");
+        this->control.current_keyboard = this->control.last_keyboard;
+    }
+    if (this->control.current_keyboard == Input::Keyboard::K)
+    {
+        ReleaseEstop("keyboard 'K'");
+        this->control.current_keyboard = this->control.last_keyboard;
+    }
 
     if (this->control.current_keyboard == Input::Keyboard::W)
     {
@@ -220,12 +370,24 @@ void RL_Real::RobotControl()
     }
 
     this->GetState(&this->robot_state);
+
+    if (estop_engaged_.load() || !motors_sdk_enabled_.load())
+    {
+        ApplyZeroTorque();
+        return;
+    }
+
     this->StateController(&this->robot_state, &this->robot_command);
     this->SetCommand(&this->robot_command);
 }
 
 void RL_Real::RunModel()
 {
+    if (estop_engaged_.load() || !motors_sdk_enabled_.load())
+    {
+        return;
+    }
+
     if (this->rl_init_done)
     {
         this->episode_length_buf += 1;
@@ -352,17 +514,67 @@ void signalHandler(int signum)
 
 int main(int argc, char **argv)
 {
+    std::string feedback_can = "can0";
+    std::string command_can = "can0";
+    bool show_help = false;
+    std::vector<char *> passthrough_args;
+    passthrough_args.push_back(argv[0]);
+
+    for (int i = 1; i < argc; ++i)
+    {
+        std::string arg(argv[i]);
+        if ((arg == "--can" || arg == "--interface") && (i + 1) < argc)
+        {
+            feedback_can = argv[++i];
+            command_can = feedback_can;
+            continue;
+        }
+        if (arg == "--feedback-can" && (i + 1) < argc)
+        {
+            feedback_can = argv[++i];
+            continue;
+        }
+        if (arg == "--command-can" && (i + 1) < argc)
+        {
+            command_can = argv[++i];
+            continue;
+        }
+        if (arg == "--help" || arg == "-h")
+        {
+            show_help = true;
+            continue;
+        }
+        if (arg == "--can" || arg == "--interface" || arg == "--feedback-can" || arg == "--command-can")
+        {
+            std::cout << LOGGER::ERROR << "Missing value for option '" << arg << "'." << std::endl;
+            return -1;
+        }
+        passthrough_args.push_back(argv[i]);
+    }
+
+    if (show_help)
+    {
+        std::cout << "Usage: " << argv[0] << " [--can CAN_IFACE] [--feedback-can CAN_IFACE] [--command-can CAN_IFACE]" << std::endl;
+        std::cout << "       --can/-interface sets both the feedback and command interface (default: can0)" << std::endl;
+        std::cout << "       --feedback-can sets the CAN FD interface for IMU/motor feedback" << std::endl;
+        std::cout << "       --command-can sets the CAN FD interface for torque/mit commands" << std::endl;
+        return 0;
+    }
+
+    int ros_argc = static_cast<int>(passthrough_args.size());
+    char **ros_argv = passthrough_args.data();
+
 #if defined(USE_ROS1) && defined(USE_ROS)
     signal(SIGINT, signalHandler);
-    ros::init(argc, argv, "rl_sar");
-    RL_Real rl_sar;
+    ros::init(ros_argc, ros_argv, "rl_sar");
+    RL_Real rl_sar(feedback_can, command_can);
     ros::spin();
 #elif defined(USE_ROS2) && defined(USE_ROS)
-    rclcpp::init(argc, argv);
-    rclcpp::spin(std::make_shared<RL_Real>());
+    rclcpp::init(ros_argc, ros_argv);
+    rclcpp::spin(std::make_shared<RL_Real>(feedback_can, command_can));
     rclcpp::shutdown();
 #elif defined(USE_CMAKE) || !defined(USE_ROS)
-    RL_Real rl_sar;
+    RL_Real rl_sar(feedback_can, command_can);
     while (1) { sleep(10); }
 #endif
     return 0;

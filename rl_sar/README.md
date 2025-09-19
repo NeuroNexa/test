@@ -343,6 +343,70 @@ Pull the code and compile it. The process is the same as above.
 
 <details>
 
+<summary>Titati quadruped (Click to expand)</summary>
+
+#### Preparing the CAN FD interface
+
+The Titati stack assumes a CAN FD interface named `can0`. Bring the bus up before starting any controller (adjust the interface name if you are using a USB-CAN adapter that enumerates differently):
+
+```bash
+sudo systemctl stop tita-bringup.service  # stop any previously running vendor service
+sudo ip link set can0 down
+sudo ip link set can0 up type can bitrate 1000000 sample-point 0.80 \
+    dbitrate 8000000 dsample-point 0.80 fd on restart-ms 100
+sudo ifconfig can0 txqueuelen 1000
+```
+
+#### Building the hardware binaries
+
+Build the standalone executables that run directly on the robot controller PC:
+
+```bash
+./build.sh -m rl_sar
+```
+
+The build places the hardware tools in `cmake_build/bin/`, most importantly `rl_real_titati` (RL controller) and `titati_motor_test` (diagnostics).
+
+#### Smoke tests before running RL
+
+1. **Verify feedback** – stream the raw joint state to confirm the CAN wiring:
+
+    ```bash
+    ./cmake_build/bin/titati_motor_test --mode monitor
+    ```
+
+2. **Exercise each actuator** – apply a small deflection to every joint one-by-one (press `Ctrl+C` at any time to stop):
+
+    ```bash
+    ./cmake_build/bin/titati_motor_test --mode scan --offset 0.12 --rate 400
+    ```
+
+3. **Check an individual joint or torque channel** – for example, move hip #3 by +0.2 rad or apply 3 Nm on joint #5:
+
+    ```bash
+    ./cmake_build/bin/titati_motor_test --mode single --joint 3 --offset 0.2
+    ./cmake_build/bin/titati_motor_test --mode torque --joint 5 --torque 3.0
+    ```
+
+    All diagnostics accept `--can`, `--feedback-can`, and `--command-can` so you can point the tool at any CAN FD interface (for example `--can can1`).
+
+#### Running the RL policy on hardware
+
+1. Copy the trained TorchScript policy to `rl_sar/src/rl_sar/policy/titati/<YOUR_CONFIG>/` and update `config.yaml` as usual.
+2. Launch the real-time controller with the appropriate CAN interface mapping:
+
+    ```bash
+    ./cmake_build/bin/rl_real_titati --can can0
+    # or, when the feedback and command buses are split
+    ./cmake_build/bin/rl_real_titati --feedback-can can0 --command-can can1
+    ```
+
+3. During operation press `M` or `Esc` on the keyboard to engage the built-in **soft e-stop**. The controller immediately streams zero torques, hands control back to the MCU, and disables the Titati SDK mode. Press `K` to re-arm the drives once the situation is safe.
+
+</details>
+
+<details>
+
 <summary>Deeprobotics Lite3 (Click to expand)</summary>
 
 Deeprobotics Lite3 can be connected using wireless method.

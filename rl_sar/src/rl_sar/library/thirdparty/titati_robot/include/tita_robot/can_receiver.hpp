@@ -63,11 +63,15 @@ namespace can_device
   class MotorsImuCanReceiveApi
   {
   public:
-    MotorsImuCanReceiveApi(size_t size)
+    MotorsImuCanReceiveApi(size_t size, std::string interface = "can0")
+      : motors_can_interface(std::move(interface))
     {
       if(size % 8 == 0) leg_dof_ = 4;
       else if(size % 6 == 0) leg_dof_ = 3;
       leg_num_ = size / leg_dof_;
+      motors_can_receive_api = std::make_shared<can_device::socket_can::CanDev>(
+        motors_can_interface, motors_can_name, motors_can_extended_frame, motors_can_receive_callback,
+        motors_can_rx_is_block, motors_timeout_us, motors_can_id_offset);
       register_motors_device_can_filter();
       api_motor_in_t default_motor_in;
       std::memset(&default_motor_in, 0x00U, sizeof(api_motor_in_t));
@@ -94,10 +98,7 @@ namespace can_device
     can_device::socket_can::can_fd_callback motors_can_receive_callback =
         std::bind(&MotorsImuCanReceiveApi::board_can_data_callback, this, std::placeholders::_1);
 
-    std::shared_ptr<can_device::socket_can::CanDev> motors_can_receive_api =
-        std::make_shared<can_device::socket_can::CanDev>(
-            motors_can_interface, motors_can_name, motors_can_extended_frame, motors_can_receive_callback,
-            motors_can_rx_is_block, motors_timeout_us, motors_can_id_offset);
+    std::shared_ptr<can_device::socket_can::CanDev> motors_can_receive_api;
 
     void board_can_data_callback(std::shared_ptr<struct canfd_frame> recv_frame);
     void motors_data_callback(std::shared_ptr<struct canfd_frame> recv_frame);

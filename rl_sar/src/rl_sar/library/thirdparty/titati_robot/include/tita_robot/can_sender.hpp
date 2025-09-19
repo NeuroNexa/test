@@ -80,13 +80,16 @@ namespace can_device
   class MotorsCanSendApi
   {
   public:
-    MotorsCanSendApi(size_t size)
+    MotorsCanSendApi(size_t size, std::string interface = "can0")
+      : can_interface(std::move(interface))
     {
       if (size % 8 == 0)
         leg_dof_ = 4;
       else if (size % 6 == 0)
         leg_dof_ = 3;
       leg_num_ = size / leg_dof_;
+      can_send_api_ = std::make_shared<can_device::socket_can::CanDev>(
+        can_interface, can_name, can_extended_frame, can_fd_mode, timeout_us, can_id_offset);
     }
     ~MotorsCanSendApi() = default;
     bool send_motors_can(std::vector<motor_out> motors);
@@ -103,9 +106,7 @@ namespace can_device
     bool can_extended_frame = false;
     bool can_fd_mode = true;
 
-    std::shared_ptr<can_device::socket_can::CanDev> can_send_api_ =
-        std::make_shared<can_device::socket_can::CanDev>(
-            can_interface, can_name, can_extended_frame, can_fd_mode, timeout_us, can_id_offset);
+    std::shared_ptr<can_device::socket_can::CanDev> can_send_api_;
 
     inline uint32_t get_current_time()
     {
