@@ -224,7 +224,7 @@ bool TitatiHardware::SendMitCommand(const std::vector<double>& position,
     {
     };
     frame.len = sizeof(MotorCommandPacket) * 2;
-    frame.flags = 0U;
+    frame.flags = CANFD_BRS | CANFD_FDF;
 
     const std::size_t command_pairs = (motor_count_ + 1) / 2;
 
@@ -435,7 +435,7 @@ bool TitatiHardware::SendRpcCommand(std::uint16_t key, std::uint32_t value)
     };
     frame.can_id = kRpcCommandId;
     frame.len = 10U;
-    frame.flags = 0U;
+    frame.flags = CANFD_BRS | CANFD_FDF;
 
     const std::uint32_t timestamp = AcquireTimestampUs();
     std::memcpy(frame.data, &timestamp, sizeof(timestamp));
