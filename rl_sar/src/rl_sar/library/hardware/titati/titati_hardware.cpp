@@ -244,17 +244,14 @@ bool TitatiHardware::SendMitCommand(const std::vector<double>& position,
     bool success = true;
     const std::uint32_t timestamp = AcquireTimestampUs();
 
-    struct canfd_frame frame
-    {
-    };
-    frame.len = sizeof(MotorCommandPacket) * 2;
-    frame.flags = CANFD_BRS | CANFD_FDF;
-
     const std::size_t command_pairs = (motor_count_ + 1) / 2;
 
     for (std::size_t pair = 0; pair < command_pairs; ++pair)
     {
+        struct canfd_frame frame{};
         frame.can_id = kMotorCommandBaseId + pair;
+        frame.len = sizeof(MotorCommandPacket) * 2;
+        frame.flags = CANFD_BRS | CANFD_FDF;
         std::memset(frame.data, 0, sizeof(frame.data));
 
         for (std::size_t j = 0; j < 2; ++j)
@@ -468,7 +465,7 @@ void TitatiHardware::HandleRouterFeedback(const std::uint8_t* data, std::uint8_t
 
     last_force_direct_request_us_.store(now, std::memory_order_relaxed);
     SendRpcCommand(kRpcKeyReadyNext, kReadyWaiting);
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    std::this_thread::sleep_for(std::chrono::microseconds(200));
     SendRpcCommand(kRpcKeyReadyNext, kForceDirect);
     last_force_direct_request_us_.store(AcquireSteadyTimestampUs(), std::memory_order_relaxed);
 }
@@ -480,9 +477,7 @@ bool TitatiHardware::SendRpcCommand(std::uint16_t key, std::uint32_t value)
         return false;
     }
 
-    struct canfd_frame frame
-    {
-    };
+    struct canfd_frame frame{};
     frame.can_id = kRpcCommandId;
     frame.len = 10U;
     frame.flags = CANFD_BRS | CANFD_FDF;
