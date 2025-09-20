@@ -345,7 +345,7 @@ Pull the code and compile it. The process is the same as above.
 
 <summary>DDTRobot Titati (Click to expand)</summary>
 
-Titati is assembled from two Tita robots that share a single CAN-FD backbone. The real robot controller in this repository exposes a new binary `rl_real_titati` that talks directly to the hardware interface without any dependency on the legacy `titati_control` stack. The program drives both half-robots from the master Jetson and automatically enables direct motor control on the MCU router.
+Titati is assembled from two Tita robots that share a single CAN-FD backbone. The real robot controller in this repository exposes a new binary `rl_real_titati` that talks directly to the hardware interface without any dependency on the legacy `titati_control` stack. The program drives both half-robots from the master Jetson and automatically enables direct motor control on the MCU router whenever the router broadcasts its 0x09F status frame.
 
 1. **Bring up CAN-FD on both Jetsons** (master and slave) after powering the robots:
 
@@ -357,7 +357,7 @@ Titati is assembled from two Tita robots that share a single CAN-FD backbone. Th
 
    These commands must be executed on both Jetsons so that the CAN-FD router forwards frames between the two Tita platforms.
 
-2. **Launch the Titati controller on the master Jetson** (the slave Jetson only needs the CAN interface from step 1):
+2. **Launch the Titati controller on the master Jetson** (the slave Jetson only needs the CAN interface from step 1 so that the shared CAN-FD router keeps publishing status frames):
 
    ```bash
    # ROS1
@@ -373,6 +373,8 @@ Titati is assembled from two Tita robots that share a single CAN-FD backbone. Th
    ```
 
    The executable assumes the CAN device is named `can0`. To override this (for example when using a USB-to-CAN adapter), export `CAN_INTERFACE=<device>` before running the controller.
+
+   > The hardware interface mirrors the `titati_control` handshake by listening for the router's 0x09F status frame and re-sending the READY→FORCE_DIRECT RPC sequence. You no longer need to launch the `titati_canfd_router` helper node, but both Jetsons must remain powered so the router microcontrollers stay online.
 
 3. **Operate Titati using keyboard/joystick commands** (see the control table above). The controller reads joint states from both robots, publishes MIT-style torque commands through the CAN router, and keeps the MCU router locked in `FORCE_DIRECT` mode for RL execution. No additional helper nodes are required on the slave Jetson.
 

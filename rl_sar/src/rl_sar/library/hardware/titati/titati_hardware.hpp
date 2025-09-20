@@ -71,8 +71,8 @@ private:
 
     const std::string interface_;
     const std::size_t motor_count_;
-    std::size_t dof_per_leg_;
-    std::size_t leg_count_;
+    std::size_t dof_per_leg_{0};
+    std::size_t leg_count_{0};
 
     int socket_fd_{-1};
     std::atomic<bool> initialized_{false};

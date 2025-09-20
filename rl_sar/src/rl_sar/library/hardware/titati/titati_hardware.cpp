@@ -70,19 +70,29 @@ TitatiHardware::TitatiHardware(std::string can_interface, std::size_t motor_coun
         throw std::invalid_argument("motor_count must be greater than zero");
     }
 
-    if (motor_count_ % 4 == 0)
+    if (motor_count_ % 8 == 0)
     {
         dof_per_leg_ = 4;
     }
     else if (motor_count_ % 6 == 0)
     {
-        dof_per_leg_ = 6;
+        dof_per_leg_ = 3;
+    }
+    else if (motor_count_ % 4 == 0)
+    {
+        dof_per_leg_ = 4;
     }
     else
     {
         dof_per_leg_ = motor_count_;
     }
-    leg_count_ = motor_count_ / dof_per_leg_;
+
+    if (dof_per_leg_ == 0)
+    {
+        dof_per_leg_ = motor_count_;
+    }
+
+    leg_count_ = (motor_count_ + dof_per_leg_ - 1) / dof_per_leg_;
     motor_state_.resize(motor_count_);
 }
 
@@ -359,6 +369,11 @@ void TitatiHardware::HandleMotorFeedback(std::uint32_t can_id, const std::uint8_
 
     const std::size_t leg_index = can_id - kMotorFeedbackBaseId;
     const std::size_t base_index = leg_index * dof_per_leg_;
+
+    if (leg_index >= leg_count_)
+    {
+        return;
+    }
 
     std::scoped_lock<std::mutex> lock(state_mutex_);
     for (std::size_t i = 0; i < dof_per_leg_; ++i)
