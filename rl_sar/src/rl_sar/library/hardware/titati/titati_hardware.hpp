@@ -68,6 +68,7 @@ private:
     bool SendRpcCommand(std::uint16_t key, std::uint32_t value);
     bool SendFrame(const void* frame, std::size_t length) const;
     std::uint32_t AcquireTimestampUs() const;
+    std::uint64_t AcquireSteadyTimestampUs() const;
 
     const std::string interface_;
     const std::size_t motor_count_;
@@ -78,6 +79,8 @@ private:
     std::atomic<bool> initialized_{false};
     std::atomic<bool> running_{false};
     std::atomic<bool> router_force_direct_pending_{false};
+    std::atomic<bool> direct_mode_requested_{false};
+    std::atomic<std::uint64_t> last_force_direct_request_us_{0U};
 
     std::thread receiver_thread_;
 

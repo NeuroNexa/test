@@ -300,10 +300,22 @@ bool TitatiHardware::SetDirectControlMode(bool enable)
         return false;
     }
 
+    direct_mode_requested_.store(enable);
+    if (!enable)
+    {
+        router_force_direct_pending_.store(false);
+        last_force_direct_request_us_.store(0U, std::memory_order_relaxed);
+    }
+
     bool ok = SendRpcCommand(kRpcKeyReadyNext, kReadyWaiting);
     std::this_thread::sleep_for(std::chrono::microseconds(200));
     ok &= SendRpcCommand(kRpcKeyReadyNext, enable ? kForceDirect : kAutoLocomotion);
-    router_force_direct_pending_.store(enable);
+
+    if (enable)
+    {
+        router_force_direct_pending_.store(true, std::memory_order_relaxed);
+        last_force_direct_request_us_.store(AcquireSteadyTimestampUs(), std::memory_order_relaxed);
+    }
     return ok;
 }
 
@@ -425,11 +437,6 @@ void TitatiHardware::HandleImuFeedback(const std::uint8_t* data, std::uint8_t dl
 
 void TitatiHardware::HandleRouterFeedback(const std::uint8_t* data, std::uint8_t dlc)
 {
-    if (!router_force_direct_pending_.load())
-    {
-        return;
-    }
-
     if (dlc < 12)
     {
         return;
@@ -437,13 +444,33 @@ void TitatiHardware::HandleRouterFeedback(const std::uint8_t* data, std::uint8_t
 
     std::uint32_t mode = 0;
     std::memcpy(&mode, data + 4, sizeof(mode));
-    if (mode == 0x01U || mode == 0x02U)
+
+    if (!direct_mode_requested_.load(std::memory_order_relaxed))
     {
-        router_force_direct_pending_.store(false);
-        SendRpcCommand(kRpcKeyReadyNext, kReadyWaiting);
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        SendRpcCommand(kRpcKeyReadyNext, kForceDirect);
+        router_force_direct_pending_.store(false, std::memory_order_relaxed);
+        return;
     }
+
+    if (mode == kForceDirect)
+    {
+        router_force_direct_pending_.store(false, std::memory_order_relaxed);
+        return;
+    }
+
+    router_force_direct_pending_.store(true, std::memory_order_relaxed);
+
+    const auto now = AcquireSteadyTimestampUs();
+    const auto last = last_force_direct_request_us_.load(std::memory_order_relaxed);
+    if (last != 0U && now - last < 100000U)
+    {
+        return;
+    }
+
+    last_force_direct_request_us_.store(now, std::memory_order_relaxed);
+    SendRpcCommand(kRpcKeyReadyNext, kReadyWaiting);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    SendRpcCommand(kRpcKeyReadyNext, kForceDirect);
+    last_force_direct_request_us_.store(AcquireSteadyTimestampUs(), std::memory_order_relaxed);
 }
 
 bool TitatiHardware::SendRpcCommand(std::uint16_t key, std::uint32_t value)
@@ -490,6 +517,12 @@ std::uint32_t TitatiHardware::AcquireTimestampUs() const
     const auto now = std::chrono::steady_clock::now().time_since_epoch();
     const auto micros = std::chrono::duration_cast<std::chrono::microseconds>(now).count();
     return static_cast<std::uint32_t>(micros & 0xFFFFFFFFU);
+}
+
+std::uint64_t TitatiHardware::AcquireSteadyTimestampUs() const
+{
+    const auto now = std::chrono::steady_clock::now().time_since_epoch();
+    return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(now).count());
 }
 
 }  // namespace titati::hardware
