@@ -69,12 +69,24 @@ Optional flags:
 - `--can-interface <name>` — override the CAN device (for example, `can1` or `slcan0`).
 - `--duration <seconds>` — total run time (default: 10).
 - `--command-period <milliseconds>` — period for broadcasting zero MIT commands (default: 10 ms).
+- `--motor-count <n>` — expected number of actuators (default: 16).
+- `--jog-motor <index>` — gently oscillate a single motor (0-based index) to confirm motion.
+- `--jog-torque <Nm>` — sine-wave amplitude for the jogged motor (default: 0.4 Nm).
+- `--jog-period <milliseconds>` — sine-wave period for the jog motion (default: 2000 ms).
 
 Example:
 
 ```bash
-ros2 run rl_sar titati_self_test -- --can-interface can1 --duration 15
+ros2 run rl_sar titati_self_test -- --can-interface can1 --duration 15 --jog-motor 3
 ```
+
+When a jog motor is specified the tool waits until feedback from every actuator is streaming, then prints a message such as:
+
+```
+[TitatiSelfTest] Jogging motor 3 with ±0.4 Nm sine wave.
+```
+
+You should see and hear a gentle, low-amplitude motion on that actuator while the overall test continues to monitor bus health.
 
 ## Interpreting the output
 

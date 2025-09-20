@@ -378,7 +378,7 @@ Titati is assembled from two Tita robots that share a single CAN-FD backbone. Th
 
 3. **Operate Titati using keyboard/joystick commands** (see the control table above). The controller reads joint states from both robots, publishes MIT-style torque commands through the CAN router, and keeps the MCU router locked in `FORCE_DIRECT` mode for RL execution. No additional helper nodes are required on the slave Jetson.
 
-4. **Run the standalone hardware sanity check** before deploying a new policy. The `titati_self_test` binary verifies that all 16 actuators stream feedback and accept zero-torque commands. See [`docs/titati_self_test.md`](docs/titati_self_test.md) for step-by-step instructions.
+4. **Run the standalone hardware sanity check** before deploying a new policy. The `titati_self_test` binary verifies that all 16 actuators stream feedback, can accept zero-torque commands, and (optionally) lets you jog an individual motor with a gentle sine-wave torque. See [`docs/titati_self_test.md`](docs/titati_self_test.md) for step-by-step instructions.
 
 </details>
 

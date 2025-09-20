@@ -3,11 +3,13 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <csignal>
 #include <cstdlib>
 #include <cstdint>
 #include <iomanip>
 #include <iostream>
+#include <optional>
 #include <string>
 #include <thread>
 #include <vector>
@@ -16,6 +18,7 @@ namespace
 {
 
 using Clock = std::chrono::steady_clock;
+constexpr double kTwoPi = 6.28318530717958647692;
 std::atomic<bool> g_keep_running{true};
 
 void SignalHandler(int)
@@ -29,6 +32,9 @@ struct Options
     std::size_t motor_count{16};
     std::chrono::seconds duration{10};
     std::chrono::milliseconds command_period{10};
+    std::optional<std::size_t> jog_motor{};
+    double jog_torque{0.4};
+    std::chrono::milliseconds jog_period{2000};
 };
 
 Options ParseOptions(int argc, char** argv)
@@ -40,7 +46,8 @@ Options ParseOptions(int argc, char** argv)
         if (arg == "--help" || arg == "-h")
         {
             std::cout << "Usage: " << argv[0] << " [--can-interface NAME] [--duration SEC]"
-                      << " [--command-period MS]" << std::endl;
+                      << " [--command-period MS] [--motor-count N] [--jog-motor INDEX]"
+                      << " [--jog-torque NM] [--jog-period MS]" << std::endl;
             std::exit(EXIT_SUCCESS);
         }
         else if (arg == "--can-interface" && i + 1 < argc)
@@ -58,6 +65,18 @@ Options ParseOptions(int argc, char** argv)
         else if (arg == "--motor-count" && i + 1 < argc)
         {
             opts.motor_count = static_cast<std::size_t>(std::stoul(argv[++i]));
+        }
+        else if (arg == "--jog-motor" && i + 1 < argc)
+        {
+            opts.jog_motor = static_cast<std::size_t>(std::stoul(argv[++i]));
+        }
+        else if (arg == "--jog-torque" && i + 1 < argc)
+        {
+            opts.jog_torque = std::stod(argv[++i]);
+        }
+        else if (arg == "--jog-period" && i + 1 < argc)
+        {
+            opts.jog_period = std::chrono::milliseconds(std::stoll(argv[++i]));
         }
         else
         {
@@ -78,6 +97,22 @@ Options ParseOptions(int argc, char** argv)
     if (opts.command_period.count() <= 0)
     {
         std::cerr << "command-period must be positive" << std::endl;
+        std::exit(EXIT_FAILURE);
+    }
+    if (opts.jog_period.count() <= 0)
+    {
+        std::cerr << "jog-period must be positive" << std::endl;
+        std::exit(EXIT_FAILURE);
+    }
+    if (opts.jog_motor.has_value() && *opts.jog_motor >= opts.motor_count)
+    {
+        std::cerr << "jog-motor index must be in [0, " << opts.motor_count - 1 << ']'
+                  << std::endl;
+        std::exit(EXIT_FAILURE);
+    }
+    if (opts.jog_torque < 0.0)
+    {
+        std::cerr << "jog-torque must be non-negative" << std::endl;
         std::exit(EXIT_FAILURE);
     }
     return opts;
@@ -127,6 +162,8 @@ int main(int argc, char** argv)
     }
 
     std::vector<double> zero(options.motor_count, 0.0);
+    std::vector<double> torque_command(options.motor_count, 0.0);
+    const double jog_period_seconds = static_cast<double>(options.jog_period.count()) / 1000.0;
     auto next_command_time = Clock::now();
     const auto deadline = Clock::now() + options.duration;
     const auto start_time = Clock::now();
@@ -140,6 +177,7 @@ int main(int argc, char** argv)
     std::uint64_t last_timestamp_us = 0;
 
     bool sent_command_failure = false;
+    bool jog_announced = false;
 
     while (g_keep_running.load() && Clock::now() < deadline)
     {
@@ -185,9 +223,25 @@ int main(int argc, char** argv)
         }
 
         const auto now = Clock::now();
+        if (!jog_announced && options.jog_motor.has_value() && ready_frames > 0)
+        {
+            std::cout << "[TitatiSelfTest] Jogging motor " << *options.jog_motor
+                      << " with ±" << options.jog_torque << " Nm sine wave." << std::endl;
+            jog_announced = true;
+        }
+
         if (now >= next_command_time)
         {
-            if (!hardware.SendMitCommand(zero, zero, zero, zero, zero))
+            std::fill(torque_command.begin(), torque_command.end(), 0.0);
+            if (options.jog_motor.has_value() && ready_frames > 0 && options.jog_torque > 0.0)
+            {
+                const auto elapsed = std::chrono::duration_cast<std::chrono::duration<double>>(now - start_time);
+                const double phase = std::fmod(elapsed.count(), jog_period_seconds);
+                const double omega = kTwoPi / jog_period_seconds;
+                torque_command[*options.jog_motor] = options.jog_torque * std::sin(omega * phase);
+            }
+
+            if (!hardware.SendMitCommand(zero, zero, zero, zero, torque_command))
             {
                 sent_command_failure = true;
                 std::cerr << "[TitatiSelfTest] Failed to broadcast zero MIT command" << std::endl;
