@@ -9,6 +9,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cstring>
 #include <iostream>
@@ -302,10 +303,7 @@ bool TitatiHardware::SetDirectControlMode(bool enable)
     bool ok = SendRpcCommand(kRpcKeyReadyNext, kReadyWaiting);
     std::this_thread::sleep_for(std::chrono::microseconds(200));
     ok &= SendRpcCommand(kRpcKeyReadyNext, enable ? kForceDirect : kAutoLocomotion);
-    if (enable)
-    {
-        router_force_direct_pending_.store(true);
-    }
+    router_force_direct_pending_.store(enable);
     return ok;
 }
 
@@ -375,11 +373,6 @@ void TitatiHardware::ReceiverLoop()
 
 void TitatiHardware::HandleMotorFeedback(std::uint32_t can_id, const std::uint8_t* data, std::uint8_t dlc)
 {
-    if (dlc < dof_per_leg_ * sizeof(MotorFeedbackPacket))
-    {
-        return;
-    }
-
     const std::size_t leg_index = can_id - kMotorFeedbackBaseId;
     const std::size_t base_index = leg_index * dof_per_leg_;
 
@@ -389,7 +382,9 @@ void TitatiHardware::HandleMotorFeedback(std::uint32_t can_id, const std::uint8_
     }
 
     std::scoped_lock<std::mutex> lock(state_mutex_);
-    for (std::size_t i = 0; i < dof_per_leg_; ++i)
+    const std::size_t motors_in_frame =
+        std::min<std::size_t>(dof_per_leg_, dlc / sizeof(MotorFeedbackPacket));
+    for (std::size_t i = 0; i < motors_in_frame; ++i)
     {
         MotorFeedbackPacket packet{};
         std::memcpy(&packet, data + i * sizeof(MotorFeedbackPacket), sizeof(MotorFeedbackPacket));
