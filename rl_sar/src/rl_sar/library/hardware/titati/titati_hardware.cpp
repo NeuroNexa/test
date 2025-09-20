@@ -92,7 +92,20 @@ TitatiHardware::TitatiHardware(std::string can_interface, std::size_t motor_coun
         dof_per_leg_ = motor_count_;
     }
 
-    leg_count_ = (motor_count_ + dof_per_leg_ - 1) / dof_per_leg_;
+    if (dof_per_leg_ > 0)
+    {
+        leg_count_ = motor_count_ / dof_per_leg_;
+        if (motor_count_ % dof_per_leg_ != 0)
+        {
+            ++leg_count_;
+        }
+    }
+
+    if (leg_count_ == 0)
+    {
+        leg_count_ = 1;
+        dof_per_leg_ = motor_count_;
+    }
     motor_state_.resize(motor_count_);
 }
 
@@ -451,6 +464,7 @@ bool TitatiHardware::SendRpcCommand(std::uint16_t key, std::uint32_t value)
     frame.can_id = kRpcCommandId;
     frame.len = 10U;
     frame.flags = CANFD_BRS | CANFD_FDF;
+    std::memset(frame.data, 0, sizeof(frame.data));
 
     const std::uint32_t timestamp = AcquireTimestampUs();
     std::memcpy(frame.data, &timestamp, sizeof(timestamp));
