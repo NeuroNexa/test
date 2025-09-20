@@ -352,6 +352,18 @@ if(NOT USE_CMAKE)
     endif()
 endif()
 
+add_executable(titati_self_test src/titati_self_test.cpp)
+target_link_libraries(titati_self_test
+    titati_hardware
+)
+if(NOT USE_CMAKE)
+    if($ENV{ROS_DISTRO} MATCHES "noetic")
+        target_link_libraries(titati_self_test ${catkin_LIBRARIES})
+    elseif($ENV{ROS_DISTRO} MATCHES "foxy|humble")
+        install(TARGETS titati_self_test DESTINATION lib/${PROJECT_NAME})
+    endif()
+endif()
+
 if(NOT USE_CMAKE)
     if($ENV{ROS_DISTRO} MATCHES "noetic")
         catkin_install_python(PROGRAMS
