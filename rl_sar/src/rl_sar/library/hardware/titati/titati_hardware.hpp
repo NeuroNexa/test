@@ -78,7 +78,6 @@ private:
     int socket_fd_{-1};
     std::atomic<bool> initialized_{false};
     std::atomic<bool> running_{false};
-    std::atomic<bool> router_force_direct_pending_{false};
     std::atomic<bool> direct_mode_requested_{false};
     std::atomic<std::uint64_t> last_force_direct_request_us_{0U};
 

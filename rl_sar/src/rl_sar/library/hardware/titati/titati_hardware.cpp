@@ -145,6 +145,7 @@ bool TitatiHardware::Initialize()
     {
     };
     std::strncpy(ifr.ifr_name, interface_.c_str(), IFNAMSIZ - 1);
+    ifr.ifr_name[IFNAMSIZ - 1] = '\0';
     if (ioctl(socket_fd_, SIOCGIFINDEX, &ifr) < 0)
     {
         std::perror("ioctl SIOCGIFINDEX");
@@ -300,7 +301,6 @@ bool TitatiHardware::SetDirectControlMode(bool enable)
     direct_mode_requested_.store(enable);
     if (!enable)
     {
-        router_force_direct_pending_.store(false);
         last_force_direct_request_us_.store(0U, std::memory_order_relaxed);
     }
 
@@ -310,7 +310,6 @@ bool TitatiHardware::SetDirectControlMode(bool enable)
 
     if (enable)
     {
-        router_force_direct_pending_.store(true, std::memory_order_relaxed);
         last_force_direct_request_us_.store(AcquireSteadyTimestampUs(), std::memory_order_relaxed);
     }
     return ok;
@@ -444,17 +443,13 @@ void TitatiHardware::HandleRouterFeedback(const std::uint8_t* data, std::uint8_t
 
     if (!direct_mode_requested_.load(std::memory_order_relaxed))
     {
-        router_force_direct_pending_.store(false, std::memory_order_relaxed);
         return;
     }
 
     if (mode == kForceDirect)
     {
-        router_force_direct_pending_.store(false, std::memory_order_relaxed);
         return;
     }
-
-    router_force_direct_pending_.store(true, std::memory_order_relaxed);
 
     const auto now = AcquireSteadyTimestampUs();
     const auto last = last_force_direct_request_us_.load(std::memory_order_relaxed);
