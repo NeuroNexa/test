@@ -229,6 +229,9 @@ git clone https://github.com/osrf/gazebo_models.git ~/.gazebo/models
 
 ### 真实机器人
 
+> [!IMPORTANT]
+> 当前独立的 CMake 构建仅包含 Titati 硬件栈（CAN-FD 路由器、16 电机诊断程序以及 `rl_real_titati`）。Unitree、Lite3 等驱动已从本工程移除，以下小节仅保留历史资料供参考。
+
 <details>
 
 <summary>Unitree A1（点击展开）</summary>

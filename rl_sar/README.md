@@ -133,6 +133,9 @@ If simulation is not needed and you only want to run on the robot, you can compi
 ./build.sh -m  # or ./build.sh --cmake
 ```
 
+> [!IMPORTANT]
+> The standalone CMake toolchain now builds only the Titati hardware stack (CAN-FD router, 16-motor diagnostic, and `rl_real_titati`). Drivers for Unitree, Lite3, and other robots have been removed from this workspace.
+
 For detailed usage instructions, you can check them via `./build.sh -h`:
 
 ```bash
