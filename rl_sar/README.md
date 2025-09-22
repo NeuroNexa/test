@@ -376,6 +376,58 @@ ros2 run rl_sar rl_real_lite3
 
 </details>
 
+<details>
+
+<summary>DDTRobot Tita / Titati (Click to expand)</summary>
+
+The new Tita/Titati hardware interface is fully integrated inside **rl_sar** and is built with **C++17**. Only the Titati targets
+are enabled by default. Other robot executables can be re-enabled through the new CMake options described below.
+
+**CAN topology**
+
+1. Configure both Jetson boards' `can0` interfaces in CAN-FD mode (1 Mbps nominal / 8 Mbps data phase).
+2. Physically bridge the two `can0` ports using the supplied "small box" so that master and slave share the same CAN-FD bus.
+3. On the slave Jetson only run `titati_canfd_router_node` and, after the power-on self-check, call `set_forcedirect_mode(true)` so
+   that all frames are forwarded transparently.
+4. The master Jetson runs the new rl_sar hardware layer and publishes commands for all 16 actuators directly on the shared CAN bus.
+
+**Build options**
+
+```bash
+cmake -S src/rl_sar -B cmake_build -DUSE_CMAKE=ON \
+      -DBUILD_TITATI=ON -DBUILD_UNITREE_A1=OFF -DBUILD_UNITREE_GO2=OFF \
+      -DBUILD_UNITREE_G1=OFF -DBUILD_L4W4=OFF -DBUILD_LITE3=OFF
+cmake --build cmake_build -j4
+```
+
+`BUILD_TITATI` is `ON` by default while all other real robot executables are disabled, matching the "Titati only" workflow. Enable
+additional robots by setting the corresponding option to `ON` when required.
+
+**Motor verification**
+
+Before running reinforcement learning, verify CAN connectivity with the dedicated tester:
+
+```bash
+./cmake_build/bin/titati_motor_test --robot=titati     # 16 motor sweep
+# or for a single robot
+./cmake_build/bin/titati_motor_test --robot=tita       # 8 motor sweep
+```
+
+The program sequentially excites each joint using MIT mode so that you can confirm that every actuator responds safely.
+
+**RL control entry-point**
+
+Launch the real-time controller from the master Jetson once the slave is forwarding traffic:
+
+```bash
+./cmake_build/bin/rl_real_tita --robot=titati
+```
+
+Use `--robot=tita` when operating a single Tita platform. The executable reuses the Titati policy configuration located under
+`policy/titati` and exposes the same keyboard/gamepad interface as other rl_sar robots.
+
+</details>
+
 ### Train the actuator network
 
 Take A1 as an example below

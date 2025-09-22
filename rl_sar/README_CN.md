@@ -376,6 +376,55 @@ ros2 run rl_sar rl_real_lite3
 
 </details>
 
+<details>
+
+<summary>DDTRobot Tita / Titati（点击展开）</summary>
+
+新的 Tita/Titati 硬件接口已经完全集成在 **rl_sar** 中，并统一使用 **C++17** 标准编译。默认仅会生成 Titati
+相关的可执行文件，其它机器人的程序可以通过新增的 CMake 选项重新启用。
+
+**CAN 拓扑**
+
+1. 将两台 Jetson 的 `can0` 配置为 CAN-FD（标称 1 Mbps / 数据 8 Mbps）。
+2. 使用提供的“小盒子”把两台 `can0` 物理连接到同一条 CAN-FD 总线。
+3. 从机 Jetson 只运行 `titati_canfd_router_node`，待上电自检完成后调用 `set_forcedirect_mode(true)`，实现 CAN 报文透传。
+4. 主机 Jetson 在同一总线上通过新的 rl_sar 硬件接口直接下发 16 个电机指令。
+
+**编译选项**
+
+```bash
+cmake -S src/rl_sar -B cmake_build -DUSE_CMAKE=ON \
+      -DBUILD_TITATI=ON -DBUILD_UNITREE_A1=OFF -DBUILD_UNITREE_GO2=OFF \
+      -DBUILD_UNITREE_G1=OFF -DBUILD_L4W4=OFF -DBUILD_LITE3=OFF
+cmake --build cmake_build -j4
+```
+
+`BUILD_TITATI` 默认开启，其他机器人默认关闭，满足“只编译 Titati” 的需求。如需编译其它机器人，可将对应选项设置为 `ON`。
+
+**电机连通性测试**
+
+运行 RL 控制前，先使用专用测试程序确认电机和 CAN 通讯是否正常：
+
+```bash
+./cmake_build/bin/titati_motor_test --robot=titati     # 16 个电机依次扫描
+# 单机测试
+./cmake_build/bin/titati_motor_test --robot=tita       # 8 个电机依次扫描
+```
+
+程序会在 MIT 模式下逐一激励每个关节，便于确认 CAN 链路、方向与限位。
+
+**RL 控制入口**
+
+当从机已经启用透传后，在主机上启动实时控制程序：
+
+```bash
+./cmake_build/bin/rl_real_tita --robot=titati
+```
+
+若只控制单台 Tita，请使用 `--robot=tita`。该可执行文件复用了 `policy/titati` 下的策略配置，并提供与其它机器人一致的键盘/手柄接口。
+
+</details>
+
 ### 训练执行器网络
 
 下面拿A1举例
