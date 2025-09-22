@@ -343,6 +343,70 @@ Pull the code and compile it. The process is the same as above.
 
 <details>
 
+<summary>DDTRobot Titati (16 DoF dual-controller)</summary>
+
+#### Wiring and forced-direct setup
+
+- Configure both Jetson boards (master/slave) with `can0` running **CAN-FD 1M/8M** using the new helper script:
+
+  ```bash
+  sudo bash rl_sar/src/rl_sar/scripts/setup_titati_canfd.sh can0
+  ```
+
+- Connect the two `can0` ports to the same CAN-FD bus using the "small box" (CAN hub) supplied with the robot.
+- On the slave Jetson, after the MCU finishes its self-check, run the CAN router bundled in this package so every frame is forwarded transparently:
+
+  ```bash
+  source install/setup.bash    # or devel/setup.bash if using ROS 1
+  rl_sar/src/rl_sar/scripts/run_titati_canfd_router.sh
+  ```
+
+  The node keeps listening for the control-board heartbeat and automatically issues the `SET_READY_NEXT -> FORCE_DIRECT` CAN RPC when needed.
+- The master Jetson (or your desktop) runs the programs from this repository and sends MIT commands for all 16 motors directly on the shared CAN-FD bus.
+
+#### Verify all motors before RL
+
+After building the workspace, run the test executable to ensure that the 16 actuators respond correctly.
+
+```bash
+# ROS1
+source devel/setup.bash
+rosrun rl_sar test_titati_motors
+
+# ROS2
+source install/setup.bash
+ros2 run rl_sar test_titati_motors
+
+# CMake
+./cmake_build/bin/test_titati_motors
+```
+
+The program excites every joint around the default standing pose with smooth sinusoidal trajectories and prints feedback for representative joints. If any actuator does not move, revisit the CAN configuration and power before continuing with RL control.
+
+#### Run RL control
+
+1. Place the policy checkpoint under `rl_sar/src/rl_sar/policy/titati/robot_lab/policy.pt` (or update the path in `config.yaml`).
+2. Launch the real-robot controller on the master Jetson:
+
+```bash
+# ROS1
+source devel/setup.bash
+rosrun rl_sar rl_real_titati
+
+# ROS2
+source install/setup.bash
+ros2 run rl_sar rl_real_titati
+
+# CMake
+./cmake_build/bin/rl_real_titati
+```
+
+3. Keyboard bindings follow the other robots: `Num0` get-up, `Num1` RL locomotion, `Num9` lie down, `P` passive mode, `WASD/QE` adjust command velocities, `N` toggles navigation mode (consumes `/cmd_vel` when ROS is enabled).
+
+</details>
+
+<details>
+
 <summary>Deeprobotics Lite3 (Click to expand)</summary>
 
 Deeprobotics Lite3 can be connected using wireless method.

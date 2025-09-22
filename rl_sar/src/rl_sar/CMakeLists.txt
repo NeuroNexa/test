@@ -134,6 +134,33 @@ if($ENV{ROS_DISTRO} MATCHES "foxy|humble")
     )
 endif()
 
+# Titati hardware interface (vendored into rl_sar)
+add_library(titati_robot_sdk
+    library/hardware/titati/src/tita_robot.cpp
+    library/hardware/titati/src/can_receiver.cpp
+    library/hardware/titati/src/can_sender.cpp
+)
+target_include_directories(titati_robot_sdk PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/hardware/titati/include
+)
+target_link_libraries(titati_robot_sdk PUBLIC Threads::Threads)
+set_target_properties(titati_robot_sdk PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+)
+
+add_library(titati_canfd_router_sdk
+    library/hardware/titati/src/canfd_router_can_receive_api.cpp
+)
+target_include_directories(titati_canfd_router_sdk PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/hardware/titati/include
+)
+target_link_libraries(titati_canfd_router_sdk PUBLIC Threads::Threads)
+set_target_properties(titati_canfd_router_sdk PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+)
+
 # Retroid Gamepad
 set(GAMEPAD_SRC
     ${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/gamepad/src/gamepad.cpp
@@ -154,6 +181,7 @@ include_directories(
     library/core/rl_sdk
     library/core/loop
     library/core/fsm
+    library/hardware/titati/include
     policy
 )
 
@@ -321,15 +349,69 @@ if(NOT USE_CMAKE)
     endif()
 endif()
 
+add_executable(rl_real_titati src/rl_real_titati.cpp)
+target_link_libraries(rl_real_titati
+    titati_robot_sdk
+    rl_sdk
+    observation_buffer
+    yaml-cpp
+)
+if(NOT USE_CMAKE)
+    if($ENV{ROS_DISTRO} MATCHES "noetic")
+        target_link_libraries(rl_real_titati ${catkin_LIBRARIES})
+    elseif($ENV{ROS_DISTRO} MATCHES "foxy|humble")
+        ament_target_dependencies(rl_real_titati
+            rclcpp
+            geometry_msgs
+        )
+        install(TARGETS rl_real_titati DESTINATION lib/${PROJECT_NAME})
+    endif()
+endif()
+
+add_executable(titati_canfd_router_node src/titati_canfd_router_node.cpp)
+target_link_libraries(titati_canfd_router_node
+    titati_canfd_router_sdk
+)
+if(NOT USE_CMAKE)
+    if($ENV{ROS_DISTRO} MATCHES "noetic")
+        target_link_libraries(titati_canfd_router_node ${catkin_LIBRARIES})
+    elseif($ENV{ROS_DISTRO} MATCHES "foxy|humble")
+        ament_target_dependencies(titati_canfd_router_node
+            rclcpp
+        )
+        install(TARGETS titati_canfd_router_node DESTINATION lib/${PROJECT_NAME})
+    endif()
+endif()
+
+add_executable(test_titati_motors src/test_titati_motors.cpp)
+target_link_libraries(test_titati_motors
+    titati_robot_sdk
+    yaml-cpp
+)
+if(NOT USE_CMAKE)
+    if($ENV{ROS_DISTRO} MATCHES "noetic")
+        target_link_libraries(test_titati_motors ${catkin_LIBRARIES})
+    elseif($ENV{ROS_DISTRO} MATCHES "foxy|humble")
+        install(TARGETS test_titati_motors DESTINATION lib/${PROJECT_NAME})
+    endif()
+endif()
+
 if(NOT USE_CMAKE)
     if($ENV{ROS_DISTRO} MATCHES "noetic")
         catkin_install_python(PROGRAMS
             scripts/actuator_net.py
             DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
         )
+        install(PROGRAMS
+            scripts/setup_titati_canfd.sh
+            scripts/run_titati_canfd_router.sh
+            DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+        )
     elseif($ENV{ROS_DISTRO} MATCHES "foxy|humble")
         install(PROGRAMS
             scripts/actuator_net.py
+            scripts/setup_titati_canfd.sh
+            scripts/run_titati_canfd_router.sh
             DESTINATION lib/${PROJECT_NAME}
         )
     endif()

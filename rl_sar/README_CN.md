@@ -343,6 +343,70 @@ source ~/.bashrc
 
 <details>
 
+<summary>DDTRobot Titati（16 自由度双机）</summary>
+
+#### 硬件连线与模式切换
+
+- 两台 Jetson（主/从）分别将 `can0` 配置为 **CAN-FD 1M/8M**。使用本仓库提供的脚本即可：
+
+  ```bash
+  sudo bash rl_sar/src/rl_sar/scripts/setup_titati_canfd.sh can0
+  ```
+
+- 使用“小盒子”或 CAN-HUB 将两台 `can0` 物理连接到同一条 CAN-FD 总线上。
+- 从机在 MCU 自检完成后执行 CAN 直通节点：
+
+  ```bash
+  source install/setup.bash    # 如果是 ROS1 则改为 source devel/setup.bash
+  rl_sar/src/rl_sar/scripts/run_titati_canfd_router.sh
+  ```
+
+  该节点会持续监听控制板心跳，在检测到板载模式不是直通时自动发送 `SET_READY_NEXT -> FORCE_DIRECT` 的 CAN RPC。
+- 主机侧运行本仓库提供的程序：在完全直通的 CAN-FD 网络上直接下发 16 个电机的 MIT 指令。
+
+#### 电机连通性自检
+
+编译完成后，先运行测试程序确认 16 个电机均可运动。
+
+```bash
+# ROS1
+source devel/setup.bash
+rosrun rl_sar test_titati_motors
+
+# ROS2
+source install/setup.bash
+ros2 run rl_sar test_titati_motors
+
+# CMake
+./cmake_build/bin/test_titati_motors
+```
+
+该程序会在默认站立位姿附近对每个关节执行平滑的正弦扫动，同时在终端打印关键关节的反馈位置。若发现某个关节无响应，请重新检查 CAN 直通和电机供电状态，再进行 RL 控制实验。
+
+#### 运行 RL 控制
+
+1. 将策略文件放置在 `rl_sar/src/rl_sar/policy/titati/robot_lab/policy.pt`（或修改 `config.yaml` 指向的路径）。
+2. 在主机 Jetson（或上位机）上启动控制程序：
+
+```bash
+# ROS1
+source devel/setup.bash
+rosrun rl_sar rl_real_titati
+
+# ROS2
+source install/setup.bash
+ros2 run rl_sar rl_real_titati
+
+# CMake
+./cmake_build/bin/rl_real_titati
+```
+
+3. 键盘默认快捷键与其他机器人一致：`Num0` 起身、`Num1` 切换 RL 行走、`Num9` 俯身、`P` 回到被动模式、`WASD/QE` 调整速度，`N` 切换导航模式（ROS 下读取 `/cmd_vel`）。
+
+</details>
+
+<details>
+
 <summary>云深处科技 Lite3 (Click to expand)</summary>
 
 Lite3通过无线网络进行连接。
