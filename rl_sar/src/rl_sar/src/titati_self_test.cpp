@@ -1,4 +1,4 @@
-#include "library/hardware/titati/titati_hardware.hpp"
+#include "titati_hardware.hpp"
 
 #include <algorithm>
 #include <atomic>
