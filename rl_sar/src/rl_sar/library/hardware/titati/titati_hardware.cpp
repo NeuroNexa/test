@@ -298,6 +298,13 @@ bool TitatiHardware::SendTorqueCommand(const std::vector<double>& torque)
     return SendMitCommand(zeros, zeros, zeros, zeros, torque);
 }
 
+namespace
+{
+constexpr std::chrono::microseconds kRouterStatusWatchdog{2'000'000};
+constexpr std::chrono::milliseconds kForceDirectRetryDelay{100};
+constexpr std::chrono::milliseconds kForceDirectAckTimeout{2'000};
+}
+
 bool TitatiHardware::SetDirectControlMode(bool enable)
 {
     if (!initialized_.load())
@@ -315,7 +322,7 @@ bool TitatiHardware::SetDirectControlMode(bool enable)
         }
 
         bool ok = SendRpcCommand(kRpcKeyReadyNext, kReadyWaitingCommand);
-        std::this_thread::sleep_for(std::chrono::microseconds(200));
+        std::this_thread::sleep_for(kForceDirectRetryDelay);
         ok &= SendRpcCommand(kRpcKeyReadyNext, kAutoLocomotionCommand);
         return ok;
     }
@@ -331,7 +338,7 @@ bool TitatiHardware::SetDirectControlMode(bool enable)
     for (int attempt = 0; attempt < kMaxAttempts; ++attempt)
     {
         ok &= RequestForceDirect();
-        if (WaitForRouterMode(kRouterModeForceDirect, std::chrono::milliseconds(500)))
+        if (WaitForRouterMode(kRouterModeForceDirect, kForceDirectAckTimeout))
         {
             return ok;
         }
@@ -359,7 +366,7 @@ void TitatiHardware::EnsureDirectMode()
     const auto last_status = last_router_status_us_.load(std::memory_order_relaxed);
     if (!need_request)
     {
-        if (last_status == 0U || now - last_status > 200000U)
+        if (last_status == 0U || now - last_status > static_cast<std::uint64_t>(kRouterStatusWatchdog.count()))
         {
             need_request = true;
         }
@@ -399,7 +406,7 @@ bool TitatiHardware::RequestForceDirect()
     }
 
     bool ok = SendRpcCommand(kRpcKeyReadyNext, kReadyWaitingCommand);
-    std::this_thread::sleep_for(std::chrono::microseconds(200));
+    std::this_thread::sleep_for(kForceDirectRetryDelay);
     ok &= SendRpcCommand(kRpcKeyReadyNext, kForceDirectCommand);
 
     if (ok)
