@@ -53,8 +53,6 @@ struct __attribute__((packed)) ImuPacket
 
 }  // namespace
 
-using MotorCommandPacket = TitatiHardware::MotorCommandPacket;
-
 TitatiHardware::TitatiHardware(std::string can_interface, std::size_t motor_count)
     : interface_(std::move(can_interface)),
       motor_count_(motor_count)
@@ -259,7 +257,7 @@ bool TitatiHardware::SendMitCommand(const std::vector<double>& position,
         return false;
     }
 
-    const std::vector<MotorCommandPacket> command_packets =
+    const std::vector<TitatiHardware::MotorCommandPacket> command_packets =
         BuildMotorCommandPackets(position, velocity, kp, kd, torque);
     if (command_packets.empty())
     {
@@ -278,11 +276,11 @@ bool TitatiHardware::SendMitCommand(const std::vector<double>& position,
     {
         struct canfd_frame frame{};
         frame.can_id = kMotorCommandBaseId + pair;
-        frame.len = sizeof(MotorCommandPacket) * 2U;
+        frame.len = sizeof(TitatiHardware::MotorCommandPacket) * 2U;
         frame.flags = CANFD_BRS | CANFD_FDF;
-        std::memcpy(frame.data, &command_packets[pair * 2U], sizeof(MotorCommandPacket));
-        std::memcpy(frame.data + sizeof(MotorCommandPacket), &command_packets[pair * 2U + 1U],
-                    sizeof(MotorCommandPacket));
+        std::memcpy(frame.data, &command_packets[pair * 2U], sizeof(TitatiHardware::MotorCommandPacket));
+        std::memcpy(frame.data + sizeof(TitatiHardware::MotorCommandPacket),
+                    &command_packets[pair * 2U + 1U], sizeof(TitatiHardware::MotorCommandPacket));
 
         if (!SendFrame(&frame, CANFD_MTU))
         {
@@ -503,14 +501,14 @@ std::vector<TitatiHardware::MotorCommandPacket> TitatiHardware::BuildMotorComman
     const std::vector<double>& kd,
     const std::vector<double>& torque) const
 {
-    std::vector<MotorCommandPacket> packets;
+    std::vector<TitatiHardware::MotorCommandPacket> packets;
     packets.reserve(motor_count_);
 
     const std::uint32_t timestamp = AcquireTimestampUs();
 
     for (std::size_t i = 0; i < motor_count_; ++i)
     {
-        MotorCommandPacket packet{};
+        TitatiHardware::MotorCommandPacket packet{};
         packet.timestamp = timestamp;
         packet.position = static_cast<float>(position[i]);
         packet.velocity = static_cast<float>(velocity[i]);
@@ -522,7 +520,7 @@ std::vector<TitatiHardware::MotorCommandPacket> TitatiHardware::BuildMotorComman
 
     if (dof_per_leg_ == 3 && leg_count_ > 0)
     {
-        std::vector<MotorCommandPacket> padded;
+        std::vector<TitatiHardware::MotorCommandPacket> padded;
         padded.reserve(leg_count_ * 4U);
 
         for (std::size_t leg = 0; leg < leg_count_; ++leg)
