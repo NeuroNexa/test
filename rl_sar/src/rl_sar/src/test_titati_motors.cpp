@@ -298,6 +298,34 @@ int main(int argc, char **argv)
         std::cout << "[Titati Motor Test] Joint feedback unavailable for some motors, defaulting to zero pose." << std::endl;
     }
 
+    auto feedback_mask = robot.get_joint_feedback_mask();
+    std::vector<int> detected_joints;
+    std::vector<int> missing_joints;
+    for (int idx = 0; idx < kTitatiDofs; ++idx)
+    {
+        const bool online = idx < static_cast<int>(feedback_mask.size()) ? feedback_mask[idx] : false;
+        (online ? detected_joints : missing_joints).push_back(idx);
+    }
+
+    if (!detected_joints.empty())
+    {
+        std::cout << "[Titati Motor Test] Joint telemetry detected for:";
+        for (int joint : detected_joints)
+        {
+            std::cout << ' ' << joint;
+        }
+        std::cout << std::endl;
+    }
+    if (!missing_joints.empty())
+    {
+        std::cout << "[Titati Motor Test] WARNING: No feedback observed from joints:";
+        for (int joint : missing_joints)
+        {
+            std::cout << ' ' << joint;
+        }
+        std::cout << "\n[Titati Motor Test] Check the CAN-FD router and forced-direct handshake before continuing." << std::endl;
+    }
+
     auto measured = robot.get_joint_q();
     if (measured.size() != static_cast<size_t>(kTitatiDofs))
     {
@@ -337,6 +365,14 @@ int main(int argc, char **argv)
 
         std::cout << "\n[Joint " << joint << "] applying " << ModeToString(options.mode)
                   << " command" << std::endl;
+
+        const bool has_feedback = joint < static_cast<int>(feedback_mask.size()) && feedback_mask[joint];
+        if (!has_feedback)
+        {
+            std::cout << "[Joint " << joint
+                      << "] WARNING: telemetry has not been observed for this actuator."
+                      << " Commanding anyway." << std::endl;
+        }
 
         const auto start_time = std::chrono::steady_clock::now();
         auto last_log = start_time;

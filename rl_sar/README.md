@@ -401,7 +401,7 @@ Key options:
 - `--velocity-kd <gain>`: derivative gain used in velocity mode to close the MIT loop (ignored for torque mode).
 - `--log-interval <sec>`: how often to print the measured position/velocity/torque readbacks.
 
-The diagnostic repeatedly requests forced-direct mode, waits for MCU telemetry, and prints live readbacks while the command is active. If a joint never reports a change in torque/position the tool flags it at the end of the sweep and re-sends the direct-mode RPC so you can immediately retry once the CAN-FD router or MCU is ready.
+The diagnostic repeatedly requests forced-direct mode, waits for MCU telemetry, and prints live readbacks while the command is active. Before sending any torque it prints which joints are already streaming feedback (timestamped packets) so you can confirm that all **16** actuators are online; missing IDs usually indicate that the CAN-FD router has not yet latched into forced-direct mode. If a joint never reports a change in torque/position the tool flags it at the end of the sweep and re-sends the direct-mode RPC so you can immediately retry once the CAN-FD router or MCU is ready.
 
 #### Run RL control
 

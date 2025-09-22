@@ -30,7 +30,8 @@ void MotorsImuCanReceiveApi::register_motors_device_can_filter()
 
 void MotorsImuCanReceiveApi::board_can_data_callback(std::shared_ptr<struct canfd_frame> recv_frame)
 {
-  if (recv_frame->can_id >= CAN_ID_MOTOR_IN && recv_frame->can_id < CAN_ID_MOTOR_IN + leg_num_) {
+  const auto max_frames = max_motor_frames_ == 0 ? leg_num_ : max_motor_frames_;
+  if (recv_frame->can_id >= CAN_ID_MOTOR_IN && recv_frame->can_id < CAN_ID_MOTOR_IN + max_frames) {
     motors_data_callback(recv_frame);
   } else if (recv_frame->can_id == CAN_ID_IMU1) {
     imu_data_callback(recv_frame);
@@ -40,12 +41,25 @@ void MotorsImuCanReceiveApi::board_can_data_callback(std::shared_ptr<struct canf
 }
 void MotorsImuCanReceiveApi::motors_data_callback(std::shared_ptr<struct canfd_frame> recv_frame)
 {
+  if (recv_frame->len == 0U) {
+    return;
+  }
+  const size_t motors_in_frame = recv_frame->len / sizeof(api_motor_in_t);
+  if (motors_in_frame == 0U) {
+    return;
+  }
+  motors_per_frame_.store(motors_in_frame, std::memory_order_relaxed);
+  const size_t frame_index = recv_frame->can_id - CAN_ID_MOTOR_IN;
+  const size_t base_index = frame_index * motors_in_frame;
   std::unique_lock<std::shared_mutex> lock(motors_in_mutex_);
-  for (size_t i = 0; i < leg_dof_; i++) {
+  for (size_t i = 0; i < motors_in_frame; i++) {
+    const size_t motor_index = base_index + i;
+    if (motor_index >= motors_in_.size()) {
+      break;
+    }
     api_motor_in_t motor;
-    std::memcpy(&motor, recv_frame->data + 16 * i, sizeof(api_motor_in_t));
-    auto it = recv_frame->can_id - CAN_ID_MOTOR_IN;
-    motors_in_[i + leg_dof_ * it] = motor;
+    std::memcpy(&motor, recv_frame->data + sizeof(api_motor_in_t) * i, sizeof(api_motor_in_t));
+    motors_in_[motor_index] = motor;
   }
 }
 void MotorsImuCanReceiveApi::imu_data_callback(std::shared_ptr<struct canfd_frame> recv_frame)

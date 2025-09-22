@@ -2,6 +2,7 @@
 #include "can_sender.hpp"
 
 #include <chrono>
+#include <vector>
 
 class tita_robot
 {
@@ -54,6 +55,7 @@ public:
      * @return std::vector<double>: current joint torques in Newton meters.
      */
     std::vector<double> get_joint_t() const;
+    std::vector<bool> get_joint_feedback_mask() const;
     /**
      * @brief Wait until joint feedback has been received for every motor.
      *

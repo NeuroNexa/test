@@ -30,6 +30,17 @@ std::vector<double> tita_robot::get_joint_t() const
   return joint;
 }
 
+std::vector<bool> tita_robot::get_joint_feedback_mask() const
+{
+  auto infos = can_receiver_->get_motors_in();
+  std::vector<bool> online;
+  online.reserve(infos->size());
+  for (const auto & info : *infos) {
+    online.push_back(info.timestamp != 0U);
+  }
+  return online;
+}
+
 bool tita_robot::wait_for_feedback(std::chrono::milliseconds timeout,
                                    std::chrono::milliseconds poll_interval) const
 {

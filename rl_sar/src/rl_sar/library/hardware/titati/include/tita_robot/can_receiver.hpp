@@ -73,6 +73,12 @@ namespace can_device
       std::memset(&default_motor_in, 0x00U, sizeof(api_motor_in_t));
       motors_in_.resize(size, default_motor_in);
       std::memset(&imu_data_, 0x00U, sizeof(api_imu_data_t));
+      const size_t frames_by_pair = motors_in_.size() / 2;
+      max_motor_frames_ = std::max<size_t>(leg_num_, frames_by_pair == 0 ? leg_num_ : frames_by_pair);
+      if (max_motor_frames_ == 0)
+      {
+        max_motor_frames_ = 1;
+      }
     }
     ~MotorsImuCanReceiveApi() {}
     const std::vector<api_motor_in_t> *get_motors_in() const { return &motors_in_; }
@@ -110,6 +116,8 @@ namespace can_device
 
     mutable std::shared_mutex motors_in_mutex_, imu_mutex_;
     size_t leg_dof_{4}, leg_num_{2};
+    std::atomic<size_t> motors_per_frame_{0};
+    size_t max_motor_frames_{16};
   };
 } // namespace can_device
 
