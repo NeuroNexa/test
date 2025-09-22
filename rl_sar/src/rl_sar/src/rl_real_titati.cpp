@@ -11,8 +11,10 @@
 RL_Real::RL_Real(const std::string &robot_variant)
 #if defined(USE_ROS2) && defined(USE_ROS)
     : rclcpp::Node("rl_real_node")
-#endif
     , robot_variant_(robot_variant)
+#else
+    : robot_variant_(robot_variant)
+#endif
 {
 #if defined(USE_ROS1) && defined(USE_ROS)
     ros::NodeHandle nh;
