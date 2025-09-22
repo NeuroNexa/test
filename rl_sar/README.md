@@ -136,6 +136,9 @@ If simulation is not needed and you only want to run on the robot, you can compi
 > [!IMPORTANT]
 > The standalone CMake toolchain now builds only the Titati hardware stack (CAN-FD router, 16-motor diagnostic, and `rl_real_titati`). Drivers for Unitree, Lite3, and other robots have been removed from this workspace.
 
+> [!TIP]
+> If no ROS environment is sourced, running `./build.sh` without arguments automatically falls back to the same hardware-only CMake build.
+
 For detailed usage instructions, you can check them via `./build.sh -h`:
 
 ```bash
@@ -360,8 +363,16 @@ Pull the code and compile it. The process is the same as above.
 - On the slave Jetson, after the MCU finishes its self-check, run the CAN router bundled in this package so every frame is forwarded transparently:
 
   ```bash
-  source install/setup.bash    # or devel/setup.bash if using ROS 1
+  # ROS2
+  source install/setup.bash
   rl_sar/src/rl_sar/scripts/run_titati_canfd_router.sh
+
+  # ROS1
+  source devel/setup.bash
+  rl_sar/src/rl_sar/scripts/run_titati_canfd_router.sh
+
+  # No ROS / pure CMake build
+  ./src/rl_sar/scripts/run_titati_canfd_router.sh
   ```
 
   The node keeps listening for the control-board heartbeat and automatically issues the `SET_READY_NEXT -> FORCE_DIRECT` CAN RPC when needed.

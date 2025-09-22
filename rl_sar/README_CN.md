@@ -133,6 +133,9 @@ sudo ldconfig
 ./build.sh -m  # or ./build.sh --cmake
 ```
 
+> [!TIP]
+> 若未提前 source 任意 ROS 环境，直接执行 `./build.sh` 会自动切换到同样的 CMake 硬件构建流程。
+
 详细的使用说明可以通过`./build.sh -h`查看
 
 ```bash
@@ -360,8 +363,16 @@ source ~/.bashrc
 - 从机在 MCU 自检完成后执行 CAN 直通节点：
 
   ```bash
-  source install/setup.bash    # 如果是 ROS1 则改为 source devel/setup.bash
+  # ROS2
+  source install/setup.bash
   rl_sar/src/rl_sar/scripts/run_titati_canfd_router.sh
+
+  # ROS1
+  source devel/setup.bash
+  rl_sar/src/rl_sar/scripts/run_titati_canfd_router.sh
+
+  # 无 ROS / 纯 CMake 构建
+  ./src/rl_sar/scripts/run_titati_canfd_router.sh
   ```
 
   该节点会持续监听控制板心跳，在检测到板载模式不是直通时自动发送 `SET_READY_NEXT -> FORCE_DIRECT` 的 CAN RPC。

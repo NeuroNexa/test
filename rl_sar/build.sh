@@ -325,6 +325,8 @@ show_usage() {
     echo -e "  $0 -c                 # Clean all symlinks and build artifacts"
     echo -e "  $0 --clean package1   # Clean specific package and build artifacts"
     echo -e "  $0 -m                 # Build with CMake for hardware deployment"
+    echo ""
+    echo -e "${COLOR_INFO}Tip:${COLOR_RESET} If no ROS environment is detected, the script automatically falls back to the CMake hardware build."
 }
 
 main() {
@@ -356,11 +358,14 @@ main() {
         exit 0
     fi
 
-    # Handle ROS build
+    # Handle ROS build or fall back to CMake when ROS is unavailable
     if [ -z "$ROS_DISTRO" ]; then
-        print_error "ROS environment not detected. Please source your ROS setup.bash first."
-        print_info "For hardware deployment, use the --cmake option instead."
-        exit 1
+        if [ ${#packages[@]} -gt 0 ]; then
+            print_warning "ROS not sourced; package selection (${packages[*]}) is ignored for the hardware-only build."
+        fi
+        print_warning "ROS environment not detected. Falling back to the CMake hardware toolchain (--cmake)."
+        run_cmake_build
+        exit 0
     fi
 
     run_ros_build "${packages[@]}"
