@@ -29,9 +29,10 @@ constexpr std::uint32_t kRouterStatusId = 0x09FU;
 constexpr std::uint32_t kRpcCommandId = 0x170U;
 constexpr float kGravity = 9.81f;
 constexpr std::uint16_t kRpcKeyReadyNext = 0x200U;
-constexpr std::uint32_t kReadyWaiting = 0x00U;
-constexpr std::uint32_t kAutoLocomotion = 0x01U;
-constexpr std::uint32_t kForceDirect = 0x03U;
+constexpr std::uint32_t kReadyWaitingCommand = 0x00U;
+constexpr std::uint32_t kAutoLocomotionCommand = 0x01U;
+constexpr std::uint32_t kForceDirectCommand = 0x03U;
+constexpr std::uint32_t kRouterModeForceDirect = 0x1000U;
 
 struct __attribute__((packed)) MotorFeedbackPacket
 {
@@ -313,9 +314,9 @@ bool TitatiHardware::SetDirectControlMode(bool enable)
             router_mode_.store(0U, std::memory_order_relaxed);
         }
 
-        bool ok = SendRpcCommand(kRpcKeyReadyNext, kReadyWaiting);
+        bool ok = SendRpcCommand(kRpcKeyReadyNext, kReadyWaitingCommand);
         std::this_thread::sleep_for(std::chrono::microseconds(200));
-        ok &= SendRpcCommand(kRpcKeyReadyNext, kAutoLocomotion);
+        ok &= SendRpcCommand(kRpcKeyReadyNext, kAutoLocomotionCommand);
         return ok;
     }
 
@@ -330,7 +331,7 @@ bool TitatiHardware::SetDirectControlMode(bool enable)
     for (int attempt = 0; attempt < kMaxAttempts; ++attempt)
     {
         ok &= RequestForceDirect();
-        if (WaitForRouterMode(kForceDirect, std::chrono::milliseconds(500)))
+        if (WaitForRouterMode(kRouterModeForceDirect, std::chrono::milliseconds(500)))
         {
             return ok;
         }
@@ -350,7 +351,7 @@ void TitatiHardware::EnsureDirectMode()
     bool need_request = false;
 
     const auto mode = router_mode_.load(std::memory_order_relaxed);
-    if (mode != kForceDirect)
+    if (mode != kRouterModeForceDirect)
     {
         need_request = true;
     }
@@ -397,9 +398,9 @@ bool TitatiHardware::RequestForceDirect()
         return true;
     }
 
-    bool ok = SendRpcCommand(kRpcKeyReadyNext, kReadyWaiting);
+    bool ok = SendRpcCommand(kRpcKeyReadyNext, kReadyWaitingCommand);
     std::this_thread::sleep_for(std::chrono::microseconds(200));
-    ok &= SendRpcCommand(kRpcKeyReadyNext, kForceDirect);
+    ok &= SendRpcCommand(kRpcKeyReadyNext, kForceDirectCommand);
 
     if (ok)
     {
@@ -573,7 +574,7 @@ void TitatiHardware::HandleRouterFeedback(const std::uint8_t* data, std::uint8_t
         return;
     }
 
-    if (mode == kForceDirect)
+    if (mode == kRouterModeForceDirect)
     {
         return;
     }
