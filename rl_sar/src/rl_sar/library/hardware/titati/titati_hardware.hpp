@@ -3,7 +3,6 @@
 #include <array>
 #include <atomic>
 #include <chrono>
-#include <condition_variable>
 #include <cstdint>
 #include <mutex>
 #include <string>
@@ -65,7 +64,6 @@ public:
 private:
     void EnsureDirectMode();
     bool RequestForceDirect();
-    bool WaitForRouterMode(std::uint32_t expected_mode, std::chrono::milliseconds timeout);
     void ReceiverLoop();
     void HandleMotorFeedback(std::uint32_t can_id, const std::uint8_t* data, std::uint8_t dlc);
     void HandleImuFeedback(const std::uint8_t* data, std::uint8_t dlc);
@@ -98,7 +96,6 @@ private:
     std::atomic<std::uint32_t> router_heartbeat_{0U};
     std::atomic<std::uint64_t> last_router_status_us_{0U};
     mutable std::mutex router_mutex_;
-    std::condition_variable router_cv_;
 };
 
 }  // namespace titati::hardware
