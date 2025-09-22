@@ -26,15 +26,12 @@ constexpr std::uint32_t kMotorFeedbackBaseId = 0x108U;
 constexpr std::uint32_t kMotorFeedbackMask = 0x7E0U;
 constexpr std::uint32_t kMotorCommandBaseId = 0x120U;
 constexpr std::uint32_t kImuFeedbackId = 0x118U;
-constexpr std::uint32_t kRouterStatusId = 0x09FU;
 constexpr std::uint32_t kRpcCommandId = 0x170U;
 constexpr float kGravity = 9.81f;
 constexpr std::uint16_t kRpcKeyReadyNext = 0x200U;
 constexpr std::uint32_t kReadyWaitingCommand = 0x00U;
 constexpr std::uint32_t kAutoLocomotionCommand = 0x01U;
 constexpr std::uint32_t kForceDirectCommand = 0x03U;
-constexpr std::uint32_t kRouterModeForceDirect = 0x1000U;
-constexpr std::uint32_t kRouterModeLegacyForceDirect = 0x03U;
 
 struct __attribute__((packed)) MotorFeedbackPacket
 {
@@ -111,7 +108,6 @@ TitatiHardware::TitatiHardware(std::string can_interface, std::size_t motor_coun
         dof_per_leg_ = motor_count_;
     }
     motor_state_.resize(motor_count_);
-    leg_last_update_us_.assign(leg_count_, 0U);
 }
 
 TitatiHardware::~TitatiHardware()
@@ -171,13 +167,11 @@ bool TitatiHardware::Initialize()
         return false;
     }
 
-    struct can_filter filters[3];
+    struct can_filter filters[2];
     filters[0].can_id = kMotorFeedbackBaseId;
     filters[0].can_mask = kMotorFeedbackMask;
     filters[1].can_id = kImuFeedbackId;
     filters[1].can_mask = CAN_SFF_MASK;
-    filters[2].can_id = kRouterStatusId;
-    filters[2].can_mask = CAN_SFF_MASK;
     if (::setsockopt(socket_fd_, SOL_CAN_RAW, CAN_RAW_FILTER, &filters, sizeof(filters)) < 0)
     {
         std::perror("setsockopt CAN_RAW_FILTER");
@@ -187,9 +181,6 @@ bool TitatiHardware::Initialize()
     }
 
     running_.store(true);
-    router_mode_.store(0U, std::memory_order_relaxed);
-    router_heartbeat_.store(0U, std::memory_order_relaxed);
-    last_router_status_us_.store(0U, std::memory_order_relaxed);
     receiver_thread_ = std::thread(&TitatiHardware::ReceiverLoop, this);
     initialized_.store(true);
     return true;
@@ -249,8 +240,6 @@ bool TitatiHardware::SendMitCommand(const std::vector<double>& position,
         return false;
     }
 
-    EnsureDirectMode();
-
     bool success = true;
     const std::uint32_t timestamp = AcquireTimestampUs();
 
@@ -300,12 +289,6 @@ bool TitatiHardware::SendTorqueCommand(const std::vector<double>& torque)
     return SendMitCommand(zeros, zeros, zeros, zeros, torque);
 }
 
-namespace
-{
-constexpr std::chrono::microseconds kRouterStatusWatchdog{2'000'000};
-constexpr std::chrono::microseconds kForceDirectRetryDelay{100'000};
-}
-
 bool TitatiHardware::SetDirectControlMode(bool enable)
 {
     if (!initialized_.load())
@@ -314,92 +297,19 @@ bool TitatiHardware::SetDirectControlMode(bool enable)
     }
 
     direct_mode_requested_.store(enable, std::memory_order_relaxed);
+    constexpr auto kHandshakeDelay = std::chrono::microseconds(100);
 
-    last_force_direct_request_us_.store(0U, std::memory_order_relaxed);
-    {
-        std::scoped_lock<std::mutex> lock(router_mutex_);
-        router_mode_.store(0U, std::memory_order_relaxed);
-    }
-
-    if (!enable)
+    if (enable)
     {
         bool ok = SendRpcCommand(kRpcKeyReadyNext, kReadyWaitingCommand);
-        std::this_thread::sleep_for(kForceDirectRetryDelay);
-        ok &= SendRpcCommand(kRpcKeyReadyNext, kAutoLocomotionCommand);
+        std::this_thread::sleep_for(kHandshakeDelay);
+        ok &= SendRpcCommand(kRpcKeyReadyNext, kForceDirectCommand);
         return ok;
     }
 
-    return RequestForceDirect();
-}
-
-void TitatiHardware::EnsureDirectMode()
-{
-    if (!direct_mode_requested_.load(std::memory_order_relaxed))
-    {
-        return;
-    }
-
-    const auto now = AcquireSteadyTimestampUs();
-    bool need_request = false;
-
-    const auto mode = router_mode_.load(std::memory_order_relaxed);
-    const bool router_in_direct = (mode == kRouterModeForceDirect || mode == kRouterModeLegacyForceDirect);
-    if (!router_in_direct)
-    {
-        need_request = true;
-    }
-
-    const auto last_status = last_router_status_us_.load(std::memory_order_relaxed);
-    if (!need_request)
-    {
-        if (last_status == 0U || now - last_status > static_cast<std::uint64_t>(kRouterStatusWatchdog.count()))
-        {
-            need_request = true;
-        }
-    }
-
-    if (!need_request)
-    {
-        std::vector<std::uint64_t> leg_updates;
-        {
-            std::scoped_lock<std::mutex> lock(state_mutex_);
-            leg_updates = leg_last_update_us_;
-        }
-
-        for (const auto last_leg : leg_updates)
-        {
-            if (last_leg == 0U || now - last_leg > 200000U)
-            {
-                need_request = true;
-                break;
-            }
-        }
-    }
-
-    if (need_request)
-    {
-        RequestForceDirect();
-    }
-}
-
-bool TitatiHardware::RequestForceDirect()
-{
-    const auto now = AcquireSteadyTimestampUs();
-    const auto last = last_force_direct_request_us_.load(std::memory_order_relaxed);
-    if (last != 0U && now - last < static_cast<std::uint64_t>(kForceDirectRetryDelay.count()))
-    {
-        return true;
-    }
-
     bool ok = SendRpcCommand(kRpcKeyReadyNext, kReadyWaitingCommand);
-    std::this_thread::sleep_for(kForceDirectRetryDelay);
-    ok &= SendRpcCommand(kRpcKeyReadyNext, kForceDirectCommand);
-
-    if (ok)
-    {
-        last_force_direct_request_us_.store(AcquireSteadyTimestampUs(), std::memory_order_relaxed);
-    }
-
+    std::this_thread::sleep_for(kHandshakeDelay);
+    ok &= SendRpcCommand(kRpcKeyReadyNext, kAutoLocomotionCommand);
     return ok;
 }
 
@@ -456,10 +366,6 @@ void TitatiHardware::ReceiverLoop()
         {
             HandleImuFeedback(frame.data, frame.len);
         }
-        else if (can_id == kRouterStatusId)
-        {
-            HandleRouterFeedback(frame.data, frame.len);
-        }
         else
         {
             // Ignore other frames
@@ -496,10 +402,6 @@ void TitatiHardware::HandleMotorFeedback(std::uint32_t can_id, const std::uint8_
         motor_state_[motor_index].torque = static_cast<double>(packet.torque);
         motor_state_[motor_index].timestamp = packet.timestamp;
     }
-    if (leg_index < leg_last_update_us_.size())
-    {
-        leg_last_update_us_[leg_index] = AcquireSteadyTimestampUs();
-    }
     state_sequence_.fetch_add(1, std::memory_order_relaxed);
 }
 
@@ -521,43 +423,6 @@ void TitatiHardware::HandleImuFeedback(const std::uint8_t* data, std::uint8_t dl
     imu_state_.gyroscope = {packet.gyroscope[0], packet.gyroscope[1], packet.gyroscope[2]};
     imu_state_.quaternion = {packet.quaternion[3], packet.quaternion[0], packet.quaternion[1], packet.quaternion[2]};
     state_sequence_.fetch_add(1, std::memory_order_relaxed);
-}
-
-void TitatiHardware::HandleRouterFeedback(const std::uint8_t* data, std::uint8_t dlc)
-{
-    if (dlc < 12)
-    {
-        return;
-    }
-
-    std::uint32_t mode = 0;
-    std::memcpy(&mode, data + 4, sizeof(mode));
-
-    std::uint32_t heartbeat = 0;
-    if (dlc >= 12)
-    {
-        std::memcpy(&heartbeat, data + 8, sizeof(heartbeat));
-    }
-
-    {
-        std::scoped_lock<std::mutex> lock(router_mutex_);
-        router_mode_.store(mode, std::memory_order_relaxed);
-        router_heartbeat_.store(heartbeat, std::memory_order_relaxed);
-    }
-    last_router_status_us_.store(AcquireSteadyTimestampUs(), std::memory_order_relaxed);
-    const bool router_in_direct = (mode == kRouterModeForceDirect || mode == kRouterModeLegacyForceDirect);
-
-    if (!direct_mode_requested_.load(std::memory_order_relaxed))
-    {
-        return;
-    }
-
-    if (router_in_direct)
-    {
-        return;
-    }
-
-    RequestForceDirect();
 }
 
 bool TitatiHardware::SendRpcCommand(std::uint16_t key, std::uint32_t value)
@@ -604,12 +469,6 @@ std::uint32_t TitatiHardware::AcquireTimestampUs() const
     };
     ::gettimeofday(&tv, nullptr);
     return static_cast<std::uint32_t>((tv.tv_sec * 1'000'000LL + tv.tv_usec) & 0xFFFFFFFFU);
-}
-
-std::uint64_t TitatiHardware::AcquireSteadyTimestampUs() const
-{
-    const auto now = std::chrono::steady_clock::now().time_since_epoch();
-    return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(now).count());
 }
 
 }  // namespace titati::hardware
