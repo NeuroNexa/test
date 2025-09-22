@@ -19,48 +19,31 @@ namespace can_device
 bool MotorsCanSendApi::send_command_can_channel_input(ChannelInput data)
 {
   data.timestamp = get_current_time();
-  bool send_success = true;
 
-  for (size_t board = 0; board < board_count_; ++board) {
-    struct canfd_frame frame;
-    frame.can_id = CAN_ID_CHANNEL_INPUT + static_cast<canid_t>(board);
-    frame.len = 40u;
-    memset(frame.data, 0x00U, sizeof(frame.data));
+  struct canfd_frame frame;
+  frame.can_id = CAN_ID_CHANNEL_INPUT;
+  frame.len = 40u;
+  memset(frame.data, 0x00U, sizeof(frame.data));
 
-    std::memcpy(frame.data, &data, sizeof(data));
-    send_success &= can_send_api_->send_can_message(frame);
+  std::memcpy(frame.data, &data, sizeof(data));
 
-    if (board_count_ > 1 && board + 1 < board_count_) {
-      std::this_thread::sleep_for(std::chrono::microseconds(150));
-    }
-  }
-
-  return send_success;
+  return can_send_api_->send_can_message(frame);
 }
 
 bool MotorsCanSendApi::send_command_can_rpc_request(RpcRequest data){
   data.timestamp = get_current_time();
-  bool send_success = true;
 
-  for (size_t board = 0; board < board_count_; ++board) {
-    struct canfd_frame frame;
-    frame.can_id = CAN_ID_RPC_REQUEST + static_cast<canid_t>(board);
-    frame.len = 10U;
+  struct canfd_frame frame;
+  frame.can_id = CAN_ID_RPC_REQUEST;
+  frame.len = 10U;
 
-    memset(frame.data, 0x00U, sizeof(frame.data));
+  memset(frame.data, 0x00U, sizeof(frame.data));
 
-    std::memcpy(frame.data, &data.timestamp, sizeof(data.timestamp));
-    std::memcpy(frame.data + 4, &data.key, sizeof(data.key));
-    std::memcpy(frame.data + 6, &data.value, sizeof(data.value));
+  std::memcpy(frame.data, &data.timestamp, sizeof(data.timestamp));
+  std::memcpy(frame.data + 4, &data.key, sizeof(data.key));
+  std::memcpy(frame.data + 6, &data.value, sizeof(data.value));
 
-    send_success &= can_send_api_->send_can_message(frame);
-
-    if (board_count_ > 1 && board + 1 < board_count_) {
-      std::this_thread::sleep_for(std::chrono::microseconds(150));
-    }
-  }
-
-  return send_success;
+  return can_send_api_->send_can_message(frame);
 }
 
 bool MotorsCanSendApi::send_motors_can(std::vector<motor_out> motors)

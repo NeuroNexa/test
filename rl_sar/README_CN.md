@@ -372,7 +372,7 @@ source ~/.bashrc
   rl_sar/src/rl_sar/scripts/run_titati_canfd_router.sh
   ```
 
-  如果检测不到 ROS 命令或未安装 `rl_sar` 包，脚本会自动回退到 `cmake_build/bin/titati_canfd_router_node`。该节点会持续监听控制板心跳，在检测到板载模式不是直通时自动发送 `SET_READY_NEXT -> FORCE_DIRECT` 的 CAN RPC。路由器进入直通模式后，主机需要同时向两块电机 MCU 广播同样的 RPC 帧；本仓库内置的 Titati SDK 会在 16 自由度配置下自动完成该步骤，确保 **0-7 号关节（主 MCU）** 与 **8-15 号关节（从 MCU）** 一起切换到直驱模式。
+  如果检测不到 ROS 命令或未安装 `rl_sar` 包，脚本会自动回退到 `cmake_build/bin/titati_canfd_router_node`。该节点会持续监听控制板心跳，在检测到板载模式不是直通时自动发送 `SET_READY_NEXT -> FORCE_DIRECT` 的 CAN RPC。路由器进入直通模式后，主机只需在共享的 CAN-FD 总线上广播标准的直驱 RPC 帧；本仓库内置的 Titati SDK 与原始 `titati_control` 的实现一致，确保两块电机 MCU 都能在默认的广播 ID 上接收到指令。
 - 主机侧运行本仓库提供的程序：在完全直通的 CAN-FD 网络上直接输出 16 个电机的力矩指令（PD 增益来自 RL 策略或单独的诊断程序）。
 
 #### 电机连通性自检
@@ -401,7 +401,7 @@ ros2 run rl_sar test_titati_motors --joint 12 --mode velocity --value 2.0 --dura
 - `--velocity-kd <gain>`：速度模式下使用的速度闭环增益（MIT 控制中的 KD），力矩模式会忽略该参数。
 - `--log-interval <sec>`：终端打印测量位置/速度/力矩的时间间隔。
 
-程序会循环发送强制直驱 RPC，等待 MCU 反馈就绪后再施加命令，并在执行过程中持续打印回读数据。在给电机下指令前会先列出已经收到遥测数据（带时间戳）的关节编号，确保 **16 个电机** 都在线。如果提示 `0-7` 号关节缺失，说明主机侧 MCU 仍处于自动模式；如果缺失 `8-15` 号关节，则表示从机（经 CAN-FD 路由）尚未放行。程序会自动向两块板子重发直驱 RPC，待路由或 MCU 就绪后即可立即复测。
+  程序会循环发送强制直驱 RPC，等待 MCU 反馈就绪后再施加命令，并在执行过程中持续打印回读数据。在给电机下指令前会先列出已经收到遥测数据（带时间戳）的关节编号，确保 **16 个电机** 都在线。如果提示某一半的关节（`0-7` 或 `8-15`）都缺失，说明对应的电机控制板尚未切换到直驱模式，需要检查该侧的 CAN-FD 路由器或 MCU 状态。程序会自动重放直驱 RPC，待相关设备就绪后即可立即复测。
 
 #### 运行 RL 控制
 

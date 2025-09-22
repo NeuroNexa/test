@@ -333,19 +333,17 @@ int main(int argc, char **argv)
 
         if (missing_joints.size() == half && (lower_missing || upper_missing))
         {
-            std::cout << "[Titati Motor Test] Hint: joints 0-7 correspond to the master-side MCU,"
-                      << " while joints 8-15 correspond to the slave-side MCU." << std::endl;
+            std::cout << "[Titati Motor Test] Hint: if an entire half of the joints is missing telemetry,"
+                      << " the corresponding motor controller has not entered direct mode yet." << std::endl;
             if (lower_missing)
             {
-                std::cout << "[Titati Motor Test] The master-side MCU may still be in auto locomotion."
-                          << " Ensure the router on the slave Jetson is running in forced-direct mode"
-                          << " and retry the direct-mode RPC." << std::endl;
+                std::cout << "[Titati Motor Test] Re-check the CAN-FD router handshake and the MCU state"
+                          << " for the joints numbered 0-7 before retrying." << std::endl;
             }
             else
             {
-                std::cout << "[Titati Motor Test] The slave-side MCU may still be in auto locomotion."
-                          << " Verify the CAN-FD router node on the slave Jetson is active and that"
-                          << " both CAN interfaces share the same bus." << std::endl;
+                std::cout << "[Titati Motor Test] Re-check the CAN-FD router handshake and the MCU state"
+                          << " for the joints numbered 8-15 before retrying." << std::endl;
             }
         }
     }
