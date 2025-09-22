@@ -61,12 +61,27 @@ public:
     bool SetDirectControlMode(bool enable);
 
 private:
+    struct __attribute__((packed)) MotorCommandPacket
+    {
+        std::uint32_t timestamp{0U};
+        float position{0.0F};
+        float kp{0.0F};
+        float velocity{0.0F};
+        float kd{0.0F};
+        float torque{0.0F};
+    };
+
     void ReceiverLoop();
     void HandleMotorFeedback(std::uint32_t can_id, const std::uint8_t* data, std::uint8_t dlc);
     void HandleImuFeedback(const std::uint8_t* data, std::uint8_t dlc);
     void HandleRouterFeedback(const std::uint8_t* data, std::uint8_t dlc);
     bool SendRpcCommand(std::uint16_t key, std::uint32_t value);
     bool SendFrame(const void* frame, std::size_t length) const;
+    std::vector<MotorCommandPacket> BuildMotorCommandPackets(const std::vector<double>& position,
+                                                            const std::vector<double>& velocity,
+                                                            const std::vector<double>& kp,
+                                                            const std::vector<double>& kd,
+                                                            const std::vector<double>& torque) const;
     std::uint32_t AcquireTimestampUs() const;
     std::uint64_t AcquireSteadyTimestampUs() const;
 

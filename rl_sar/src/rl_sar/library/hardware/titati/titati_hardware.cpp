@@ -7,6 +7,7 @@
 #include <poll.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -41,16 +42,6 @@ struct __attribute__((packed)) MotorFeedbackPacket
     float torque;
 };
 
-struct __attribute__((packed)) MotorCommandPacket
-{
-    std::uint32_t timestamp;
-    float position;
-    float kp;
-    float velocity;
-    float kd;
-    float torque;
-};
-
 struct __attribute__((packed)) ImuPacket
 {
     std::uint32_t timestamp;
@@ -61,6 +52,8 @@ struct __attribute__((packed)) ImuPacket
 };
 
 }  // namespace
+
+using MotorCommandPacket = TitatiHardware::MotorCommandPacket;
 
 TitatiHardware::TitatiHardware(std::string can_interface, std::size_t motor_count)
     : interface_(std::move(can_interface)),
@@ -266,37 +259,30 @@ bool TitatiHardware::SendMitCommand(const std::vector<double>& position,
         return false;
     }
 
-    bool success = true;
-    const std::uint32_t timestamp = AcquireTimestampUs();
+    const std::vector<MotorCommandPacket> command_packets =
+        BuildMotorCommandPackets(position, velocity, kp, kd, torque);
+    if (command_packets.empty())
+    {
+        return false;
+    }
 
-    const std::size_t command_pairs = (motor_count_ + 1) / 2;
+    if ((command_packets.size() % 2U) != 0U)
+    {
+        return false;
+    }
+
+    bool success = true;
+    const std::size_t command_pairs = command_packets.size() / 2U;
 
     for (std::size_t pair = 0; pair < command_pairs; ++pair)
     {
         struct canfd_frame frame{};
         frame.can_id = kMotorCommandBaseId + pair;
-        frame.len = sizeof(MotorCommandPacket) * 2;
+        frame.len = sizeof(MotorCommandPacket) * 2U;
         frame.flags = CANFD_BRS | CANFD_FDF;
-        std::memset(frame.data, 0, sizeof(frame.data));
-
-        for (std::size_t j = 0; j < 2; ++j)
-        {
-            const std::size_t idx = pair * 2 + j;
-            if (idx >= motor_count_)
-            {
-                break;
-            }
-
-            MotorCommandPacket packet{};
-            packet.timestamp = timestamp;
-            packet.position = static_cast<float>(position[idx]);
-            packet.velocity = static_cast<float>(velocity[idx]);
-            packet.kp = static_cast<float>(kp[idx]);
-            packet.kd = static_cast<float>(kd[idx]);
-            packet.torque = static_cast<float>(torque[idx]);
-
-            std::memcpy(frame.data + j * sizeof(MotorCommandPacket), &packet, sizeof(MotorCommandPacket));
-        }
+        std::memcpy(frame.data, &command_packets[pair * 2U], sizeof(MotorCommandPacket));
+        std::memcpy(frame.data + sizeof(MotorCommandPacket), &command_packets[pair * 2U + 1U],
+                    sizeof(MotorCommandPacket));
 
         if (!SendFrame(&frame, CANFD_MTU))
         {
@@ -329,7 +315,7 @@ bool TitatiHardware::SetDirectControlMode(bool enable)
     }
 
     bool ok = SendRpcCommand(kRpcKeyReadyNext, kReadyWaiting);
-    std::this_thread::sleep_for(std::chrono::microseconds(200));
+    std::this_thread::sleep_for(std::chrono::microseconds(100));
     ok &= SendRpcCommand(kRpcKeyReadyNext, enable ? kForceDirect : kAutoLocomotion);
 
     if (enable)
@@ -484,7 +470,7 @@ void TitatiHardware::HandleRouterFeedback(const std::uint8_t* data, std::uint8_t
 
     last_force_direct_request_us_.store(now, std::memory_order_relaxed);
     SendRpcCommand(kRpcKeyReadyNext, kReadyWaiting);
-    std::this_thread::sleep_for(std::chrono::microseconds(200));
+    std::this_thread::sleep_for(std::chrono::microseconds(100));
     SendRpcCommand(kRpcKeyReadyNext, kForceDirect);
     last_force_direct_request_us_.store(AcquireSteadyTimestampUs(), std::memory_order_relaxed);
 }
@@ -510,6 +496,67 @@ bool TitatiHardware::SendRpcCommand(std::uint16_t key, std::uint32_t value)
     return SendFrame(&frame, CANFD_MTU);
 }
 
+std::vector<TitatiHardware::MotorCommandPacket> TitatiHardware::BuildMotorCommandPackets(
+    const std::vector<double>& position,
+    const std::vector<double>& velocity,
+    const std::vector<double>& kp,
+    const std::vector<double>& kd,
+    const std::vector<double>& torque) const
+{
+    std::vector<MotorCommandPacket> packets;
+    packets.reserve(motor_count_);
+
+    const std::uint32_t timestamp = AcquireTimestampUs();
+
+    for (std::size_t i = 0; i < motor_count_; ++i)
+    {
+        MotorCommandPacket packet{};
+        packet.timestamp = timestamp;
+        packet.position = static_cast<float>(position[i]);
+        packet.velocity = static_cast<float>(velocity[i]);
+        packet.kp = static_cast<float>(kp[i]);
+        packet.kd = static_cast<float>(kd[i]);
+        packet.torque = static_cast<float>(torque[i]);
+        packets.emplace_back(packet);
+    }
+
+    if (dof_per_leg_ == 3 && leg_count_ > 0)
+    {
+        std::vector<MotorCommandPacket> padded;
+        padded.reserve(leg_count_ * 4U);
+
+        for (std::size_t leg = 0; leg < leg_count_; ++leg)
+        {
+            const std::size_t base = leg * dof_per_leg_;
+            for (std::size_t joint = 0; joint < dof_per_leg_; ++joint)
+            {
+                const std::size_t idx = base + joint;
+                if (idx < packets.size())
+                {
+                    padded.emplace_back(packets[idx]);
+                }
+            }
+
+            // Titati controllers expect a 4-slot leg group on the CAN bus even for 3-DOF legs.
+            padded.emplace_back();
+        }
+
+        if (padded.size() % 2U != 0U)
+        {
+            padded.emplace_back();
+        }
+
+        return padded;
+    }
+
+    if (packets.size() % 2U != 0U)
+    {
+        packets.emplace_back();
+    }
+
+    return packets;
+}
+
 bool TitatiHardware::SendFrame(const void* frame, std::size_t length) const
 {
     if (socket_fd_ < 0)
@@ -528,8 +575,12 @@ bool TitatiHardware::SendFrame(const void* frame, std::size_t length) const
 
 std::uint32_t TitatiHardware::AcquireTimestampUs() const
 {
-    const auto now = std::chrono::steady_clock::now().time_since_epoch();
-    const auto micros = std::chrono::duration_cast<std::chrono::microseconds>(now).count();
+    struct timeval tv
+    {
+    };
+    ::gettimeofday(&tv, nullptr);
+    const std::uint64_t micros = static_cast<std::uint64_t>(tv.tv_sec) * 1000000ULL +
+                                 static_cast<std::uint64_t>(tv.tv_usec);
     return static_cast<std::uint32_t>(micros & 0xFFFFFFFFU);
 }
 
