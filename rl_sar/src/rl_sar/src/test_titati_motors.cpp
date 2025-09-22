@@ -96,7 +96,7 @@ int main()
 
     std::vector<double> target_q = measured;
     std::vector<double> target_dq(kTitatiDofs, 0.0);
-    std::vector<double> target_tau(kTitatiDofs, 0.0);
+    std::vector<double> command_tau(kTitatiDofs, 0.0);
 
     std::cout << "[Titati Motor Test] Exercising each joint individually." << std::endl;
     std::cout << "[Titati Motor Test] Press Ctrl+C at any time to stop and hold position." << std::endl;
@@ -120,19 +120,39 @@ int main()
 
             const double phase = kTwoPi * kSweepFrequencyHz * elapsed;
             const double offset = amplitude[joint] * std::sin(phase);
+            const double offset_velocity = amplitude[joint] * kTwoPi * kSweepFrequencyHz * std::cos(phase);
 
             target_q = neutral;
+            target_dq.assign(kTitatiDofs, 0.0);
             target_q[joint] = neutral[joint] + offset;
+            target_dq[joint] = offset_velocity;
 
-            robot.set_target_joint_mit(target_q, target_dq, kp, kd, target_tau);
+            auto feedback_q = robot.get_joint_q();
+            auto feedback_dq = robot.get_joint_v();
+            if (feedback_q.size() != static_cast<size_t>(kTitatiDofs) ||
+                feedback_dq.size() != static_cast<size_t>(kTitatiDofs))
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                continue;
+            }
+
+            for (int idx = 0; idx < kTitatiDofs; ++idx)
+            {
+                const double pos_error = target_q[idx] - feedback_q[idx];
+                const double vel_error = target_dq[idx] - feedback_dq[idx];
+                command_tau[idx] = kp[idx] * pos_error + kd[idx] * vel_error;
+            }
+
+            robot.set_target_joint_t(command_tau);
 
             if (now - last_log >= std::chrono::seconds(1))
             {
-                const auto feedback = robot.get_joint_q();
-                const double reported = (feedback.size() == static_cast<size_t>(kTitatiDofs)) ? feedback[joint] : 0.0;
+                const double reported = feedback_q[joint];
+                const double reported_dq = feedback_dq[joint];
                 std::cout << std::fixed << std::setprecision(3)
                           << "  -> command=" << target_q[joint]
                           << " rad, measured=" << reported
+                          << " rad, vel=" << reported_dq
                           << " rad" << std::endl;
                 last_log = now;
             }
@@ -146,7 +166,23 @@ int main()
                                     std::chrono::duration<double>(kHoldDurationSec));
         while (g_running.load() && std::chrono::steady_clock::now() < hold_until)
         {
-            robot.set_target_joint_mit(neutral, target_dq, kp, kd, target_tau);
+            auto feedback_q = robot.get_joint_q();
+            auto feedback_dq = robot.get_joint_v();
+            if (feedback_q.size() != static_cast<size_t>(kTitatiDofs) ||
+                feedback_dq.size() != static_cast<size_t>(kTitatiDofs))
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                continue;
+            }
+
+            for (int idx = 0; idx < kTitatiDofs; ++idx)
+            {
+                const double pos_error = neutral[idx] - feedback_q[idx];
+                const double vel_error = 0.0 - feedback_dq[idx];
+                command_tau[idx] = kp[idx] * pos_error + kd[idx] * vel_error;
+            }
+
+            robot.set_target_joint_t(command_tau);
             std::this_thread::sleep_for(std::chrono::milliseconds(5));
         }
 

@@ -373,7 +373,7 @@ Pull the code and compile it. The process is the same as above.
   ```
 
   If ROS commands are not available or the package is not installed, the script automatically falls back to `cmake_build/bin/titati_canfd_router_node`. The node keeps listening for the control-board heartbeat and automatically issues the `SET_READY_NEXT -> FORCE_DIRECT` CAN RPC when needed.
-- The master Jetson (or your desktop) runs the programs from this repository and sends MIT commands for all 16 motors directly on the shared CAN-FD bus.
+- The master Jetson (or your desktop) runs the programs from this repository and streams direct torque commands for all 16 motors on the shared CAN-FD bus (the PD gains come from the RL policy or the standalone diagnostic).
 
 #### Verify all motors before RL
 
@@ -392,7 +392,7 @@ ros2 run rl_sar test_titati_motors
 ./cmake_build/bin/test_titati_motors
 ```
 
-The program sweeps each of the 16 joints one at a time with a small sinusoid (hips/knees at ±0.35 rad, feet at ±0.12 rad) while keeping the others steady. Watch every joint complete its cycle before moving on to the next. If any actuator fails to respond, revisit the CAN configuration and power before continuing to RL control.
+The program sweeps each of the 16 joints one at a time with a small sinusoid (hips/knees at ±0.35 rad, feet at ±0.12 rad) while keeping the others steady. PD torques are computed from live joint feedback, so you should see the tested joint track the command smoothly; if the measured angle printout stays constant the CAN routing or direct-mode handshake is still missing. Fix that before proceeding to RL control.
 
 #### Run RL control
 

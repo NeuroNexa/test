@@ -138,23 +138,31 @@ void RL_Real::GetState(RobotState<double> *state)
 
 void RL_Real::SetCommand(const RobotCommand<double> *command)
 {
-    std::vector<double> target_q(this->params.num_of_dofs, 0.0);
-    std::vector<double> target_dq(this->params.num_of_dofs, 0.0);
-    std::vector<double> target_tau(this->params.num_of_dofs, 0.0);
-    std::vector<double> target_kp(this->params.num_of_dofs, 0.0);
-    std::vector<double> target_kd(this->params.num_of_dofs, 0.0);
+    std::vector<double> commanded_tau(this->params.num_of_dofs, 0.0);
 
     for (int i = 0; i < this->params.num_of_dofs; ++i)
     {
-        int idx = this->params.joint_mapping[i];
-        target_q[idx] = command->motor_command.q[i];
-        target_dq[idx] = command->motor_command.dq[i];
-        target_tau[idx] = command->motor_command.tau[i];
-        target_kp[idx] = command->motor_command.kp[i];
-        target_kd[idx] = command->motor_command.kd[i];
+        const int idx = this->params.joint_mapping[i];
+        const double kp = command->motor_command.kp[i];
+        const double kd = command->motor_command.kd[i];
+        const double desired_q = command->motor_command.q[i];
+        const double desired_dq = command->motor_command.dq[i];
+        const double ff_tau = command->motor_command.tau[i];
+
+        const double measured_q = (idx < static_cast<int>(latest_q_.size())) ? latest_q_[idx] : 0.0;
+        const double measured_dq = (idx < static_cast<int>(latest_dq_.size())) ? latest_dq_[idx] : 0.0;
+
+        const double torque = kp * (desired_q - measured_q) +
+                              kd * (desired_dq - measured_dq) +
+                              ff_tau;
+
+        if (idx < static_cast<int>(commanded_tau.size()))
+        {
+            commanded_tau[idx] = torque;
+        }
     }
 
-    robot_->set_target_joint_mit(target_q, target_dq, target_kp, target_kd, target_tau);
+    robot_->set_target_joint_t(commanded_tau);
 }
 
 void RL_Real::RobotControl()
