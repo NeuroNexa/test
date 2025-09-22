@@ -38,12 +38,7 @@ public:
         float forward_accel;
         float yaw_accel;
     };
-    explicit TitatiRobot(size_t num_motors, const std::string& interface)
-    {
-        can_receiver_ = std::make_unique<can_device::MotorsImuCanReceiveApi>(num_motors, interface);
-        can_sender_ = std::make_unique<can_device::MotorsCanSendApi>(num_motors, interface);
-        motor_num_ = num_motors;
-    }
+    explicit TitatiRobot(size_t num_motors, const std::string& interface);
 
     const std::vector<can_device::api_motor_in_t>& get_motor_packets() const;
     const can_device::api_imu_data_t& get_raw_imu() const;

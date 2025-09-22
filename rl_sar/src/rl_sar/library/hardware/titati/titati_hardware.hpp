@@ -67,7 +67,7 @@ private:
     std::unique_ptr<TitatiRobot> robot_;
 
     std::atomic<bool> initialized_{false};
-    std::atomic<uint64_t> sequence_counter_{0U};
+    mutable std::atomic<uint64_t> sequence_counter_{0U};
 };
 
 }  // namespace titati::hardware
