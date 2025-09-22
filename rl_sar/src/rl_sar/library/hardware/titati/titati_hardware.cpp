@@ -1,7 +1,9 @@
 #include "titati_hardware.hpp"
 
+#include <chrono>
 #include <iostream>
 #include <stdexcept>
+#include <thread>
 
 namespace titati::hardware
 {
@@ -115,7 +117,47 @@ bool TitatiHardware::SetDirectControlMode(bool enable)
         return false;
     }
 
-    return robot_->set_motors_sdk(enable);
+    if (!enable)
+    {
+        return robot_->set_motors_sdk(false);
+    }
+
+    constexpr int kMaxAttempts = 6;
+    constexpr auto kAttemptPause = std::chrono::milliseconds(150);
+    constexpr auto kStreamTimeout = std::chrono::milliseconds(800);
+    constexpr auto kPollInterval = std::chrono::milliseconds(50);
+
+    for (int attempt = 0; attempt < kMaxAttempts; ++attempt)
+    {
+        if (!robot_->set_motors_sdk(true))
+        {
+            std::this_thread::sleep_for(kAttemptPause);
+            continue;
+        }
+
+        const auto deadline = std::chrono::steady_clock::now() + kStreamTimeout;
+        while (std::chrono::steady_clock::now() < deadline)
+        {
+            const auto& packets = robot_->get_motor_packets();
+            std::size_t ready = 0;
+            for (std::size_t i = 0; i < motor_count_ && i < packets.size(); ++i)
+            {
+                if (packets[i].timestamp != 0U)
+                {
+                    ++ready;
+                }
+            }
+
+            if (ready >= motor_count_)
+            {
+                return true;
+            }
+
+            std::this_thread::sleep_for(kPollInterval);
+        }
+    }
+
+    return false;
 }
 
 }  // namespace titati::hardware
