@@ -87,6 +87,7 @@ namespace can_device
       else if (size % 6 == 0)
         leg_dof_ = 3;
       leg_num_ = size / leg_dof_;
+      board_count_ = std::max<size_t>(1U, size / 8U);
     }
     ~MotorsCanSendApi() = default;
     bool send_motors_can(std::vector<motor_out> motors);
@@ -114,6 +115,7 @@ namespace can_device
       return std::move(tv.tv_sec * 1000000 + tv.tv_usec);
     }
     size_t leg_dof_{4}, leg_num_{2};
+    size_t board_count_{1};
   };
 } // namespace can_device
 

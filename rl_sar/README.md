@@ -372,7 +372,7 @@ Pull the code and compile it. The process is the same as above.
   rl_sar/src/rl_sar/scripts/run_titati_canfd_router.sh
   ```
 
-  If ROS commands are not available or the package is not installed, the script automatically falls back to `cmake_build/bin/titati_canfd_router_node`. The node keeps listening for the control-board heartbeat and automatically issues the `SET_READY_NEXT -> FORCE_DIRECT` CAN RPC when needed.
+  If ROS commands are not available or the package is not installed, the script automatically falls back to `cmake_build/bin/titati_canfd_router_node`. The node keeps listening for the control-board heartbeat and automatically issues the `SET_READY_NEXT -> FORCE_DIRECT` CAN RPC when needed. When the router is in pass-through mode the master Jetson must broadcast the same RPC frame to both motor controllers; the bundled Titati SDK does this automatically for 16-DOF builds so joints **0-7** (master MCU) and **8-15** (slave MCU) enter direct mode together.
 - The master Jetson (or your desktop) runs the programs from this repository and streams direct torque commands for all 16 motors on the shared CAN-FD bus (the PD gains come from the RL policy or the standalone diagnostic).
 
 #### Verify all motors before RL
@@ -401,7 +401,7 @@ Key options:
 - `--velocity-kd <gain>`: derivative gain used in velocity mode to close the MIT loop (ignored for torque mode).
 - `--log-interval <sec>`: how often to print the measured position/velocity/torque readbacks.
 
-The diagnostic repeatedly requests forced-direct mode, waits for MCU telemetry, and prints live readbacks while the command is active. Before sending any torque it prints which joints are already streaming feedback (timestamped packets) so you can confirm that all **16** actuators are online; missing IDs usually indicate that the CAN-FD router has not yet latched into forced-direct mode. If a joint never reports a change in torque/position the tool flags it at the end of the sweep and re-sends the direct-mode RPC so you can immediately retry once the CAN-FD router or MCU is ready.
+The diagnostic repeatedly requests forced-direct mode, waits for MCU telemetry, and prints live readbacks while the command is active. Before sending any torque it prints which joints are already streaming feedback (timestamped packets) so you can confirm that all **16** actuators are online. If the tool reports that joints `0-7` are missing it means the master-side controller is still in MCU mode; if joints `8-15` are missing the slave-side controller (behind the CAN-FD router) is still filtering commands. In both cases the test automatically replays the direct-mode RPC to both boards so you can immediately retry once the router or MCU is ready.
 
 #### Run RL control
 
