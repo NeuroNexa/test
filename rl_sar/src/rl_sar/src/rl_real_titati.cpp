@@ -6,6 +6,8 @@
 #include "rl_real_titati.hpp"
 
 #include <chrono>
+#include <csignal>
+#include <cstdlib>
 #include <functional>
 #include <iostream>
 #include <thread>
@@ -314,3 +316,32 @@ void RL_Real::CmdvelCallback(
     this->cmd_vel = *msg;
 }
 #endif
+
+#if defined(USE_ROS1) && defined(USE_ROS)
+void signalHandler(int signum)
+{
+    ros::shutdown();
+    std::exit(0);
+}
+#endif
+
+int main(int argc, char **argv)
+{
+#if defined(USE_ROS1) && defined(USE_ROS)
+    signal(SIGINT, signalHandler);
+    ros::init(argc, argv, "rl_sar");
+    RL_Real rl_sar;
+    ros::spin();
+#elif defined(USE_ROS2) && defined(USE_ROS)
+    rclcpp::init(argc, argv);
+    rclcpp::spin(std::make_shared<RL_Real>());
+    rclcpp::shutdown();
+#elif defined(USE_CMAKE) || !defined(USE_ROS)
+    RL_Real rl_sar;
+    while (true)
+    {
+        std::this_thread::sleep_for(std::chrono::seconds(10));
+    }
+#endif
+    return 0;
+}
