@@ -1,13 +1,13 @@
 /*
- * Titati joint posture bring-up diagnostic.
- * Commands the 16 Titati joints to the default standing pose and holds it.
+ * Copyright (c) 2024-2025 Ziqi Fan
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 #include "tita_robot/tita_robot.hpp"
 
-#include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <csignal>
 #include <iomanip>
 #include <iostream>
@@ -24,6 +24,41 @@ void SignalHandler(int)
 }
 
 constexpr int kTitatiDofs = 16;
+constexpr double kSweepFrequencyHz = 0.4;
+constexpr double kSweepDurationSec = 6.0;
+constexpr double kHoldDurationSec = 1.0;
+constexpr double kTwoPi = 6.28318530717958647692;
+
+std::vector<double> BuildDefaultGains()
+{
+    std::vector<double> gains(kTitatiDofs, 40.0);
+    for (int idx = 12; idx < kTitatiDofs; ++idx)
+    {
+        gains[idx] = 5.0;
+    }
+    return gains;
+}
+
+std::vector<double> BuildDefaultDamping()
+{
+    std::vector<double> damping(kTitatiDofs, 2.0);
+    for (int idx = 12; idx < kTitatiDofs; ++idx)
+    {
+        damping[idx] = 0.5;
+    }
+    return damping;
+}
+
+std::vector<double> MotorAmplitudeProfile()
+{
+    std::vector<double> profile(kTitatiDofs, 0.35);
+    for (int idx = 12; idx < kTitatiDofs; ++idx)
+    {
+        profile[idx] = 0.12;
+    }
+    return profile;
+}
+
 } // namespace
 
 int main()
@@ -31,33 +66,17 @@ int main()
     std::signal(SIGINT, SignalHandler);
     std::signal(SIGTERM, SignalHandler);
 
-    std::cout << "[Titati Test] Initialising CAN interface..." << std::endl;
+    std::cout << "[Titati Motor Test] Initialising CAN interface..." << std::endl;
     tita_robot robot(kTitatiDofs);
 
     if (!robot.set_motors_sdk(true))
     {
-        std::cerr << "[Titati Test] Failed to switch MCU to direct control mode."
-                  << " Please verify the slave Jetson is in forced direct mode." << std::endl;
+        std::cerr << "[Titati Motor Test] Failed to switch MCU to direct control mode."
+                  << " Please verify the slave Jetson is forwarding CAN frames." << std::endl;
     }
 
-    const std::vector<double> default_q = {
-        0.00, 0.40, -0.917,
-        0.00, 0.40, -0.917,
-        0.00, -0.40, 0.917,
-        0.00, -0.40, 0.917,
-        0.00, 0.00, 0.00, 0.00
-    };
-
-    std::vector<double> kp(kTitatiDofs, 40.0);
-    std::vector<double> kd(kTitatiDofs, 2.0);
-    for (int idx = 12; idx < kTitatiDofs; ++idx)
-    {
-        kp[idx] = 5.0;
-        kd[idx] = 0.5;
-    }
-
-    std::cout << "[Titati Test] Waiting for joint state feedback..." << std::endl;
-    std::vector<double> measured = robot.get_joint_q();
+    std::cout << "[Titati Motor Test] Waiting for joint state feedback..." << std::endl;
+    auto measured = robot.get_joint_q();
     const auto timeout = std::chrono::steady_clock::now() + std::chrono::seconds(3);
     while (measured.size() != static_cast<size_t>(kTitatiDofs) && std::chrono::steady_clock::now() < timeout)
     {
@@ -67,54 +86,78 @@ int main()
 
     if (measured.size() != static_cast<size_t>(kTitatiDofs))
     {
-        std::cout << "[Titati Test] Joint feedback unavailable, assuming zero start pose." << std::endl;
+        std::cout << "[Titati Motor Test] Joint feedback unavailable, assuming zero start pose." << std::endl;
         measured.assign(kTitatiDofs, 0.0);
     }
 
-    const double ramp_duration = 3.0;
+    const auto kp = BuildDefaultGains();
+    const auto kd = BuildDefaultDamping();
+    const auto amplitude = MotorAmplitudeProfile();
+
     std::vector<double> target_q = measured;
     std::vector<double> target_dq(kTitatiDofs, 0.0);
     std::vector<double> target_tau(kTitatiDofs, 0.0);
 
-    std::cout << "[Titati Test] Bringing robot to default standing posture. Press Ctrl+C to hold immediately." << std::endl;
+    std::cout << "[Titati Motor Test] Exercising each joint individually." << std::endl;
+    std::cout << "[Titati Motor Test] Press Ctrl+C at any time to stop and hold position." << std::endl;
 
-    auto start_time = std::chrono::steady_clock::now();
-    auto last_log = start_time;
-
-    while (g_running.load())
+    for (int joint = 0; joint < kTitatiDofs && g_running.load(); ++joint)
     {
-        auto now = std::chrono::steady_clock::now();
-        double elapsed = std::chrono::duration<double>(now - start_time).count();
-        double alpha = std::min(elapsed / ramp_duration, 1.0);
+        auto neutral = measured;
+        std::cout << "\n[Joint " << joint << "] sweeping +/-" << amplitude[joint] << " rad" << std::endl;
 
-        for (int i = 0; i < kTitatiDofs; ++i)
+        const auto start_time = std::chrono::steady_clock::now();
+        auto last_log = start_time;
+
+        while (g_running.load())
         {
-            target_q[i] = measured[i] + alpha * (default_q[i] - measured[i]);
+            const auto now = std::chrono::steady_clock::now();
+            const double elapsed = std::chrono::duration<double>(now - start_time).count();
+            if (elapsed >= kSweepDurationSec)
+            {
+                break;
+            }
+
+            const double phase = kTwoPi * kSweepFrequencyHz * elapsed;
+            const double offset = amplitude[joint] * std::sin(phase);
+
+            target_q = neutral;
+            target_q[joint] = neutral[joint] + offset;
+
+            robot.set_target_joint_mit(target_q, target_dq, kp, kd, target_tau);
+
+            if (now - last_log >= std::chrono::seconds(1))
+            {
+                const auto feedback = robot.get_joint_q();
+                const double reported = (feedback.size() == static_cast<size_t>(kTitatiDofs)) ? feedback[joint] : 0.0;
+                std::cout << std::fixed << std::setprecision(3)
+                          << "  -> command=" << target_q[joint]
+                          << " rad, measured=" << reported
+                          << " rad" << std::endl;
+                last_log = now;
+            }
+
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
         }
 
-        robot.set_target_joint_mit(target_q, target_dq, kp, kd, target_tau);
-
-        if (now - last_log >= std::chrono::seconds(1))
+        std::cout << "[Joint " << joint << "] hold neutral" << std::endl;
+        const auto hold_until = std::chrono::steady_clock::now() +
+                                std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                                    std::chrono::duration<double>(kHoldDurationSec));
+        while (g_running.load() && std::chrono::steady_clock::now() < hold_until)
         {
-            auto current = robot.get_joint_q();
-            std::cout << std::fixed << std::setprecision(3)
-                      << "[Titati Test] progress=" << (alpha * 100.0)
-                      << "% | FR_hip=" << (current.size() > 0 ? current[0] : 0.0)
-                      << " rad, RL_foot=" << (current.size() > 15 ? current[15] : 0.0)
-                      << " rad" << std::endl;
-            last_log = now;
+            robot.set_target_joint_mit(neutral, target_dq, kp, kd, target_tau);
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
         }
 
-        if (alpha >= 1.0)
+        measured = robot.get_joint_q();
+        if (measured.size() != static_cast<size_t>(kTitatiDofs))
         {
-            robot.set_target_joint_mit(default_q, target_dq, kp, kd, target_tau);
+            measured = neutral;
         }
-
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
-    std::cout << "\n[Titati Test] Holding default posture." << std::endl;
-    robot.set_target_joint_mit(default_q, target_dq, kp, kd, target_tau);
+    std::cout << "\n[Titati Motor Test] Stopping. Commanding zero torque." << std::endl;
     robot.set_target_joint_t(std::vector<double>(kTitatiDofs, 0.0));
 
     return 0;

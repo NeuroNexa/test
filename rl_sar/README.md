@@ -392,7 +392,7 @@ ros2 run rl_sar test_titati_motors
 ./cmake_build/bin/test_titati_motors
 ```
 
-The program eases all joints from their current angles into the default standing pose and holds it. Use it to confirm every actuator responds before attempting RL control. If any joint fails to move, revisit the CAN configuration and power before continuing.
+The program sweeps each of the 16 joints one at a time with a small sinusoid (hips/knees at ±0.35 rad, feet at ±0.12 rad) while keeping the others steady. Watch every joint complete its cycle before moving on to the next. If any actuator fails to respond, revisit the CAN configuration and power before continuing to RL control.
 
 #### Run RL control
 

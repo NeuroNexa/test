@@ -52,39 +52,48 @@ add_definitions(-DBOOST_BIND_GLOBAL_PLACEHOLDERS)
 if(NOT BUILD_STANDALONE)
     if($ENV{ROS_DISTRO} MATCHES "noetic")
         set(catkin_components
-            controller_manager
-            genmsg
-            joint_state_controller
-            robot_state_publisher
             roscpp
-            std_msgs
-            tf
             geometry_msgs
-            robot_msgs
-            robot_joint_controller
-            rospy
         )
         if(NOT HARDWARE_ONLY)
-            list(APPEND catkin_components gazebo_ros)
+            list(APPEND catkin_components
+                controller_manager
+                joint_state_controller
+                robot_state_publisher
+                std_msgs
+                tf
+                robot_msgs
+                robot_joint_controller
+                rospy
+                gazebo_ros
+            )
         endif()
         find_package(catkin REQUIRED COMPONENTS ${catkin_components})
-        catkin_package(
-            CATKIN_DEPENDS
-            robot_joint_controller
-            rospy
-        )
+        if(NOT HARDWARE_ONLY)
+            catkin_package(
+                CATKIN_DEPENDS
+                    robot_joint_controller
+                    rospy
+            )
+        else()
+            catkin_package(
+                CATKIN_DEPENDS
+                    roscpp
+                    geometry_msgs
+            )
+        endif()
     elseif($ENV{ROS_DISTRO} MATCHES "foxy|humble")
         find_package(ament_cmake REQUIRED)
-        find_package(joint_state_broadcaster REQUIRED)
-        find_package(robot_state_publisher REQUIRED)
         find_package(rclcpp REQUIRED)
-        find_package(std_msgs REQUIRED)
-        find_package(robot_msgs REQUIRED)
-        find_package(robot_joint_controller REQUIRED)
-        find_package(rclpy REQUIRED)
-        find_package(std_srvs REQUIRED)
         find_package(geometry_msgs REQUIRED)
         if(NOT HARDWARE_ONLY)
+            find_package(joint_state_broadcaster REQUIRED)
+            find_package(robot_state_publisher REQUIRED)
+            find_package(std_msgs REQUIRED)
+            find_package(robot_msgs REQUIRED)
+            find_package(robot_joint_controller REQUIRED)
+            find_package(rclpy REQUIRED)
+            find_package(std_srvs REQUIRED)
             find_package(gazebo_ros REQUIRED)
             find_package(gazebo_msgs REQUIRED)
         endif()
