@@ -377,22 +377,29 @@ Pull the code and compile it. The process is the same as above.
 
 #### Verify all motors before RL
 
-After building the workspace, run the test executable to ensure that the 16 actuators respond correctly.
+After building the workspace, run the test executable to ensure that each actuator responds correctly. You can now select which joints to exercise and override the motion parameters from the command line:
 
 ```bash
 # ROS1
 source devel/setup.bash
-rosrun rl_sar test_titati_motors
+rosrun rl_sar test_titati_motors --joint 3 --joint 7 --frequency 0.6 --amplitude 0.25
 
 # ROS2
 source install/setup.bash
-ros2 run rl_sar test_titati_motors
+ros2 run rl_sar test_titati_motors --joint 10 --amp 10:0.15 --kp 30 --kd 1.5
 
 # CMake
-./cmake_build/bin/test_titati_motors
+./cmake_build/bin/test_titati_motors --joint 5 --duration 8 --hold 2
 ```
 
-The program sweeps each of the 16 joints one at a time with a small sinusoid (hips/knees at ±0.35 rad, feet at ±0.12 rad) while keeping the others steady. PD torques are computed from live joint feedback, so you should see the tested joint track the command smoothly; if the measured angle printout stays constant the CAN routing or direct-mode handshake is still missing. Fix that before proceeding to RL control.
+Key options:
+
+- `--joint <index>`: choose one or more joints (0-15). Use `--all` to reproduce the legacy sequential sweep.
+- `--frequency`, `--duration`, `--hold`: tune the sinusoid frequency, sweep duration and neutral hold time.
+- `--amplitude`, `--ankle-amplitude`, `--amp joint:value`: adjust motion amplitude globally, for ankles (12-15) or per joint.
+- `--kp`, `--ankle-kp`, `--kp-joint joint:value` and the analogous `kd` flags: retune the PD gains.
+
+PD torques are computed from live joint feedback. If the measured angle printout stays constant, the CAN routing or direct-mode handshake is still missing—fix that before proceeding to RL control.
 
 #### Run RL control
 

@@ -377,22 +377,29 @@ source ~/.bashrc
 
 #### 电机连通性自检
 
-编译完成后，先运行测试程序确认 16 个电机均可运动。
+编译完成后，先运行测试程序确认每个电机都能响应。程序现在支持在命令行灵活指定关节和参数：
 
 ```bash
 # ROS1
 source devel/setup.bash
-rosrun rl_sar test_titati_motors
+rosrun rl_sar test_titati_motors --joint 3 --joint 7 --frequency 0.6 --amplitude 0.25
 
 # ROS2
 source install/setup.bash
-ros2 run rl_sar test_titati_motors
+ros2 run rl_sar test_titati_motors --joint 10 --amp 10:0.15 --kp 30 --kd 1.5
 
 # CMake
-./cmake_build/bin/test_titati_motors
+./cmake_build/bin/test_titati_motors --joint 5 --duration 8 --hold 2
 ```
 
-该程序会依次让 16 个关节逐个做小幅正弦摆动（髋/膝幅值 ±0.35 rad，足端 ±0.12 rad），其余关节保持不动。控制器根据实时反馈计算 PD 力矩，因此正在测试的关节会平滑跟随；如果终端打印的测量角度始终不变，说明 CAN 直通或直驱模式握手仍未完成，请先排查再进行 RL 控制实验。
+常用参数说明：
+
+- `--joint <index>`：指定需要测试的关节（0-15，可重复多次）；使用 `--all` 可恢复旧版的逐关节扫描。
+- `--frequency`、`--duration`、`--hold`：分别设置正弦频率、单次扫描时长和回到中立后的保持时间。
+- `--amplitude`、`--ankle-amplitude`、`--amp 关节:幅值`：全局、踝关节或单个关节的摆动幅度。
+- `--kp`、`--ankle-kp`、`--kp-joint 关节:增益` 以及对应的 `kd` 选项：调整 PD 增益。
+
+控制器会根据实时反馈计算 PD 力矩。如果终端打印的测量角度始终不变，说明 CAN 直通或直驱模式握手仍未完成，请先排查再进行 RL 控制实验。
 
 #### 运行 RL 控制
 
