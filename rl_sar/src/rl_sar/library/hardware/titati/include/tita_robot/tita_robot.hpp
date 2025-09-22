@@ -1,6 +1,8 @@
 #include "can_receiver.hpp"
 #include "can_sender.hpp"
 
+#include <chrono>
+
 class tita_robot
 {
 public:
@@ -52,6 +54,21 @@ public:
      * @return std::vector<double>: current joint torques in Newton meters.
      */
     std::vector<double> get_joint_t() const;
+    /**
+     * @brief Wait until joint feedback has been received for every motor.
+     *
+     * The Titati MCU streams joint telemetry continuously once the CAN-FD
+     * router has entered forced-direct mode.  During cold boot, however, the
+     * MCU may require additional time to finish self checks.  This helper can
+     * be used after requesting direct mode to block until at least one packet
+     * has been observed for each joint.
+     *
+     * @param timeout maximum duration to wait before giving up.
+     * @param poll_interval polling period while waiting for telemetry.
+     * @return true if feedback from every joint was observed before timeout.
+     */
+    bool wait_for_feedback(std::chrono::milliseconds timeout,
+                           std::chrono::milliseconds poll_interval = std::chrono::milliseconds(20)) const;
 
     /**
      * @brief Get the current joint status.

@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <csignal>
 #include <cctype>
 #include <iomanip>
@@ -260,24 +261,46 @@ int main(int argc, char **argv)
     std::cout << "[Titati Motor Test] Initialising CAN interface..." << std::endl;
     tita_robot robot(kTitatiDofs);
 
-    if (!robot.set_motors_sdk(true))
+    auto ensure_direct_mode = [&robot]() {
+        constexpr int kAttempts = 5;
+        constexpr auto kAttemptInterval = std::chrono::milliseconds(250);
+        constexpr auto kFeedbackTimeout = std::chrono::milliseconds(800);
+
+        for (int attempt = 0; attempt < kAttempts; ++attempt)
+        {
+            if (!robot.set_motors_sdk(true))
+            {
+                std::cerr << "[Titati Motor Test] Warning: failed to send direct-mode RPC command." << std::endl;
+            }
+
+            if (robot.wait_for_feedback(kFeedbackTimeout))
+            {
+                return true;
+            }
+
+            std::cout << "[Titati Motor Test] Waiting for MCU telemetry (attempt " << (attempt + 1)
+                      << "/" << kAttempts << ")..." << std::endl;
+            std::this_thread::sleep_for(kAttemptInterval);
+        }
+
+        return robot.wait_for_feedback(std::chrono::milliseconds(100));
+    };
+
+    if (!ensure_direct_mode())
     {
-        std::cerr << "[Titati Motor Test] Failed to switch MCU to direct control mode."
-                  << " Ensure the slave Jetson is forwarding CAN frames." << std::endl;
+        std::cerr << "[Titati Motor Test] Warning: unable to confirm forced-direct mode for all joints."
+                  << " Commands may be ignored by the MCU." << std::endl;
     }
 
     std::cout << "[Titati Motor Test] Waiting for joint state feedback..." << std::endl;
-    auto measured = robot.get_joint_q();
-    const auto timeout = std::chrono::steady_clock::now() + std::chrono::seconds(3);
-    while (measured.size() != static_cast<size_t>(kTitatiDofs) && std::chrono::steady_clock::now() < timeout)
+    if (!robot.wait_for_feedback(std::chrono::seconds(2)))
     {
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        measured = robot.get_joint_q();
+        std::cout << "[Titati Motor Test] Joint feedback unavailable for some motors, defaulting to zero pose." << std::endl;
     }
 
+    auto measured = robot.get_joint_q();
     if (measured.size() != static_cast<size_t>(kTitatiDofs))
     {
-        std::cout << "[Titati Motor Test] Joint feedback unavailable, assuming zero pose." << std::endl;
         measured.assign(kTitatiDofs, 0.0);
     }
 
@@ -303,6 +326,7 @@ int main(int argc, char **argv)
     std::vector<double> zero_gains(kTitatiDofs, 0.0);
     std::vector<double> kd_values(kTitatiDofs, 0.0);
     std::vector<double> zero_tau(kTitatiDofs, 0.0);
+    std::vector<int> unresponsive_joints;
 
     for (int joint : options.joints)
     {
@@ -316,6 +340,10 @@ int main(int argc, char **argv)
 
         const auto start_time = std::chrono::steady_clock::now();
         auto last_log = start_time;
+        double min_tau = std::numeric_limits<double>::infinity();
+        double max_tau = -std::numeric_limits<double>::infinity();
+        double min_position = std::numeric_limits<double>::infinity();
+        double max_position = -std::numeric_limits<double>::infinity();
 
         while (g_running.load())
         {
@@ -358,6 +386,18 @@ int main(int argc, char **argv)
                 feedback_tau = robot.get_joint_t();
             }
 
+            if (feedback_tau.size() == static_cast<size_t>(kTitatiDofs))
+            {
+                min_tau = std::min(min_tau, feedback_tau[joint]);
+                max_tau = std::max(max_tau, feedback_tau[joint]);
+            }
+
+            if (feedback_q.size() == static_cast<size_t>(kTitatiDofs))
+            {
+                min_position = std::min(min_position, feedback_q[joint]);
+                max_position = std::max(max_position, feedback_q[joint]);
+            }
+
             if (std::chrono::duration<double>(now - last_log).count() >= options.log_interval_sec)
             {
                 const auto position = (feedback_q.size() == static_cast<size_t>(kTitatiDofs)) ? feedback_q[joint]
@@ -379,6 +419,26 @@ int main(int argc, char **argv)
         torque_command.assign(kTitatiDofs, 0.0);
         robot.set_target_joint_t(torque_command);
 
+        const double torque_range = max_tau - min_tau;
+        const double position_range = max_position - min_position;
+        const double torque_threshold = std::max(0.2, std::abs(options.command_value) * 0.1);
+        const double position_threshold = (options.mode == CommandMode::Velocity) ? 0.05 : 0.01;
+
+        if (!(std::isfinite(min_tau) && std::isfinite(max_tau)))
+        {
+            unresponsive_joints.push_back(joint);
+            std::cout << "[Joint " << joint << "] WARNING: no torque feedback received during the command window." << std::endl;
+            robot.set_motors_sdk(true);
+        }
+        else if (torque_range < torque_threshold && position_range < position_threshold)
+        {
+            unresponsive_joints.push_back(joint);
+            std::cout << "[Joint " << joint << "] WARNING: measured torque changed by " << torque_range
+                      << " Nm and position by " << position_range
+                      << " rad. The MCU may still control this joint." << std::endl;
+            robot.set_motors_sdk(true);
+        }
+
         if (options.rest_duration_sec > 0.0)
         {
             std::cout << "[Joint " << joint << "] resting for " << options.rest_duration_sec << " s" << std::endl;
@@ -394,6 +454,20 @@ int main(int argc, char **argv)
 
     std::cout << "\n[Titati Motor Test] Stopping. Commanding zero torque." << std::endl;
     robot.set_target_joint_t(std::vector<double>(kTitatiDofs, 0.0));
+
+    if (!unresponsive_joints.empty())
+    {
+        std::cout << "[Titati Motor Test] WARNING: The following joints showed minimal response:";
+        for (int joint : unresponsive_joints)
+        {
+            std::cout << ' ' << joint;
+        }
+        std::cout << "\n[Titati Motor Test] Verify the slave CAN-FD router is in forcedirect mode and rerun the diagnostic." << std::endl;
+    }
+    else
+    {
+        std::cout << "[Titati Motor Test] All tested joints reported torque/position changes." << std::endl;
+    }
 
     return 0;
 }

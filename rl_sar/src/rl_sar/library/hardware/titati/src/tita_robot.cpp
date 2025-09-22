@@ -30,6 +30,29 @@ std::vector<double> tita_robot::get_joint_t() const
   return joint;
 }
 
+bool tita_robot::wait_for_feedback(std::chrono::milliseconds timeout,
+                                   std::chrono::milliseconds poll_interval) const
+{
+  const auto deadline = std::chrono::steady_clock::now() + timeout;
+  while (std::chrono::steady_clock::now() < deadline) {
+    auto infos = can_receiver_->get_motors_in();
+    if (infos->size() == motor_num_) {
+      bool all_ready = true;
+      for (const auto & info : *infos) {
+        if (info.timestamp == 0U) {
+          all_ready = false;
+          break;
+        }
+      }
+      if (all_ready) {
+        return true;
+      }
+    }
+    std::this_thread::sleep_for(poll_interval);
+  }
+  return false;
+}
+
 std::vector<uint8_t> tita_robot::get_joint_status() const  // TODO: why 8
 {
   auto infos = can_receiver_->get_motors_status();
@@ -112,18 +135,36 @@ bool tita_robot::set_target_joint_mit(
 
 bool tita_robot::set_motors_sdk(bool if_sdk)
 {
+  constexpr int kMaxAttempts = 5;
+  constexpr auto kBetweenAttempts = std::chrono::milliseconds(200);
+  constexpr auto kFeedbackWindow = std::chrono::milliseconds(300);
+
   can_device::RpcRequest rpc_request;
   rpc_request.key = can_device::SET_READY_NEXT;
-  rpc_request.value = READY_WAITING;
-  bool return_ok = can_sender_->send_command_can_rpc_request(rpc_request);
-  std::this_thread::sleep_for(std::chrono::microseconds(100));
-  if (if_sdk) {
-    rpc_request.value = FORCE_DIRECT;
-  } else {
-    rpc_request.value = AUTO_LOCOMOTION;
+  const uint32_t target_value = if_sdk ? FORCE_DIRECT : AUTO_LOCOMOTION;
+  bool success = true;
+
+  const int attempts = if_sdk ? kMaxAttempts : 1;
+  for (int attempt = 0; attempt < attempts; ++attempt) {
+    rpc_request.value = READY_WAITING;
+    success &= can_sender_->send_command_can_rpc_request(rpc_request);
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+    rpc_request.value = target_value;
+    success &= can_sender_->send_command_can_rpc_request(rpc_request);
+
+    if (!if_sdk) {
+      break;
+    }
+
+    if (wait_for_feedback(kFeedbackWindow)) {
+      break;
+    }
+
+    std::this_thread::sleep_for(kBetweenAttempts);
   }
-  return_ok &= can_sender_->send_command_can_rpc_request(rpc_request);
-  return return_ok;
+
+  return success;
 }
 
 bool tita_robot::set_rc_input(ChannelInput input)

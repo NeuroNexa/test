@@ -52,6 +52,10 @@ RL_Real::RL_Real()
         std::cout << LOGGER::WARNING << "Failed to switch Titati to SDK (direct) mode."
                   << " Please ensure the MCU is ready." << std::endl;
     }
+    else if (!robot_->wait_for_feedback(std::chrono::seconds(1)))
+    {
+        std::cout << LOGGER::WARNING << "Timed out waiting for Titati joint telemetry after requesting direct mode." << std::endl;
+    }
 
     latest_q_.assign(this->params.num_of_dofs, 0.0);
     latest_dq_.assign(this->params.num_of_dofs, 0.0);
