@@ -127,10 +127,18 @@ To clean the build, use the following command. This will remove all compiled out
 ./build.sh -c  # or ./build.sh --clean
 ```
 
-If simulation is not needed and you only want to run on the robot, you can compile using CMake while disabling ROS (the compiled executables will be in `cmake_build/bin` and libraries in `cmake_build/lib`):
+If simulation is not needed and you only want to run on the robot, you can compile using CMake while disabling ROS (the compiled executables will be in `cmake_build/bin` and libraries in `cmake_build/lib`).
+
+By default, the CMake build focuses on Titati hardware only and skips third-party Unitree/Lite3/L4W4 dependencies. You can keep this default behavior or re-enable every target by turning off the `BUILD_TITATI_ONLY` option.
 
 ```bash
 ./build.sh -m  # or ./build.sh --cmake
+```
+
+To compile all hardware targets, including Unitree/Lite3/L4W4, pass `-DBUILD_TITATI_ONLY=OFF` to CMake:
+
+```bash
+./build.sh -m -- -DBUILD_TITATI_ONLY=OFF
 ```
 
 For detailed usage instructions, you can check them via `./build.sh -h`:

@@ -127,10 +127,18 @@ sudo ldconfig
 ./build.sh -c  # or ./build.sh --clean
 ```
 
-如果不需要仿真，只在机器人上运行，可以使用CMake进行编译，同时禁用ROS（编译生成的可执行文件在`cmake_build/bin`中，库在`cmake_build/lib`中）
+如果不需要仿真，只在机器人上运行，可以使用CMake进行编译，同时禁用ROS（编译生成的可执行文件在`cmake_build/bin`中，库在`cmake_build/lib`中）。
+
+默认情况下，CMake 构建只会针对 Titati 硬件，并跳过 Unitree/Lite3/L4W4 等第三方依赖。如果需要完整构建所有硬件目标，可以关闭 `BUILD_TITATI_ONLY` 选项。
 
 ```bash
 ./build.sh -m  # or ./build.sh --cmake
+```
+
+若想编译包含 Unitree/Lite3/L4W4 在内的全部硬件目标，可在 CMake 命令后追加 `-DBUILD_TITATI_ONLY=OFF`：
+
+```bash
+./build.sh -m -- -DBUILD_TITATI_ONLY=OFF
 ```
 
 详细的使用说明可以通过`./build.sh -h`查看
