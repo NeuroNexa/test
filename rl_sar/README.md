@@ -127,17 +127,17 @@ To clean the build, use the following command. This will remove all compiled out
 ./build.sh -c  # or ./build.sh --clean
 ```
 
-If simulation is not needed and you only want to run on the robot, you can compile using CMake while disabling ROS. This produces standalone binaries in `cmake_build/bin` (and libraries in `cmake_build/lib`) that the helper scripts automatically pick up when no ROS overlay is sourced:
+If simulation is not needed and you only want to run on the robot, use the hardware preset. When a ROS workspace is sourced the script builds `rl_sar` via catkin/colcon while disabling Gazebo-only targets; otherwise it falls back to the standalone CMake toolchain and drops the binaries in `cmake_build/bin` (and libraries in `cmake_build/lib`):
 
 ```bash
 ./build.sh -m  # or ./build.sh --cmake
 ```
 
 > [!IMPORTANT]
-> The standalone CMake toolchain now builds only the Titati hardware stack (CAN-FD router, 16-motor diagnostic, and `rl_real_titati`). Drivers for Unitree, Lite3, and other robots have been removed from this workspace.
+> The hardware preset now builds only the Titati stack (CAN-FD router, 16-motor diagnostic, and `rl_real_titati`). Drivers for Unitree, Lite3, and other robots have been removed from this workspace.
 
 > [!TIP]
-> If no ROS environment is sourced, running `./build.sh` without arguments automatically falls back to the same hardware-only CMake build, so the slave Jetson can simply clone the repo and invoke `./build.sh` to get the CMake artifacts.
+> If no ROS environment is sourced, running `./build.sh` without arguments automatically falls back to the same hardware-only CMake build, so the slave Jetson can simply clone the repo and invoke `./build.sh` to get the binaries.
 
 For detailed usage instructions, you can check them via `./build.sh -h`:
 
@@ -146,7 +146,7 @@ Usage: ./build.sh [OPTIONS] [PACKAGE_NAMES...]
 
 Options:
   -c, --clean    Clean workspace (remove symlinks and build artifacts)
-  -m, --cmake    Build using CMake (for hardware deployment only)
+  -m, --cmake    Build the Titati hardware stack (uses ROS when available)
   -h, --help     Show this help message
 
 Examples:
@@ -154,7 +154,7 @@ Examples:
   ./build.sh package1 package2  # Build specific ROS packages
   ./build.sh -c                 # Clean all symlinks and build artifacts
   ./build.sh --clean package1   # Clean specific package and build artifacts
-  ./build.sh -m                 # Build with CMake for hardware deployment
+  ./build.sh -m                 # Build the Titati hardware stack
 ```
 
 > [!TIP]
@@ -392,7 +392,7 @@ ros2 run rl_sar test_titati_motors
 ./cmake_build/bin/test_titati_motors
 ```
 
-The program excites every joint around the default standing pose with smooth sinusoidal trajectories and prints feedback for representative joints. If any actuator does not move, revisit the CAN configuration and power before continuing with RL control.
+The program eases all joints from their current angles into the default standing pose and holds it. Use it to confirm every actuator responds before attempting RL control. If any joint fails to move, revisit the CAN configuration and power before continuing.
 
 #### Run RL control
 

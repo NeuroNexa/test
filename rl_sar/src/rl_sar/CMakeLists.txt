@@ -5,23 +5,35 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-set(USE_CMAKE OFF CACHE BOOL "Use Cmake build system")
-message(STATUS "USE_CMAKE: ${USE_CMAKE}")
-if(USE_CMAKE)
+set(USE_CMAKE OFF CACHE BOOL "Build without ROS (standalone mode)")
+set(HARDWARE_ONLY OFF CACHE BOOL "Disable simulation-only components such as Gazebo")
+message(STATUS "USE_CMAKE (requested): ${USE_CMAKE}")
+message(STATUS "HARDWARE_ONLY: ${HARDWARE_ONLY}")
+
+set(BUILD_STANDALONE ${USE_CMAKE})
+if(NOT BUILD_STANDALONE AND NOT DEFINED ENV{ROS_DISTRO})
+    message(WARNING "ROS_DISTRO not set, enabling standalone mode (USE_CMAKE)")
+    set(BUILD_STANDALONE ON)
+endif()
+
+if(NOT BUILD_STANDALONE)
+    if($ENV{ROS_DISTRO} MATCHES "noetic")
+        add_compile_definitions(USE_ROS USE_ROS1)
+    elseif($ENV{ROS_DISTRO} MATCHES "foxy|humble")
+        add_compile_definitions(USE_ROS USE_ROS2)
+    else()
+        message(WARNING "Unsupported ROS distribution '$ENV{ROS_DISTRO}'. Building without ROS integration.")
+        set(BUILD_STANDALONE ON)
+    endif()
+endif()
+
+message(STATUS "BUILD_STANDALONE (effective): ${BUILD_STANDALONE}")
+
+if(BUILD_STANDALONE)
+    add_compile_definitions(USE_CMAKE)
     set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
     set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
-endif()
-
-if(NOT USE_CMAKE)
-    if($ENV{ROS_DISTRO} MATCHES "noetic")
-        add_compile_definitions(USE_ROS1)
-    elseif($ENV{ROS_DISTRO} MATCHES "foxy|humble")
-        add_compile_definitions(USE_ROS2)
-    endif()
-else()
-    message(WARNING "ROS_DISTRO not set, assuming non-ROS mode")
-    add_compile_definitions(USE_CMAKE)
 endif()
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -37,15 +49,14 @@ endif()
 add_definitions(-DCMAKE_CURRENT_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 add_definitions(-DBOOST_BIND_GLOBAL_PLACEHOLDERS)
 
-if(NOT USE_CMAKE)
+if(NOT BUILD_STANDALONE)
     if($ENV{ROS_DISTRO} MATCHES "noetic")
-        find_package(catkin REQUIRED COMPONENTS
+        set(catkin_components
             controller_manager
             genmsg
             joint_state_controller
             robot_state_publisher
             roscpp
-            gazebo_ros
             std_msgs
             tf
             geometry_msgs
@@ -53,6 +64,10 @@ if(NOT USE_CMAKE)
             robot_joint_controller
             rospy
         )
+        if(NOT HARDWARE_ONLY)
+            list(APPEND catkin_components gazebo_ros)
+        endif()
+        find_package(catkin REQUIRED COMPONENTS ${catkin_components})
         catkin_package(
             CATKIN_DEPENDS
             robot_joint_controller
@@ -63,18 +78,22 @@ if(NOT USE_CMAKE)
         find_package(joint_state_broadcaster REQUIRED)
         find_package(robot_state_publisher REQUIRED)
         find_package(rclcpp REQUIRED)
-        find_package(gazebo_ros REQUIRED)
         find_package(std_msgs REQUIRED)
         find_package(robot_msgs REQUIRED)
         find_package(robot_joint_controller REQUIRED)
         find_package(rclpy REQUIRED)
-        find_package(gazebo_msgs REQUIRED)
         find_package(std_srvs REQUIRED)
         find_package(geometry_msgs REQUIRED)
+        if(NOT HARDWARE_ONLY)
+            find_package(gazebo_ros REQUIRED)
+            find_package(gazebo_msgs REQUIRED)
+        endif()
         ament_package()
     endif()
-    add_compile_options(${GAZEBO_CXX_FLAGS})
-    find_package(gazebo REQUIRED)
+    if(NOT HARDWARE_ONLY)
+        find_package(gazebo REQUIRED)
+        add_compile_options(${GAZEBO_CXX_FLAGS})
+    endif()
 endif()
 
 find_package(Torch REQUIRED)
@@ -104,7 +123,7 @@ target_include_directories(titati_canfd_router_sdk PUBLIC
 )
 target_link_libraries(titati_canfd_router_sdk PUBLIC Threads::Threads)
 
-if(NOT USE_CMAKE)
+if(NOT BUILD_STANDALONE)
     if($ENV{ROS_DISTRO} MATCHES "noetic")
         include_directories(${catkin_INCLUDE_DIRS})
     endif()
@@ -134,7 +153,7 @@ if(Python3_NumPy_FOUND)
 else()
     target_compile_definitions(rl_sdk PUBLIC WITHOUT_NUMPY)
 endif()
-if(NOT USE_CMAKE)
+if(NOT BUILD_STANDALONE)
     if($ENV{ROS_DISTRO} MATCHES "foxy|humble")
         install(TARGETS rl_sdk DESTINATION lib/${PROJECT_NAME})
     endif()
@@ -142,13 +161,13 @@ endif()
 
 add_library(observation_buffer library/core/observation_buffer/observation_buffer.cpp)
 target_link_libraries(observation_buffer PUBLIC "${TORCH_LIBRARIES}")
-if(NOT USE_CMAKE)
+if(NOT BUILD_STANDALONE)
     if($ENV{ROS_DISTRO} MATCHES "foxy|humble")
         install(TARGETS observation_buffer DESTINATION lib/${PROJECT_NAME})
     endif()
 endif()
 
-if(NOT USE_CMAKE)
+if(NOT BUILD_STANDALONE AND NOT HARDWARE_ONLY)
     add_executable(rl_sim src/rl_sim.cpp)
     target_link_libraries(rl_sim
         rl_sdk
@@ -183,7 +202,7 @@ target_link_libraries(rl_real_titati
     observation_buffer
     yaml-cpp
 )
-if(NOT USE_CMAKE)
+if(NOT BUILD_STANDALONE)
     if($ENV{ROS_DISTRO} MATCHES "noetic")
         target_link_libraries(rl_real_titati ${catkin_LIBRARIES})
     elseif($ENV{ROS_DISTRO} MATCHES "foxy|humble")
@@ -199,7 +218,7 @@ add_executable(titati_canfd_router_node src/titati_canfd_router_node.cpp)
 target_link_libraries(titati_canfd_router_node
     titati_canfd_router_sdk
 )
-if(NOT USE_CMAKE)
+if(NOT BUILD_STANDALONE)
     if($ENV{ROS_DISTRO} MATCHES "noetic")
         target_link_libraries(titati_canfd_router_node ${catkin_LIBRARIES})
     elseif($ENV{ROS_DISTRO} MATCHES "foxy|humble")
@@ -215,7 +234,7 @@ target_link_libraries(test_titati_motors
     titati_robot_sdk
     yaml-cpp
 )
-if(NOT USE_CMAKE)
+if(NOT BUILD_STANDALONE)
     if($ENV{ROS_DISTRO} MATCHES "noetic")
         target_link_libraries(test_titati_motors ${catkin_LIBRARIES})
     elseif($ENV{ROS_DISTRO} MATCHES "foxy|humble")
@@ -223,7 +242,7 @@ if(NOT USE_CMAKE)
     endif()
 endif()
 
-if(NOT USE_CMAKE)
+if(NOT BUILD_STANDALONE)
     if($ENV{ROS_DISTRO} MATCHES "noetic")
         catkin_install_python(PROGRAMS
             scripts/actuator_net.py
@@ -244,7 +263,7 @@ if(NOT USE_CMAKE)
     endif()
 endif()
 
-if(NOT USE_CMAKE)
+if(NOT BUILD_STANDALONE)
     if($ENV{ROS_DISTRO} MATCHES "foxy|humble")
         install(
             DIRECTORY launch worlds policy

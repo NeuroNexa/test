@@ -127,14 +127,14 @@ sudo ldconfig
 ./build.sh -c  # or ./build.sh --clean
 ```
 
-如果不需要仿真，只在机器人上运行，可以使用CMake进行编译，同时禁用ROS。此模式会在`cmake_build/bin`中生成独立的可执行文件（库位于`cmake_build/lib`），当脚本检测到没有ROS环境时会自动调用这些文件：
+如果不需要仿真，只在机器人上运行，可使用硬件预设：当已 `source` ROS 工作空间时会通过 catkin/colcon 构建 `rl_sar` 并跳过 Gazebo 相关目标；若未检测到 ROS 环境则自动回退到独立的 CMake 工具链，并在 `cmake_build/bin`（库位于 `cmake_build/lib`）生成可执行文件：
 
 ```bash
 ./build.sh -m  # or ./build.sh --cmake
 ```
 
 > [!TIP]
-> 若未提前 source 任意 ROS 环境，直接执行 `./build.sh` 会自动切换到同样的 CMake 硬件构建流程，因此从机 Jetson 只需克隆仓库并执行 `./build.sh` 即可得到硬件所需的构建产物。
+> 若未提前 source 任意 ROS 环境，直接执行 `./build.sh` 会自动切换到同样的硬件构建流程，因此从机 Jetson 只需克隆仓库并执行 `./build.sh` 即可得到二进制文件。
 
 详细的使用说明可以通过`./build.sh -h`查看
 
@@ -143,7 +143,7 @@ Usage: ./build.sh [OPTIONS] [PACKAGE_NAMES...]
 
 Options:
   -c, --clean    Clean workspace (remove symlinks and build artifacts)
-  -m, --cmake    Build using CMake (for hardware deployment only)
+  -m, --cmake    Build the Titati hardware stack (uses ROS when available)
   -h, --help     Show this help message
 
 Examples:
@@ -151,7 +151,7 @@ Examples:
   ./build.sh package1 package2  # Build specific ROS packages
   ./build.sh -c                 # Clean all symlinks and build artifacts
   ./build.sh --clean package1   # Clean specific package and build artifacts
-  ./build.sh -m                 # Build with CMake for hardware deployment
+  ./build.sh -m                 # Build the Titati hardware stack
 ```
 
 > [!TIP]
@@ -233,7 +233,7 @@ git clone https://github.com/osrf/gazebo_models.git ~/.gazebo/models
 ### 真实机器人
 
 > [!IMPORTANT]
-> 当前独立的 CMake 构建仅包含 Titati 硬件栈（CAN-FD 路由器、16 电机诊断程序以及 `rl_real_titati`）。Unitree、Lite3 等驱动已从本工程移除，以下小节仅保留历史资料供参考。
+> 硬件预设仅构建 Titati 所需的组件（CAN-FD 路由器、16 电机诊断程序和 `rl_real_titati`）。Unitree、Lite3 等驱动已从本工程移除，以下小节仅保留历史资料供参考。
 
 <details>
 
@@ -392,7 +392,7 @@ ros2 run rl_sar test_titati_motors
 ./cmake_build/bin/test_titati_motors
 ```
 
-该程序会在默认站立位姿附近对每个关节执行平滑的正弦扫动，同时在终端打印关键关节的反馈位置。若发现某个关节无响应，请重新检查 CAN 直通和电机供电状态，再进行 RL 控制实验。
+该程序会将关节从当前角度平滑过渡到默认站立位姿并保持此姿态，可用来确认所有电机均能响应。如果发现某个关节无动作，请重新检查 CAN 直通和电机供电，再进行 RL 控制实验。
 
 #### 运行 RL 控制
 

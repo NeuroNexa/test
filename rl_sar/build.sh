@@ -119,6 +119,29 @@ run_ros_build() {
     print_success "ROS build completed!"
 }
 
+run_ros_hardware_build() {
+    local packages=("rl_sar")
+    local package_list=$(IFS=' '; echo "${packages[*]}")
+
+    print_header "[Running ROS Hardware Build]"
+
+    clean_existing_symlinks "${packages[@]}"
+    detect_incompatible_build_artifacts
+    create_symlinks_for_specific_packages "${packages[@]}"
+
+    if [[ "$ROS_DISTRO" == "noetic" ]]; then
+        print_header "[Using catkin build]"
+        print_info "Building Titati hardware package: $package_list"
+        catkin build $package_list --cmake-args -DHARDWARE_ONLY=ON
+    else
+        print_header "[Using colcon build]"
+        print_info "Building Titati hardware package: $package_list"
+        colcon build --merge-install --symlink-install --packages-select $package_list --cmake-args -DHARDWARE_ONLY=ON
+    fi
+
+    print_success "ROS hardware build completed!"
+}
+
 # ========================
 # Clean Functions
 # ========================
@@ -316,7 +339,7 @@ show_usage() {
     echo ""
     echo -e "${COLOR_INFO}Options:${COLOR_RESET}"
     echo -e "  -c, --clean    Clean workspace (remove symlinks and build artifacts)"
-    echo -e "  -m, --cmake    Build using CMake (for hardware deployment only)"
+    echo -e "  -m, --cmake    Build the Titati hardware stack (uses ROS when available)"
     echo -e "  -h, --help     Show this help message"
     echo ""
     echo -e "${COLOR_INFO}Examples:${COLOR_RESET}"
@@ -324,9 +347,10 @@ show_usage() {
     echo -e "  $0 package1 package2  # Build specific ROS packages"
     echo -e "  $0 -c                 # Clean all symlinks and build artifacts"
     echo -e "  $0 --clean package1   # Clean specific package and build artifacts"
-    echo -e "  $0 -m                 # Build with CMake for hardware deployment"
+    echo -e "  $0 -m                 # Build the Titati hardware stack"
     echo ""
-    echo -e "${COLOR_INFO}Tip:${COLOR_RESET} If no ROS environment is detected, the script automatically falls back to the CMake hardware build."
+    echo -e "${COLOR_INFO}Tip:${COLOR_RESET} If no ROS environment is detected, the script automatically falls back to the standalone"
+    echo "hardware build."
 }
 
 main() {
@@ -348,7 +372,12 @@ main() {
 
     # Handle CMake build mode
     if [ "$cmake_mode" = true ]; then
-        run_cmake_build
+        if [ -n "$ROS_DISTRO" ]; then
+            print_info "ROS environment detected. Building Titati hardware package via ROS toolchain."
+            run_ros_hardware_build
+        else
+            run_cmake_build
+        fi
         exit 0
     fi
 
