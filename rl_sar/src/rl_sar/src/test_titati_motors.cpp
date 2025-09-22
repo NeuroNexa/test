@@ -8,13 +8,13 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
-#include <cmath>
 #include <csignal>
+#include <cctype>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <string>
 #include <thread>
-#include <utility>
 #include <vector>
 
 namespace
@@ -27,63 +27,73 @@ void SignalHandler(int)
 }
 
 constexpr int kTitatiDofs = 16;
-constexpr double kTwoPi = 6.28318530717958647692;
+
+enum class CommandMode
+{
+    Torque,
+    Velocity,
+};
 
 struct CommandLineOptions
 {
     std::vector<int> joints;
-    double sweep_frequency_hz = 0.4;
-    double sweep_duration_sec = 6.0;
-    double hold_duration_sec = 1.0;
-    double default_kp = 40.0;
-    double ankle_kp = 5.0;
-    double default_kd = 2.0;
-    double ankle_kd = 0.5;
-    double default_amplitude = 0.35;
-    double ankle_amplitude = 0.12;
-    std::vector<std::pair<int, double>> amplitude_overrides;
-    std::vector<std::pair<int, double>> kp_overrides;
-    std::vector<std::pair<int, double>> kd_overrides;
+    CommandMode mode = CommandMode::Torque;
+    double command_value = 3.0;         // Nm or rad/s depending on the mode
+    double command_duration_sec = 1.0;  // seconds
+    double rest_duration_sec = 1.0;     // seconds between joints
+    double velocity_kd = 0.8;           // derivative gain used for velocity mode
+    double log_interval_sec = 1.0;      // seconds
     bool show_help = false;
 };
 
 void PrintUsage()
 {
     std::cout << "Usage: test_titati_motors [options]\n"
-              << "  --joint <index>       Specify a joint to exercise (0-15)."
-              << " Repeat for multiple joints.\n"
-              << "  --all                 Sweep all 16 joints sequentially.\n"
-              << "  --frequency <Hz>      Sinusoid frequency (default 0.4).\n"
-              << "  --duration <sec>      Duration of each sweep (default 6.0).\n"
-              << "  --hold <sec>          Hold time after sweep (default 1.0).\n"
-              << "  --kp <value>          Default proportional gain (default 40).\n"
-              << "  --ankle-kp <value>    Proportional gain for joints 12-15 (default 5).\n"
-              << "  --kd <value>          Default derivative gain (default 2).\n"
-              << "  --ankle-kd <value>    Derivative gain for joints 12-15 (default 0.5).\n"
-              << "  --amplitude <rad>     Default sweep amplitude (default 0.35).\n"
-              << "  --ankle-amplitude <rad>  Amplitude for joints 12-15 (default 0.12).\n"
-              << "  --amp <joint:value>   Override amplitude for a specific joint.\n"
-              << "  --kp-joint <joint:value> Override kp for a specific joint.\n"
-              << "  --kd-joint <joint:value> Override kd for a specific joint.\n"
-              << "  -h, --help            Show this message.\n";
+              << "  --joint <index>        Add a joint to test (0-15). Repeat for multiple joints.\n"
+              << "  --all                  Test every joint sequentially (default if none provided).\n"
+              << "  --mode <torque|velocity>  Command constant torque (Nm) or velocity (rad/s).\n"
+              << "  --value <number>       Command magnitude. Default 3.0 Nm or rad/s.\n"
+              << "  --duration <sec>       Time to apply the command per joint (default 1.0).\n"
+              << "  --rest <sec>           Zero-torque rest time after each joint (default 1.0).\n"
+              << "  --velocity-kd <gain>   KD gain used for velocity mode (default 0.8).\n"
+              << "  --log-interval <sec>   Interval between status printouts (default 1.0).\n"
+              << "  -h, --help             Show this message.\n";
 }
 
-bool ParseJointValuePair(const std::string &argument, std::pair<int, double> &result)
+bool ParseJointIndex(const std::string &value, int &joint)
 {
-    const auto delimiter = argument.find(':');
-    if (delimiter == std::string::npos)
+    try
     {
+        joint = std::stoi(value);
+    }
+    catch (const std::exception &)
+    {
+        return false;
+    }
+
+    if (joint < 0 || joint >= kTitatiDofs)
+    {
+        return false;
+    }
+
+    return true;
+}
+
+bool ParseDouble(const std::string &name, int &idx, int argc, char **argv, double &target)
+{
+    if (++idx >= argc)
+    {
+        std::cerr << "Missing value for " << name << std::endl;
         return false;
     }
 
     try
     {
-        const int joint = std::stoi(argument.substr(0, delimiter));
-        const double value = std::stod(argument.substr(delimiter + 1));
-        result = {joint, value};
+        target = std::stod(argv[idx]);
     }
     catch (const std::exception &)
     {
+        std::cerr << "Invalid floating point value for " << name << std::endl;
         return false;
     }
 
@@ -94,7 +104,7 @@ bool ParseCommandLine(int argc, char **argv, CommandLineOptions &options)
 {
     for (int idx = 1; idx < argc; ++idx)
     {
-        std::string argument(argv[idx]);
+        const std::string argument(argv[idx]);
         if (argument == "--help" || argument == "-h")
         {
             options.show_help = true;
@@ -109,53 +119,51 @@ bool ParseCommandLine(int argc, char **argv, CommandLineOptions &options)
             }
             continue;
         }
-        if (argument == "--joint" || argument == "-j")
+        if (argument == "--joint")
         {
             if (++idx >= argc)
             {
                 std::cerr << "Missing value for --joint" << std::endl;
                 return false;
             }
-            const std::string value(argv[idx]);
-            try
+            int joint = 0;
+            if (!ParseJointIndex(argv[idx], joint))
             {
-                const int joint = std::stoi(value);
-                if (joint < 0 || joint >= kTitatiDofs)
-                {
-                    std::cerr << "Joint index out of range: " << joint << std::endl;
-                    return false;
-                }
-                options.joints.push_back(joint);
+                std::cerr << "Invalid joint index: " << argv[idx] << std::endl;
+                return false;
             }
-            catch (const std::exception &)
+            options.joints.push_back(joint);
+            continue;
+        }
+        if (argument == "--mode")
+        {
+            if (++idx >= argc)
             {
-                std::cerr << "Invalid joint index: " << value << std::endl;
+                std::cerr << "Missing value for --mode" << std::endl;
+                return false;
+            }
+            std::string mode_string(argv[idx]);
+            std::transform(mode_string.begin(), mode_string.end(), mode_string.begin(), [](unsigned char c) {
+                return static_cast<char>(std::tolower(c));
+            });
+            if (mode_string == "torque")
+            {
+                options.mode = CommandMode::Torque;
+            }
+            else if (mode_string == "velocity")
+            {
+                options.mode = CommandMode::Velocity;
+            }
+            else
+            {
+                std::cerr << "Unknown mode: " << mode_string << std::endl;
                 return false;
             }
             continue;
         }
-
-        auto parse_scalar = [&](const std::string &name, double &target) -> bool {
-            if (++idx >= argc)
-            {
-                std::cerr << "Missing value for " << name << std::endl;
-                return false;
-            }
-            try
-            {
-                target = std::stod(argv[idx]);
-            }
-            catch (const std::exception &)
-            {
-                std::cerr << "Invalid floating point value for " << name << std::endl;
-                return false;
-            }
-            return true;
-        };
-
-        if (argument == "--frequency")
+        if (argument == "--value")
         {
-            if (!parse_scalar(argument, options.sweep_frequency_hz))
+            if (!ParseDouble(argument, idx, argc, argv, options.command_value))
             {
                 return false;
             }
@@ -163,101 +171,33 @@ bool ParseCommandLine(int argc, char **argv, CommandLineOptions &options)
         }
         if (argument == "--duration")
         {
-            if (!parse_scalar(argument, options.sweep_duration_sec))
+            if (!ParseDouble(argument, idx, argc, argv, options.command_duration_sec))
             {
                 return false;
             }
             continue;
         }
-        if (argument == "--hold")
+        if (argument == "--rest")
         {
-            if (!parse_scalar(argument, options.hold_duration_sec))
+            if (!ParseDouble(argument, idx, argc, argv, options.rest_duration_sec))
             {
                 return false;
             }
             continue;
         }
-        if (argument == "--kp")
+        if (argument == "--velocity-kd")
         {
-            if (!parse_scalar(argument, options.default_kp))
+            if (!ParseDouble(argument, idx, argc, argv, options.velocity_kd))
             {
                 return false;
             }
             continue;
         }
-        if (argument == "--ankle-kp")
+        if (argument == "--log-interval")
         {
-            if (!parse_scalar(argument, options.ankle_kp))
+            if (!ParseDouble(argument, idx, argc, argv, options.log_interval_sec))
             {
                 return false;
-            }
-            continue;
-        }
-        if (argument == "--kd")
-        {
-            if (!parse_scalar(argument, options.default_kd))
-            {
-                return false;
-            }
-            continue;
-        }
-        if (argument == "--ankle-kd")
-        {
-            if (!parse_scalar(argument, options.ankle_kd))
-            {
-                return false;
-            }
-            continue;
-        }
-        if (argument == "--amplitude")
-        {
-            if (!parse_scalar(argument, options.default_amplitude))
-            {
-                return false;
-            }
-            continue;
-        }
-        if (argument == "--ankle-amplitude")
-        {
-            if (!parse_scalar(argument, options.ankle_amplitude))
-            {
-                return false;
-            }
-            continue;
-        }
-        if (argument == "--amp" || argument == "--kp-joint" || argument == "--kd-joint")
-        {
-            if (++idx >= argc)
-            {
-                std::cerr << "Missing value for " << argument << std::endl;
-                return false;
-            }
-
-            std::pair<int, double> parsed_pair{};
-            if (!ParseJointValuePair(argv[idx], parsed_pair))
-            {
-                std::cerr << "Invalid format for " << argument
-                          << ". Expected <joint:value>." << std::endl;
-                return false;
-            }
-
-            if (parsed_pair.first < 0 || parsed_pair.first >= kTitatiDofs)
-            {
-                std::cerr << "Joint index out of range: " << parsed_pair.first << std::endl;
-                return false;
-            }
-
-            if (argument == "--amp")
-            {
-                options.amplitude_overrides.push_back(parsed_pair);
-            }
-            else if (argument == "--kp-joint")
-            {
-                options.kp_overrides.push_back(parsed_pair);
-            }
-            else
-            {
-                options.kd_overrides.push_back(parsed_pair);
             }
             continue;
         }
@@ -269,36 +209,9 @@ bool ParseCommandLine(int argc, char **argv, CommandLineOptions &options)
     return true;
 }
 
-std::vector<double> BuildGainProfile(double default_gain,
-                                     double ankle_gain,
-                                     const std::vector<std::pair<int, double>> &overrides)
+std::string ModeToString(CommandMode mode)
 {
-    std::vector<double> gains(kTitatiDofs, default_gain);
-    for (int idx = 12; idx < kTitatiDofs; ++idx)
-    {
-        gains[idx] = ankle_gain;
-    }
-    for (const auto &override_pair : overrides)
-    {
-        gains[override_pair.first] = override_pair.second;
-    }
-    return gains;
-}
-
-std::vector<double> BuildAmplitudeProfile(double default_amplitude,
-                                          double ankle_amplitude,
-                                          const std::vector<std::pair<int, double>> &overrides)
-{
-    std::vector<double> profile(kTitatiDofs, default_amplitude);
-    for (int idx = 12; idx < kTitatiDofs; ++idx)
-    {
-        profile[idx] = ankle_amplitude;
-    }
-    for (const auto &override_pair : overrides)
-    {
-        profile[override_pair.first] = override_pair.second;
-    }
-    return profile;
+    return mode == CommandMode::Torque ? "torque" : "velocity";
 }
 
 } // namespace
@@ -323,14 +236,26 @@ int main(int argc, char **argv)
 
     if (options.joints.empty())
     {
-        std::cout << "No joints specified. Use --joint <index> or --all.\n";
-        PrintUsage();
-        return 0;
+        for (int joint = 0; joint < kTitatiDofs; ++joint)
+        {
+            options.joints.push_back(joint);
+        }
     }
 
     std::sort(options.joints.begin(), options.joints.end());
-    options.joints.erase(std::unique(options.joints.begin(), options.joints.end()),
-                         options.joints.end());
+    options.joints.erase(std::unique(options.joints.begin(), options.joints.end()), options.joints.end());
+
+    if (options.command_duration_sec <= 0.0)
+    {
+        std::cerr << "Command duration must be positive." << std::endl;
+        return 1;
+    }
+
+    if (options.mode == CommandMode::Velocity && options.velocity_kd <= 0.0)
+    {
+        std::cerr << "Velocity mode requires a positive --velocity-kd gain." << std::endl;
+        return 1;
+    }
 
     std::cout << "[Titati Motor Test] Initialising CAN interface..." << std::endl;
     tita_robot robot(kTitatiDofs);
@@ -338,7 +263,7 @@ int main(int argc, char **argv)
     if (!robot.set_motors_sdk(true))
     {
         std::cerr << "[Titati Motor Test] Failed to switch MCU to direct control mode."
-                  << " Please verify the slave Jetson is forwarding CAN frames." << std::endl;
+                  << " Ensure the slave Jetson is forwarding CAN frames." << std::endl;
     }
 
     std::cout << "[Titati Motor Test] Waiting for joint state feedback..." << std::endl;
@@ -352,25 +277,32 @@ int main(int argc, char **argv)
 
     if (measured.size() != static_cast<size_t>(kTitatiDofs))
     {
-        std::cout << "[Titati Motor Test] Joint feedback unavailable, assuming zero start pose." << std::endl;
+        std::cout << "[Titati Motor Test] Joint feedback unavailable, assuming zero pose." << std::endl;
         measured.assign(kTitatiDofs, 0.0);
     }
 
-    const auto kp = BuildGainProfile(options.default_kp, options.ankle_kp, options.kp_overrides);
-    const auto kd = BuildGainProfile(options.default_kd, options.ankle_kd, options.kd_overrides);
-    const auto amplitude = BuildAmplitudeProfile(options.default_amplitude,
-                                                 options.ankle_amplitude,
-                                                 options.amplitude_overrides);
+    std::cout << "[Titati Motor Test] Testing joints:";
+    for (int joint : options.joints)
+    {
+        std::cout << ' ' << joint;
+    }
+    std::cout << "\n[Titati Motor Test] Mode: constant " << ModeToString(options.mode)
+              << ", value=" << options.command_value
+              << (options.mode == CommandMode::Torque ? " Nm" : " rad/s")
+              << ", duration=" << options.command_duration_sec << " s"
+              << ", rest=" << options.rest_duration_sec << " s" << std::endl;
 
-    std::vector<double> target_q = measured;
-    std::vector<double> target_dq(kTitatiDofs, 0.0);
-    std::vector<double> command_tau(kTitatiDofs, 0.0);
+    if (options.mode == CommandMode::Velocity)
+    {
+        std::cout << "[Titati Motor Test] Velocity KD gain: " << options.velocity_kd << std::endl;
+    }
 
-    std::cout << "[Titati Motor Test] Exercising selected joints." << std::endl;
-    std::cout << "[Titati Motor Test] Parameters: frequency=" << options.sweep_frequency_hz
-              << " Hz, duration=" << options.sweep_duration_sec
-              << " s, hold=" << options.hold_duration_sec << " s" << std::endl;
-    std::cout << "[Titati Motor Test] Press Ctrl+C at any time to stop and hold position." << std::endl;
+    std::vector<double> torque_command(kTitatiDofs, 0.0);
+    std::vector<double> target_q(kTitatiDofs, 0.0);
+    std::vector<double> target_v(kTitatiDofs, 0.0);
+    std::vector<double> zero_gains(kTitatiDofs, 0.0);
+    std::vector<double> kd_values(kTitatiDofs, 0.0);
+    std::vector<double> zero_tau(kTitatiDofs, 0.0);
 
     for (int joint : options.joints)
     {
@@ -379,8 +311,8 @@ int main(int argc, char **argv)
             break;
         }
 
-        auto neutral = measured;
-        std::cout << "\n[Joint " << joint << "] sweeping +/-" << amplitude[joint] << " rad" << std::endl;
+        std::cout << "\n[Joint " << joint << "] applying " << ModeToString(options.mode)
+                  << " command" << std::endl;
 
         const auto start_time = std::chrono::steady_clock::now();
         auto last_log = start_time;
@@ -389,84 +321,74 @@ int main(int argc, char **argv)
         {
             const auto now = std::chrono::steady_clock::now();
             const double elapsed = std::chrono::duration<double>(now - start_time).count();
-            if (elapsed >= options.sweep_duration_sec)
+            if (elapsed >= options.command_duration_sec)
             {
                 break;
             }
 
-            const double phase = kTwoPi * options.sweep_frequency_hz * elapsed;
-            const double offset = amplitude[joint] * std::sin(phase);
-            const double offset_velocity =
-                amplitude[joint] * kTwoPi * options.sweep_frequency_hz * std::cos(phase);
+            std::vector<double> feedback_q;
+            std::vector<double> feedback_dq;
+            std::vector<double> feedback_tau;
 
-            target_q = neutral;
-            target_dq.assign(kTitatiDofs, 0.0);
-            target_q[joint] = neutral[joint] + offset;
-            target_dq[joint] = offset_velocity;
-
-            auto feedback_q = robot.get_joint_q();
-            auto feedback_dq = robot.get_joint_v();
-            if (feedback_q.size() != static_cast<size_t>(kTitatiDofs) ||
-                feedback_dq.size() != static_cast<size_t>(kTitatiDofs))
+            if (options.mode == CommandMode::Torque)
             {
-                std::this_thread::sleep_for(std::chrono::milliseconds(5));
-                continue;
+                torque_command.assign(kTitatiDofs, 0.0);
+                torque_command[joint] = options.command_value;
+                robot.set_target_joint_t(torque_command);
+
+                feedback_q = robot.get_joint_q();
+                feedback_dq = robot.get_joint_v();
+                feedback_tau = robot.get_joint_t();
+            }
+            else
+            {
+                feedback_q = robot.get_joint_q();
+                if (feedback_q.size() != static_cast<size_t>(kTitatiDofs))
+                {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                    continue;
+                }
+                feedback_dq = robot.get_joint_v();
+                target_q = feedback_q;
+                target_v.assign(kTitatiDofs, 0.0);
+                kd_values.assign(kTitatiDofs, 0.0);
+                target_v[joint] = options.command_value;
+                kd_values[joint] = options.velocity_kd;
+                robot.set_target_joint_mit(target_q, target_v, zero_gains, kd_values, zero_tau);
+                feedback_tau = robot.get_joint_t();
             }
 
-            for (int idx = 0; idx < kTitatiDofs; ++idx)
+            if (std::chrono::duration<double>(now - last_log).count() >= options.log_interval_sec)
             {
-                const double pos_error = target_q[idx] - feedback_q[idx];
-                const double vel_error = target_dq[idx] - feedback_dq[idx];
-                command_tau[idx] = kp[idx] * pos_error + kd[idx] * vel_error;
-            }
-
-            robot.set_target_joint_t(command_tau);
-
-            if (now - last_log >= std::chrono::seconds(1))
-            {
-                const double reported = feedback_q[joint];
-                const double reported_dq = feedback_dq[joint];
+                const auto position = (feedback_q.size() == static_cast<size_t>(kTitatiDofs)) ? feedback_q[joint]
+                                                                                              : std::numeric_limits<double>::quiet_NaN();
+                const auto velocity = (feedback_dq.size() == static_cast<size_t>(kTitatiDofs)) ? feedback_dq[joint]
+                                                                                                : std::numeric_limits<double>::quiet_NaN();
+                const auto torque = (feedback_tau.size() == static_cast<size_t>(kTitatiDofs)) ? feedback_tau[joint]
+                                                                                              : std::numeric_limits<double>::quiet_NaN();
                 std::cout << std::fixed << std::setprecision(3)
-                          << "  -> command=" << target_q[joint]
-                          << " rad, measured=" << reported
-                          << " rad, vel=" << reported_dq
-                          << " rad" << std::endl;
+                          << "  -> measured position=" << position << " rad"
+                          << ", velocity=" << velocity << " rad/s"
+                          << ", torque=" << torque << " Nm" << std::endl;
                 last_log = now;
             }
 
             std::this_thread::sleep_for(std::chrono::milliseconds(5));
         }
 
-        std::cout << "[Joint " << joint << "] hold neutral" << std::endl;
-        const auto hold_until = std::chrono::steady_clock::now() +
-                                std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-                                    std::chrono::duration<double>(options.hold_duration_sec));
-        while (g_running.load() && std::chrono::steady_clock::now() < hold_until)
+        torque_command.assign(kTitatiDofs, 0.0);
+        robot.set_target_joint_t(torque_command);
+
+        if (options.rest_duration_sec > 0.0)
         {
-            auto feedback_q = robot.get_joint_q();
-            auto feedback_dq = robot.get_joint_v();
-            if (feedback_q.size() != static_cast<size_t>(kTitatiDofs) ||
-                feedback_dq.size() != static_cast<size_t>(kTitatiDofs))
+            std::cout << "[Joint " << joint << "] resting for " << options.rest_duration_sec << " s" << std::endl;
+            const auto rest_until = std::chrono::steady_clock::now() + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                                                                     std::chrono::duration<double>(options.rest_duration_sec));
+            while (g_running.load() && std::chrono::steady_clock::now() < rest_until)
             {
+                robot.set_target_joint_t(torque_command);
                 std::this_thread::sleep_for(std::chrono::milliseconds(5));
-                continue;
             }
-
-            for (int idx = 0; idx < kTitatiDofs; ++idx)
-            {
-                const double pos_error = neutral[idx] - feedback_q[idx];
-                const double vel_error = 0.0 - feedback_dq[idx];
-                command_tau[idx] = kp[idx] * pos_error + kd[idx] * vel_error;
-            }
-
-            robot.set_target_joint_t(command_tau);
-            std::this_thread::sleep_for(std::chrono::milliseconds(5));
-        }
-
-        measured = robot.get_joint_q();
-        if (measured.size() != static_cast<size_t>(kTitatiDofs))
-        {
-            measured = neutral;
         }
     }
 

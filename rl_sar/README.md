@@ -377,29 +377,31 @@ Pull the code and compile it. The process is the same as above.
 
 #### Verify all motors before RL
 
-After building the workspace, run the test executable to ensure that each actuator responds correctly. You can now select which joints to exercise and override the motion parameters from the command line:
+After building the workspace, run the test executable to ensure that each actuator responds correctly. The diagnostic now focuses on simple constant-torque or constant-velocity nudges:
 
 ```bash
 # ROS1
 source devel/setup.bash
-rosrun rl_sar test_titati_motors --joint 3 --joint 7 --frequency 0.6 --amplitude 0.25
+rosrun rl_sar test_titati_motors --joint 3 --mode torque --value 5 --duration 1
 
 # ROS2
 source install/setup.bash
-ros2 run rl_sar test_titati_motors --joint 10 --amp 10:0.15 --kp 30 --kd 1.5
+ros2 run rl_sar test_titati_motors --joint 12 --mode velocity --value 2.0 --duration 2 --velocity-kd 1.2
 
 # CMake
-./cmake_build/bin/test_titati_motors --joint 5 --duration 8 --hold 2
+./cmake_build/bin/test_titati_motors --all --mode torque --value 3 --duration 1.5 --rest 0.5
 ```
 
 Key options:
 
-- `--joint <index>`: choose one or more joints (0-15). Use `--all` to reproduce the legacy sequential sweep.
-- `--frequency`, `--duration`, `--hold`: tune the sinusoid frequency, sweep duration and neutral hold time.
-- `--amplitude`, `--ankle-amplitude`, `--amp joint:value`: adjust motion amplitude globally, for ankles (12-15) or per joint.
-- `--kp`, `--ankle-kp`, `--kp-joint joint:value` and the analogous `kd` flags: retune the PD gains.
+- `--joint <index>`: choose one or more joints (0-15). Use `--all` (or omit `--joint` entirely) to walk through all actuators.
+- `--mode torque|velocity`: pick between a constant torque command (Newton-metre) or a constant velocity command (rad/s).
+- `--value <number>`: magnitude of the command applied to the selected joint.
+- `--duration <sec>` / `--rest <sec>`: how long to apply the command and how long to rest at zero torque afterwards.
+- `--velocity-kd <gain>`: derivative gain used in velocity mode to close the MIT loop (ignored for torque mode).
+- `--log-interval <sec>`: how often to print the measured position/velocity/torque readbacks.
 
-PD torques are computed from live joint feedback. If the measured angle printout stays constant, the CAN routing or direct-mode handshake is still missing—fix that before proceeding to RL control.
+The node automatically requests direct-mode control, prints live telemetry while the command is active, and zeros the torque between joints. If the telemetry stays flat, double-check the CAN routing or forced-direct handshake before loading RL control.
 
 #### Run RL control
 
