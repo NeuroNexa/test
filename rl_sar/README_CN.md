@@ -127,7 +127,10 @@ sudo ldconfig
 ./build.sh -c  # or ./build.sh --clean
 ```
 
-如果不需要仿真，只在机器人上运行，可以使用CMake进行编译，同时禁用ROS（编译生成的可执行文件在`cmake_build/bin`中，库在`cmake_build/lib`中）。
+如果不需要仿真，只在机器人上运行，可以使用CMake进行编译，同时禁用ROS。
+
+- 编译生成的可执行文件位于 `cmake_build/bin` 中，库位于 `cmake_build/lib` 中。
+- 该流程不会生成 ROS 的 `devel/` 或 `install/` 工作空间，因此也不会产生 `setup.bash`，编译完成后直接运行 `cmake_build/bin` 下的二进制即可。
 
 默认情况下，CMake 构建只会针对 Titati 硬件，并跳过 Unitree/Lite3/L4W4 等第三方依赖。如果需要完整构建所有硬件目标，可以关闭 `BUILD_TITATI_ONLY` 选项。
 
@@ -158,6 +161,9 @@ Examples:
   ./build.sh --clean package1   # Clean specific package and build artifacts
   ./build.sh -m                 # Build with CMake for hardware deployment
 ```
+
+> [!NOTE]
+> ROS 构建（`catkin build` 或 `colcon build`）会生成需要 `source devel/setup.bash` 或 `source install/setup.bash` 的工作空间；独立的 CMake 构建（`./build.sh -m`）不会生成这些目录，编译完成后直接从 `cmake_build/bin` 运行硬件相关的可执行文件即可。
 
 > [!TIP]
 > 如果 catkin build 报错: `Unable to find either executable 'empy' or Python module 'em'`, 在`catkin build` 之前执行 `catkin config -DPYTHON_EXECUTABLE=/usr/bin/python3`
@@ -257,7 +263,7 @@ rosrun rl_sar rl_real_a1
 source install/setup.bash
 ros2 run rl_sar rl_real_a1
 
-# CMake
+# CMake（无需 source setup.bash）
 ./cmake_build/bin/rl_real_a1
 ```
 
@@ -286,7 +292,7 @@ rosrun rl_sar rl_real_go2 <YOUR_NETWORK_INTERFACE> [wheel]
 source install/setup.bash
 ros2 run rl_sar rl_real_go2 <YOUR_NETWORK_INTERFACE> [wheel]
 
-# CMake
+# CMake（无需 source setup.bash）
 ./cmake_build/bin/rl_real_go2 <YOUR_NETWORK_INTERFACE> [wheel]
 ```
 
@@ -303,7 +309,7 @@ rosrun rl_sar rl_real_g1 <YOUR_NETWORK_INTERFACE>
 source install/setup.bash
 ros2 run rl_sar rl_real_g1 <YOUR_NETWORK_INTERFACE>
 
-# CMake
+# CMake（无需 source setup.bash）
 ./cmake_build/bin/rl_real_g1 <YOUR_NETWORK_INTERFACE>
 ```
 

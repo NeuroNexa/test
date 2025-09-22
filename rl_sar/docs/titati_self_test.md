@@ -45,13 +45,14 @@ If any of these checks fail, address the hardware or wiring issue before startin
    - **Standalone CMake**
 
      ```bash
-     ./build.sh cmake_release
-     source cmake_build/install/setup.bash  # if you enabled install
+     ./build.sh -m
      ```
+
+     This flow generates binaries under `cmake_build/bin` and does **not** create an `install/` workspace or `setup.bash` script. Run the executables directly from `cmake_build/bin`.
 
 ## Running the test
 
-Execute the binary from the master Jetson after sourcing the appropriate workspace setup file. The utility defaults to `can0` and runs for 10 seconds.
+Execute the binary from the master Jetson after sourcing the appropriate workspace setup file (standalone CMake builds do not require sourcing). The utility defaults to `can0` and runs for 10 seconds.
 
 ```bash
 # ROS 1

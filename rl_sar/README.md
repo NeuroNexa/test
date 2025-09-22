@@ -127,7 +127,10 @@ To clean the build, use the following command. This will remove all compiled out
 ./build.sh -c  # or ./build.sh --clean
 ```
 
-If simulation is not needed and you only want to run on the robot, you can compile using CMake while disabling ROS (the compiled executables will be in `cmake_build/bin` and libraries in `cmake_build/lib`).
+If simulation is not needed and you only want to run on the robot, you can compile using CMake while disabling ROS.
+
+- The compiled executables are stored in `cmake_build/bin`, and libraries in `cmake_build/lib`.
+- This workflow does **not** create the ROS `devel/` or `install/` workspaces, so there is no `setup.bash` to source. You can run the binaries directly from `cmake_build/bin` after the build finishes.
 
 By default, the CMake build focuses on Titati hardware only and skips third-party Unitree/Lite3/L4W4 dependencies. You can keep this default behavior or re-enable every target by turning off the `BUILD_TITATI_ONLY` option.
 
@@ -158,6 +161,9 @@ Examples:
   ./build.sh --clean package1   # Clean specific package and build artifacts
   ./build.sh -m                 # Build with CMake for hardware deployment
 ```
+
+> [!NOTE]
+> ROS builds (`catkin build` or `colcon build`) create `devel/` or `install/` workspaces that must be sourced via `source devel/setup.bash` or `source install/setup.bash`. The standalone CMake build (`./build.sh -m`) skips those workspaces entirely—after it finishes, launch the hardware binaries straight from `cmake_build/bin` without sourcing an additional setup script.
 
 > [!TIP]
 > If catkin build report errors: `Unable to find either executable 'empy' or Python module 'em'`, run `catkin config -DPYTHON_EXECUTABLE=/usr/bin/python3` before `catkin build`
@@ -257,7 +263,7 @@ rosrun rl_sar rl_real_a1
 source install/setup.bash
 ros2 run rl_sar rl_real_a1
 
-# CMake
+# CMake (no setup.bash needed)
 ./cmake_build/bin/rl_real_a1
 ```
 
@@ -286,7 +292,7 @@ rosrun rl_sar rl_real_go2 <YOUR_NETWORK_INTERFACE> [wheel]
 source install/setup.bash
 ros2 run rl_sar rl_real_go2 <YOUR_NETWORK_INTERFACE> [wheel]
 
-# CMake
+# CMake (no setup.bash needed)
 ./cmake_build/bin/rl_real_go2 <YOUR_NETWORK_INTERFACE> [wheel]
 ```
 
@@ -303,7 +309,7 @@ rosrun rl_sar rl_real_g1 <YOUR_NETWORK_INTERFACE>
 source install/setup.bash
 ros2 run rl_sar rl_real_g1 <YOUR_NETWORK_INTERFACE>
 
-# CMake
+# CMake (no setup.bash needed)
 ./cmake_build/bin/rl_real_g1 <YOUR_NETWORK_INTERFACE>
 ```
 
@@ -376,7 +382,7 @@ Titati is assembled from two Tita robots that share a single CAN-FD backbone. Th
    source install/setup.bash
    ros2 run rl_sar rl_real_titati
 
-   # CMake (standalone)
+   # CMake (no setup.bash needed)
    ./cmake_build/bin/rl_real_titati
    ```
 
