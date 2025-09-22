@@ -24,14 +24,15 @@ void signal_handler(int)
 
 void PrintUsage(const char *argv0)
 {
-    std::cout << "Usage: " << argv0 << " [--stay-alive]" << std::endl;
-    std::cout << "  --stay-alive  Keep the program running after the forced-direct command is sent." << std::endl;
+    std::cout << "Usage: " << argv0 << " [--stay-alive|--once]" << std::endl;
+    std::cout << "  --stay-alive  Keep the program running after the forced-direct command is sent (default)." << std::endl;
+    std::cout << "  --once        Exit after switching to forced-direct mode." << std::endl;
 }
 } // namespace
 
 int main(int argc, char **argv)
 {
-    bool stay_alive = false;
+    bool stay_alive = true;
 
     for (int i = 1; i < argc; ++i)
     {
@@ -43,6 +44,10 @@ int main(int argc, char **argv)
         if (std::strcmp(argv[i], "--stay-alive") == 0)
         {
             stay_alive = true;
+        }
+        else if (std::strcmp(argv[i], "--once") == 0)
+        {
+            stay_alive = false;
         }
         else
         {
@@ -61,11 +66,22 @@ int main(int argc, char **argv)
     std::cout << "[titati_canfd_router_node] Waiting for power-on self-test to finish (mode=1 or 2)." << std::endl;
     router->set_forcedirect_mode(true);
 
+    bool announced_switch = false;
+    bool announced_alive = false;
     while (keep_running.load())
     {
         if (router->forcedirect_complete())
         {
-            std::cout << "[titati_canfd_router_node] Router switched to forced-direct relay mode." << std::endl;
+            if (!announced_switch)
+            {
+                std::cout << "[titati_canfd_router_node] Router switched to forced-direct relay mode." << std::endl;
+                announced_switch = true;
+            }
+            if (stay_alive && !announced_alive)
+            {
+                std::cout << "[titati_canfd_router_node] Staying alive - press Ctrl+C to exit." << std::endl;
+                announced_alive = true;
+            }
             if (!stay_alive)
             {
                 break;
@@ -79,15 +95,6 @@ int main(int argc, char **argv)
         std::cerr << "[titati_canfd_router_node] Forced-direct command not acknowledged."
                   << " Check wiring and rerun after the self-test completes." << std::endl;
         return 2;
-    }
-
-    if (stay_alive)
-    {
-        std::cout << "[titati_canfd_router_node] Staying alive - press Ctrl+C to exit." << std::endl;
-        while (keep_running.load())
-        {
-            std::this_thread::sleep_for(std::chrono::seconds(1));
-        }
     }
 
     std::cout << "[titati_canfd_router_node] Done." << std::endl;

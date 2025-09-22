@@ -402,10 +402,10 @@ are enabled by default. Other robot executables can be re-enabled through the ne
    ```bash
    bash src/rl_sar/scripts/titati_can_setup_slave.sh
    # or run manually after configuring CAN
-   ./cmake_build/bin/titati_canfd_router_node [--stay-alive]
+   ./cmake_build/bin/titati_canfd_router_node [--stay-alive|--once]
    ```
 
-   The program waits for the power-on self-test heartbeat (router mode 1/2) and then automatically calls `set_forcedirect_mode(true)` so that every CAN frame is transparently forwarded. Use `--stay-alive` to keep monitoring after the command is acknowledged.
+   The program waits for the power-on self-test heartbeat (router mode 1/2) and then automatically calls `set_forcedirect_mode(true)` so that every CAN frame is transparently forwarded. The helper script keeps the router process alive (press `Ctrl+C` to stop) so the forwarding remains active while the master issues commands. Use `--once` if you only want to send the command and exit immediately.
 
 4. The master Jetson runs the new rl_sar hardware layer and publishes commands for all 16 actuators directly on the shared CAN bus once the slave reports "Router switched to forced-direct relay mode".
 

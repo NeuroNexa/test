@@ -402,10 +402,10 @@ ros2 run rl_sar rl_real_lite3
    ```bash
    bash src/rl_sar/scripts/titati_can_setup_slave.sh
    # 或者在手动配置 CAN 后直接运行
-   ./cmake_build/bin/titati_canfd_router_node [--stay-alive]
+   ./cmake_build/bin/titati_canfd_router_node [--stay-alive|--once]
    ```
 
-   程序会等待上电自检完成（路由板心跳 mode=1/2），随后自动调用 `set_forcedirect_mode(true)` 把 CAN 报文透传到总线上。若需持续监控，可附加 `--stay-alive` 参数。
+   程序会等待上电自检完成（路由板心跳 mode=1/2），随后自动调用 `set_forcedirect_mode(true)` 把 CAN 报文透传到总线上。脚本会让路由进程保持运行（需要停止时按 `Ctrl+C`），确保主机在发送指令期间转发始终有效；若只希望发送一次指令后退出，可使用 `--once` 参数。
 
 4. 待终端提示“Router switched to forced-direct relay mode”后，主机 Jetson 再启动 rl_sar 控制程序，在同一 CAN-FD 总线上直接下发 16 个电机命令。
 

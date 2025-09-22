@@ -13,10 +13,10 @@ sudo ifconfig "${CAN_IFACE}" txqueuelen 1000
 
 echo "[titati_can_setup_slave] ${CAN_IFACE} configured for CAN-FD 1M/8M."
 
-echo "[titati_can_setup_slave] Launching Titati CAN-FD router..."
+echo "[titati_can_setup_slave] Launching Titati CAN-FD router (Ctrl+C to stop)..."
 if [[ ! -x "${ROUTER_BIN}" ]]; then
     echo "Binary ${ROUTER_BIN} not found. Build rl_sar with CMake first." >&2
     exit 1
 fi
 
-"${ROUTER_BIN}"
+"${ROUTER_BIN}" --stay-alive
