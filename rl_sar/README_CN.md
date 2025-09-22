@@ -385,10 +385,29 @@ ros2 run rl_sar rl_real_lite3
 
 **CAN 拓扑**
 
-1. 将两台 Jetson 的 `can0` 配置为 CAN-FD（标称 1 Mbps / 数据 8 Mbps）。
+1. 先把每台 Jetson 的 `can0` 配置为 CAN-FD（标称 1 Mbps / 数据 8 Mbps）：
+
+   ```bash
+   sudo ip link set can0 down
+   sudo ip link set can0 up type can bitrate 1000000 sample-point 0.80 dbitrate 8000000 \
+       dsample-point 0.80 fd on restart-ms 100
+   sudo ifconfig can0 txqueuelen 1000
+   ```
+
+   主机可以直接运行脚本 `bash src/rl_sar/scripts/titati_can_setup_master.sh` 完成上述配置（如需修改接口名，可作为第一个参数传入）。
+
 2. 使用提供的“小盒子”把两台 `can0` 物理连接到同一条 CAN-FD 总线。
-3. 从机 Jetson 只运行 `titati_canfd_router_node`，待上电自检完成后调用 `set_forcedirect_mode(true)`，实现 CAN 报文透传。
-4. 主机 Jetson 在同一总线上通过新的 rl_sar 硬件接口直接下发 16 个电机指令。
+3. 从机 Jetson 运行路由程序：
+
+   ```bash
+   bash src/rl_sar/scripts/titati_can_setup_slave.sh
+   # 或者在手动配置 CAN 后直接运行
+   ./cmake_build/bin/titati_canfd_router_node [--stay-alive]
+   ```
+
+   程序会等待上电自检完成（路由板心跳 mode=1/2），随后自动调用 `set_forcedirect_mode(true)` 把 CAN 报文透传到总线上。若需持续监控，可附加 `--stay-alive` 参数。
+
+4. 待终端提示“Router switched to forced-direct relay mode”后，主机 Jetson 再启动 rl_sar 控制程序，在同一 CAN-FD 总线上直接下发 16 个电机命令。
 
 **编译选项**
 

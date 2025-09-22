@@ -385,11 +385,29 @@ are enabled by default. Other robot executables can be re-enabled through the ne
 
 **CAN topology**
 
-1. Configure both Jetson boards' `can0` interfaces in CAN-FD mode (1 Mbps nominal / 8 Mbps data phase).
+1. Configure each Jetson's `can0` in CAN-FD mode (1 Mbps nominal / 8 Mbps data phase):
+
+   ```bash
+   sudo ip link set can0 down
+   sudo ip link set can0 up type can bitrate 1000000 sample-point 0.80 dbitrate 8000000 \
+       dsample-point 0.80 fd on restart-ms 100
+   sudo ifconfig can0 txqueuelen 1000
+   ```
+
+   The helper script `bash src/rl_sar/scripts/titati_can_setup_master.sh` performs the same configuration for the master Jetson (pass a different interface name as the first argument if needed).
+
 2. Physically bridge the two `can0` ports using the supplied "small box" so that master and slave share the same CAN-FD bus.
-3. On the slave Jetson only run `titati_canfd_router_node` and, after the power-on self-check, call `set_forcedirect_mode(true)` so
-   that all frames are forwarded transparently.
-4. The master Jetson runs the new rl_sar hardware layer and publishes commands for all 16 actuators directly on the shared CAN bus.
+3. On the slave Jetson run the dedicated router helper:
+
+   ```bash
+   bash src/rl_sar/scripts/titati_can_setup_slave.sh
+   # or run manually after configuring CAN
+   ./cmake_build/bin/titati_canfd_router_node [--stay-alive]
+   ```
+
+   The program waits for the power-on self-test heartbeat (router mode 1/2) and then automatically calls `set_forcedirect_mode(true)` so that every CAN frame is transparently forwarded. Use `--stay-alive` to keep monitoring after the command is acknowledged.
+
+4. The master Jetson runs the new rl_sar hardware layer and publishes commands for all 16 actuators directly on the shared CAN bus once the slave reports "Router switched to forced-direct relay mode".
 
 **Build options**
 

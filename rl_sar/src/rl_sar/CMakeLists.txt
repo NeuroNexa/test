@@ -155,6 +155,14 @@ target_include_directories(tita_sdk PUBLIC
 )
 target_link_libraries(tita_sdk PUBLIC Threads::Threads)
 
+add_library(tita_canfd_router
+    library/thirdparty/tita_sdk/src/canfd_router_can_receive_api.cpp
+)
+target_include_directories(tita_canfd_router PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/tita_sdk/include
+)
+target_link_libraries(tita_canfd_router PUBLIC Threads::Threads)
+
 # Retroid Gamepad
 set(GAMEPAD_SRC
     ${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/gamepad/src/gamepad.cpp
@@ -377,6 +385,11 @@ if(BUILD_TITATI)
     target_link_libraries(titati_motor_test
         tita_sdk
         yaml-cpp
+    )
+
+    add_executable(titati_canfd_router_node src/titati_canfd_router_node.cpp)
+    target_link_libraries(titati_canfd_router_node
+        tita_canfd_router
     )
 endif()
 
