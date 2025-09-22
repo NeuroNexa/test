@@ -153,12 +153,31 @@ bool TitatiHardware::Initialize()
         socket_fd_ = -1;
         return false;
     }
+    const int ifindex = ifr.ifr_ifindex;
+
+    if (ioctl(socket_fd_, SIOCGIFMTU, &ifr) < 0)
+    {
+        std::perror("ioctl SIOCGIFMTU");
+        ::close(socket_fd_);
+        socket_fd_ = -1;
+        return false;
+    }
+
+    if (ifr.ifr_mtu != CANFD_MTU)
+    {
+        std::cerr << "[TitatiHardware] CAN interface " << interface_
+                  << " is not configured for CAN-FD (expected MTU " << CANFD_MTU
+                  << ", got " << ifr.ifr_mtu << ')' << std::endl;
+        ::close(socket_fd_);
+        socket_fd_ = -1;
+        return false;
+    }
 
     struct sockaddr_can addr
     {
     };
     addr.can_family = AF_CAN;
-    addr.can_ifindex = ifr.ifr_ifindex;
+    addr.can_ifindex = ifindex;
     if (::bind(socket_fd_, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr)) < 0)
     {
         std::perror("bind can interface");
@@ -190,6 +209,11 @@ bool TitatiHardware::Initialize()
 
 void TitatiHardware::Shutdown()
 {
+    if (initialized_.load())
+    {
+        SetDirectControlMode(false);
+    }
+
     running_.store(false);
     if (receiver_thread_.joinable())
     {
