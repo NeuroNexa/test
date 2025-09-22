@@ -127,14 +127,14 @@ sudo ldconfig
 ./build.sh -c  # or ./build.sh --clean
 ```
 
-如果不需要仿真，只在机器人上运行，可以使用CMake进行编译，同时禁用ROS（编译生成的可执行文件在`cmake_build/bin`中，库在`cmake_build/lib`中）
+如果不需要仿真，只在机器人上运行，可以使用CMake进行编译，同时禁用ROS。此模式会在`cmake_build/bin`中生成独立的可执行文件（库位于`cmake_build/lib`），当脚本检测到没有ROS环境时会自动调用这些文件：
 
 ```bash
 ./build.sh -m  # or ./build.sh --cmake
 ```
 
 > [!TIP]
-> 若未提前 source 任意 ROS 环境，直接执行 `./build.sh` 会自动切换到同样的 CMake 硬件构建流程。
+> 若未提前 source 任意 ROS 环境，直接执行 `./build.sh` 会自动切换到同样的 CMake 硬件构建流程，因此从机 Jetson 只需克隆仓库并执行 `./build.sh` 即可得到硬件所需的构建产物。
 
 详细的使用说明可以通过`./build.sh -h`查看
 
@@ -360,22 +360,19 @@ source ~/.bashrc
   ```
 
 - 使用“小盒子”或 CAN-HUB 将两台 `can0` 物理连接到同一条 CAN-FD 总线上。
-- 从机在 MCU 自检完成后执行 CAN 直通节点：
+- 从机在 MCU 自检完成后执行 CAN 直通节点。启动脚本会自动判断是否存在 ROS 环境：
 
   ```bash
-  # ROS2
-  source install/setup.bash
-  rl_sar/src/rl_sar/scripts/run_titati_canfd_router.sh
-
-  # ROS1
-  source devel/setup.bash
-  rl_sar/src/rl_sar/scripts/run_titati_canfd_router.sh
-
-  # 无 ROS / 纯 CMake 构建
+  # 独立硬件部署（./build.sh -m 或自动降级）
   ./src/rl_sar/scripts/run_titati_canfd_router.sh
+
+  # 若在 ROS 工作空间内构建
+  source install/setup.bash        # ROS 2
+  # 或：source devel/setup.bash    # ROS 1
+  rl_sar/src/rl_sar/scripts/run_titati_canfd_router.sh
   ```
 
-  该节点会持续监听控制板心跳，在检测到板载模式不是直通时自动发送 `SET_READY_NEXT -> FORCE_DIRECT` 的 CAN RPC。
+  如果检测不到 ROS 命令或未安装 `rl_sar` 包，脚本会自动回退到 `cmake_build/bin/titati_canfd_router_node`。该节点会持续监听控制板心跳，在检测到板载模式不是直通时自动发送 `SET_READY_NEXT -> FORCE_DIRECT` 的 CAN RPC。
 - 主机侧运行本仓库提供的程序：在完全直通的 CAN-FD 网络上直接下发 16 个电机的 MIT 指令。
 
 #### 电机连通性自检
