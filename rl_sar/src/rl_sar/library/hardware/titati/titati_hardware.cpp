@@ -1,66 +1,14 @@
 #include "titati_hardware.hpp"
 
-#include <linux/can.h>
-#include <linux/can/error.h>
-#include <linux/can/raw.h>
-#include <net/if.h>
-#include <poll.h>
-#include <sys/ioctl.h>
-#include <sys/socket.h>
-#include <sys/time.h>
-#include <unistd.h>
-
-#include <algorithm>
-#include <chrono>
-#include <cstring>
 #include <iostream>
 #include <stdexcept>
-#include <thread>
-#include <cerrno>
 
 namespace titati::hardware
 {
 namespace
 {
-constexpr std::uint32_t kMotorFeedbackBaseId = 0x108U;
-constexpr std::uint32_t kMotorFeedbackMask = 0x7E0U;
-constexpr std::uint32_t kMotorCommandBaseId = 0x120U;
-constexpr std::uint32_t kImuFeedbackId = 0x118U;
-constexpr std::uint32_t kRpcCommandId = 0x170U;
 constexpr float kGravity = 9.81f;
-constexpr std::uint16_t kRpcKeyReadyNext = 0x200U;
-constexpr std::uint32_t kReadyWaitingCommand = 0x00U;
-constexpr std::uint32_t kAutoLocomotionCommand = 0x01U;
-constexpr std::uint32_t kForceDirectCommand = 0x03U;
-
-struct __attribute__((packed)) MotorFeedbackPacket
-{
-    std::uint32_t timestamp;
-    float position;
-    float velocity;
-    float torque;
-};
-
-struct __attribute__((packed)) MotorCommandPacket
-{
-    std::uint32_t timestamp;
-    float position;
-    float kp;
-    float velocity;
-    float kd;
-    float torque;
-};
-
-struct __attribute__((packed)) ImuPacket
-{
-    std::uint32_t timestamp;
-    float acceleration[3];
-    float gyroscope[3];
-    float quaternion[4];  // x, y, z, w
-    float temperature;
-};
-
-}  // namespace
+}
 
 TitatiHardware::TitatiHardware(std::string can_interface, std::size_t motor_count)
     : interface_(std::move(can_interface)),
@@ -70,44 +18,6 @@ TitatiHardware::TitatiHardware(std::string can_interface, std::size_t motor_coun
     {
         throw std::invalid_argument("motor_count must be greater than zero");
     }
-
-    if (motor_count_ % 8 == 0)
-    {
-        dof_per_leg_ = 4;
-    }
-    else if (motor_count_ % 6 == 0)
-    {
-        dof_per_leg_ = 3;
-    }
-    else if (motor_count_ % 4 == 0)
-    {
-        dof_per_leg_ = 4;
-    }
-    else
-    {
-        dof_per_leg_ = motor_count_;
-    }
-
-    if (dof_per_leg_ == 0)
-    {
-        dof_per_leg_ = motor_count_;
-    }
-
-    if (dof_per_leg_ > 0)
-    {
-        leg_count_ = motor_count_ / dof_per_leg_;
-        if (motor_count_ % dof_per_leg_ != 0)
-        {
-            ++leg_count_;
-        }
-    }
-
-    if (leg_count_ == 0)
-    {
-        leg_count_ = 1;
-        dof_per_leg_ = motor_count_;
-    }
-    motor_state_.resize(motor_count_);
 }
 
 TitatiHardware::~TitatiHardware()
@@ -122,98 +32,52 @@ bool TitatiHardware::Initialize()
         return true;
     }
 
-    socket_fd_ = ::socket(PF_CAN, SOCK_RAW, CAN_RAW);
-    if (socket_fd_ < 0)
+    try
     {
-        std::perror("titati_can socket");
+        robot_ = std::make_unique<TitatiRobot>(motor_count_, interface_);
+    }
+    catch (const std::exception& ex)
+    {
+        std::cerr << "[TitatiHardware] Failed to create TitatiRobot: " << ex.what() << std::endl;
         return false;
     }
 
-    int canfd_on = 1;
-    if (::setsockopt(socket_fd_, SOL_CAN_RAW, CAN_RAW_FD_FRAMES, &canfd_on, sizeof(canfd_on)) < 0)
-    {
-        std::perror("setsockopt CAN_RAW_FD_FRAMES");
-        ::close(socket_fd_);
-        socket_fd_ = -1;
-        return false;
-    }
-
-    int recv_own_msgs = 0;
-    (void)::setsockopt(socket_fd_, SOL_CAN_RAW, CAN_RAW_RECV_OWN_MSGS, &recv_own_msgs, sizeof(recv_own_msgs));
-
-    struct ifreq ifr
-    {
-    };
-    std::strncpy(ifr.ifr_name, interface_.c_str(), IFNAMSIZ - 1);
-    ifr.ifr_name[IFNAMSIZ - 1] = '\0';
-    if (ioctl(socket_fd_, SIOCGIFINDEX, &ifr) < 0)
-    {
-        std::perror("ioctl SIOCGIFINDEX");
-        ::close(socket_fd_);
-        socket_fd_ = -1;
-        return false;
-    }
-
-    struct sockaddr_can addr
-    {
-    };
-    addr.can_family = AF_CAN;
-    addr.can_ifindex = ifr.ifr_ifindex;
-    if (::bind(socket_fd_, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr)) < 0)
-    {
-        std::perror("bind can interface");
-        ::close(socket_fd_);
-        socket_fd_ = -1;
-        return false;
-    }
-
-    struct can_filter filters[2];
-    filters[0].can_id = kMotorFeedbackBaseId;
-    filters[0].can_mask = kMotorFeedbackMask;
-    filters[1].can_id = kImuFeedbackId;
-    filters[1].can_mask = CAN_SFF_MASK;
-    if (::setsockopt(socket_fd_, SOL_CAN_RAW, CAN_RAW_FILTER, &filters, sizeof(filters)) < 0)
-    {
-        std::perror("setsockopt CAN_RAW_FILTER");
-        ::close(socket_fd_);
-        socket_fd_ = -1;
-        return false;
-    }
-
-    running_.store(true);
-    receiver_thread_ = std::thread(&TitatiHardware::ReceiverLoop, this);
     initialized_.store(true);
     return true;
 }
 
 void TitatiHardware::Shutdown()
 {
-    running_.store(false);
-    if (receiver_thread_.joinable())
-    {
-        receiver_thread_.join();
-    }
-
-    if (socket_fd_ >= 0)
-    {
-        ::close(socket_fd_);
-        socket_fd_ = -1;
-    }
-
+    robot_.reset();
     initialized_.store(false);
 }
 
 CombinedState TitatiHardware::GetLatestState() const
 {
     CombinedState output;
-    output.motors.resize(motor_state_.size());
+    output.motors.resize(motor_count_);
 
+    if (!robot_)
     {
-        std::scoped_lock<std::mutex> lock(state_mutex_);
-        output.motors = motor_state_;
-        output.imu = imu_state_;
+        return output;
     }
-    output.sequence = state_sequence_.load(std::memory_order_relaxed);
+
+    const auto& packets = robot_->get_motor_packets();
+    for (std::size_t i = 0; i < motor_count_ && i < packets.size(); ++i)
+    {
+        output.motors[i].position = packets[i].position;
+        output.motors[i].velocity = packets[i].velocity;
+        output.motors[i].torque = packets[i].torque;
+        output.motors[i].timestamp = packets[i].timestamp;
+    }
+
+    const auto& imu = robot_->get_raw_imu();
+    output.imu.timestamp = imu.timestamp;
+    output.imu.acceleration = {imu.accl[0] * kGravity, imu.accl[1] * kGravity, imu.accl[2] * kGravity};
+    output.imu.gyroscope = {imu.gyro[0], imu.gyro[1], imu.gyro[2]};
+    output.imu.quaternion = {imu.quaternion[3], imu.quaternion[0], imu.quaternion[1], imu.quaternion[2]};
+
+    output.sequence = sequence_counter_.fetch_add(1, std::memory_order_relaxed) + 1;
     return output;
 }
 
@@ -223,7 +87,7 @@ bool TitatiHardware::SendMitCommand(const std::vector<double>& position,
                                     const std::vector<double>& kd,
                                     const std::vector<double>& torque)
 {
-    if (!initialized_.load())
+    if (!initialized_.load() || !robot_)
     {
         return false;
     }
@@ -235,52 +99,7 @@ bool TitatiHardware::SendMitCommand(const std::vector<double>& position,
         return false;
     }
 
-    if (motor_count_ == 0)
-    {
-        return false;
-    }
-
-    bool success = true;
-    const std::uint32_t timestamp = AcquireTimestampUs();
-
-    const std::size_t command_pairs = (motor_count_ + 1) / 2;
-
-    for (std::size_t pair = 0; pair < command_pairs; ++pair)
-    {
-        struct canfd_frame frame{};
-        frame.can_id = kMotorCommandBaseId + pair;
-        frame.len = sizeof(MotorCommandPacket) * 2;
-        frame.flags = CANFD_BRS | CANFD_FDF;
-        std::memset(frame.data, 0, sizeof(frame.data));
-
-        for (std::size_t j = 0; j < 2; ++j)
-        {
-            const std::size_t idx = pair * 2 + j;
-            if (idx >= motor_count_)
-            {
-                break;
-            }
-
-            MotorCommandPacket packet{};
-            packet.timestamp = timestamp;
-            packet.position = static_cast<float>(position[idx]);
-            packet.velocity = static_cast<float>(velocity[idx]);
-            packet.kp = static_cast<float>(kp[idx]);
-            packet.kd = static_cast<float>(kd[idx]);
-            packet.torque = static_cast<float>(torque[idx]);
-
-            std::memcpy(frame.data + j * sizeof(MotorCommandPacket), &packet, sizeof(MotorCommandPacket));
-        }
-
-        if (!SendFrame(&frame, CANFD_MTU))
-        {
-            success = false;
-        }
-
-        std::this_thread::sleep_for(std::chrono::microseconds(150));
-    }
-
-    return success;
+    return robot_->set_target_joint_mit(position, velocity, kp, kd, torque);
 }
 
 bool TitatiHardware::SendTorqueCommand(const std::vector<double>& torque)
@@ -291,184 +110,12 @@ bool TitatiHardware::SendTorqueCommand(const std::vector<double>& torque)
 
 bool TitatiHardware::SetDirectControlMode(bool enable)
 {
-    if (!initialized_.load())
+    if (!initialized_.load() || !robot_)
     {
         return false;
     }
 
-    direct_mode_requested_.store(enable, std::memory_order_relaxed);
-    constexpr auto kHandshakeDelay = std::chrono::microseconds(100);
-
-    if (enable)
-    {
-        bool ok = SendRpcCommand(kRpcKeyReadyNext, kReadyWaitingCommand);
-        std::this_thread::sleep_for(kHandshakeDelay);
-        ok &= SendRpcCommand(kRpcKeyReadyNext, kForceDirectCommand);
-        return ok;
-    }
-
-    bool ok = SendRpcCommand(kRpcKeyReadyNext, kReadyWaitingCommand);
-    std::this_thread::sleep_for(kHandshakeDelay);
-    ok &= SendRpcCommand(kRpcKeyReadyNext, kAutoLocomotionCommand);
-    return ok;
-}
-
-void TitatiHardware::ReceiverLoop()
-{
-    struct pollfd poll_fd
-    {
-        socket_fd_, POLLIN, 0
-    };
-
-    while (running_.load())
-    {
-        const int poll_ret = ::poll(&poll_fd, 1, 100);
-        if (!running_.load())
-        {
-            break;
-        }
-
-        if (poll_ret < 0)
-        {
-            if (errno == EINTR)
-            {
-                continue;
-            }
-            std::perror("poll can socket");
-            continue;
-        }
-
-        if (poll_ret == 0)
-        {
-            continue;
-        }
-
-        struct canfd_frame frame
-        {
-        };
-        const ssize_t bytes_read = ::read(socket_fd_, &frame, sizeof(frame));
-        if (bytes_read < 0)
-        {
-            if (errno == EWOULDBLOCK || errno == EAGAIN)
-            {
-                continue;
-            }
-            std::perror("read can frame");
-            continue;
-        }
-
-        const std::uint32_t can_id = frame.can_id & CAN_SFF_MASK;
-        if (can_id >= kMotorFeedbackBaseId && can_id < kMotorFeedbackBaseId + leg_count_)
-        {
-            HandleMotorFeedback(can_id, frame.data, frame.len);
-        }
-        else if (can_id == kImuFeedbackId)
-        {
-            HandleImuFeedback(frame.data, frame.len);
-        }
-        else
-        {
-            // Ignore other frames
-        }
-    }
-}
-
-void TitatiHardware::HandleMotorFeedback(std::uint32_t can_id, const std::uint8_t* data, std::uint8_t dlc)
-{
-    const std::size_t leg_index = can_id - kMotorFeedbackBaseId;
-    const std::size_t base_index = leg_index * dof_per_leg_;
-
-    if (leg_index >= leg_count_)
-    {
-        return;
-    }
-
-    std::scoped_lock<std::mutex> lock(state_mutex_);
-    const std::size_t motors_in_frame =
-        std::min<std::size_t>(dof_per_leg_, dlc / sizeof(MotorFeedbackPacket));
-    for (std::size_t i = 0; i < motors_in_frame; ++i)
-    {
-        MotorFeedbackPacket packet{};
-        std::memcpy(&packet, data + i * sizeof(MotorFeedbackPacket), sizeof(MotorFeedbackPacket));
-
-        const std::size_t motor_index = base_index + i;
-        if (motor_index >= motor_state_.size())
-        {
-            continue;
-        }
-
-        motor_state_[motor_index].position = static_cast<double>(packet.position);
-        motor_state_[motor_index].velocity = static_cast<double>(packet.velocity);
-        motor_state_[motor_index].torque = static_cast<double>(packet.torque);
-        motor_state_[motor_index].timestamp = packet.timestamp;
-    }
-    state_sequence_.fetch_add(1, std::memory_order_relaxed);
-}
-
-void TitatiHardware::HandleImuFeedback(const std::uint8_t* data, std::uint8_t dlc)
-{
-    if (dlc < sizeof(ImuPacket))
-    {
-        return;
-    }
-
-    ImuPacket packet{};
-    std::memcpy(&packet, data, sizeof(ImuPacket));
-
-    std::scoped_lock<std::mutex> lock(state_mutex_);
-    imu_state_.timestamp = packet.timestamp;
-    imu_state_.acceleration = {packet.acceleration[0] * kGravity,
-                               packet.acceleration[1] * kGravity,
-                               packet.acceleration[2] * kGravity};
-    imu_state_.gyroscope = {packet.gyroscope[0], packet.gyroscope[1], packet.gyroscope[2]};
-    imu_state_.quaternion = {packet.quaternion[3], packet.quaternion[0], packet.quaternion[1], packet.quaternion[2]};
-    state_sequence_.fetch_add(1, std::memory_order_relaxed);
-}
-
-bool TitatiHardware::SendRpcCommand(std::uint16_t key, std::uint32_t value)
-{
-    if (socket_fd_ < 0)
-    {
-        return false;
-    }
-
-    struct canfd_frame frame{};
-    frame.can_id = kRpcCommandId;
-    frame.len = 10U;
-    frame.flags = CANFD_BRS | CANFD_FDF;
-    std::memset(frame.data, 0, sizeof(frame.data));
-
-    const std::uint32_t timestamp = AcquireTimestampUs();
-    std::memcpy(frame.data, &timestamp, sizeof(timestamp));
-    std::memcpy(frame.data + 4, &key, sizeof(key));
-    std::memcpy(frame.data + 6, &value, sizeof(value));
-
-    return SendFrame(&frame, CANFD_MTU);
-}
-
-bool TitatiHardware::SendFrame(const void* frame, std::size_t length) const
-{
-    if (socket_fd_ < 0)
-    {
-        return false;
-    }
-
-    const ssize_t written = ::write(socket_fd_, frame, length);
-    if (written < 0)
-    {
-        std::perror("write can frame");
-        return false;
-    }
-    return true;
-}
-
-std::uint32_t TitatiHardware::AcquireTimestampUs() const
-{
-    struct timeval tv
-    {
-    };
-    ::gettimeofday(&tv, nullptr);
-    return static_cast<std::uint32_t>((tv.tv_sec * 1'000'000LL + tv.tv_usec) & 0xFFFFFFFFU);
+    return robot_->set_motors_sdk(enable);
 }
 
 }  // namespace titati::hardware

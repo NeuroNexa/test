@@ -200,9 +200,13 @@ endif()
 
 add_library(titati_hardware
     library/hardware/titati/titati_hardware.cpp
+    library/hardware/titati/titati_robot.cpp
+    library/hardware/titati/can_device/can_receiver.cpp
+    library/hardware/titati/can_device/can_sender.cpp
 )
 target_include_directories(titati_hardware PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/library/hardware/titati
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/hardware/titati/can_device
 )
 set_target_properties(titati_hardware PROPERTIES
     CXX_STANDARD 17
