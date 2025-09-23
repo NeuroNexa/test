@@ -14,38 +14,45 @@
 
 #include "tita_robot/can_receiver.hpp"
 
+#include <vector>
+
 namespace can_device
 {
 
 void MotorsImuCanReceiveApi::register_motors_device_can_filter()
 {
-  // if (!this->is_running.load()) {
-  //   throw std::runtime_error("MotorsImuCanReceiveApi is not running");
-  // }
-  struct can_filter motors_device_rx_filter;
-  motors_device_rx_filter.can_id = CAN_ID_MOTOR_IN;
-  motors_device_rx_filter.can_mask = CAN_MASK_AS_MOTORS_INFO;
-  this->motors_can_receive_api->set_filter(&motors_device_rx_filter, sizeof(struct can_filter));
+  std::vector<struct can_filter> filters(board_count_);
+  for (size_t board = 0; board < board_count_; ++board) {
+    filters[board].can_id = CAN_ID_MOTOR_IN + board * can_board_stride_;
+    filters[board].can_mask = CAN_MASK_AS_MOTORS_INFO;
+  }
+  this->motors_can_receive_api->set_filter(filters.data(), filters.size() * sizeof(struct can_filter));
 }
 
 void MotorsImuCanReceiveApi::board_can_data_callback(std::shared_ptr<struct canfd_frame> recv_frame)
 {
-  if (recv_frame->can_id >= CAN_ID_MOTOR_IN && recv_frame->can_id < CAN_ID_MOTOR_IN + leg_num_) {
-    motors_data_callback(recv_frame);
+  if (recv_frame->can_id >= CAN_ID_MOTOR_IN &&
+      recv_frame->can_id < CAN_ID_MOTOR_IN + board_count_ * can_board_stride_) {
+    auto raw_offset = recv_frame->can_id - CAN_ID_MOTOR_IN;
+    size_t board = raw_offset / can_board_stride_;
+    size_t frame_index = raw_offset % can_board_stride_;
+    if (board >= board_count_ || frame_index >= leg_num_per_board_) {
+      return;
+    }
+    motors_data_callback(recv_frame, board * leg_num_per_board_ + frame_index);
   } else if (recv_frame->can_id == CAN_ID_IMU1) {
     imu_data_callback(recv_frame);
   } else {
     return;
   }
 }
-void MotorsImuCanReceiveApi::motors_data_callback(std::shared_ptr<struct canfd_frame> recv_frame)
+void MotorsImuCanReceiveApi::motors_data_callback(std::shared_ptr<struct canfd_frame> recv_frame, size_t frame_index)
 {
   std::unique_lock<std::shared_mutex> lock(motors_in_mutex_);
   for (size_t i = 0; i < leg_dof_; i++) {
     api_motor_in_t motor;
     std::memcpy(&motor, recv_frame->data + 16 * i, sizeof(api_motor_in_t));
-    auto it = recv_frame->can_id - CAN_ID_MOTOR_IN;
-    motors_in_[i + leg_dof_ * it] = motor;
+    motors_in_[i + leg_dof_ * frame_index] = motor;
   }
 }
 void MotorsImuCanReceiveApi::imu_data_callback(std::shared_ptr<struct canfd_frame> recv_frame)

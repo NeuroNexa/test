@@ -68,6 +68,8 @@ namespace can_device
       if(size % 8 == 0) leg_dof_ = 4;
       else if(size % 6 == 0) leg_dof_ = 3;
       leg_num_ = size / leg_dof_;
+      board_count_ = std::max<size_t>(1, size / motors_per_board_nominal_);
+      leg_num_per_board_ = leg_num_ / board_count_;
       register_motors_device_can_filter();
       api_motor_in_t default_motor_in;
       std::memset(&default_motor_in, 0x00U, sizeof(api_motor_in_t));
@@ -100,7 +102,7 @@ namespace can_device
             motors_can_rx_is_block, motors_timeout_us, motors_can_id_offset);
 
     void board_can_data_callback(std::shared_ptr<struct canfd_frame> recv_frame);
-    void motors_data_callback(std::shared_ptr<struct canfd_frame> recv_frame);
+    void motors_data_callback(std::shared_ptr<struct canfd_frame> recv_frame, size_t frame_index);
     void imu_data_callback(std::shared_ptr<struct canfd_frame> recv_frame);
     void motors_status_callback(std::shared_ptr<struct canfd_frame> recv_frame);
 
@@ -110,6 +112,10 @@ namespace can_device
 
     mutable std::shared_mutex motors_in_mutex_, imu_mutex_;
     size_t leg_dof_{4}, leg_num_{2};
+    size_t board_count_{1};
+    size_t leg_num_per_board_{2};
+    static constexpr size_t motors_per_board_nominal_{8};
+    static constexpr uint32_t can_board_stride_{0x10U};
   };
 } // namespace can_device
 

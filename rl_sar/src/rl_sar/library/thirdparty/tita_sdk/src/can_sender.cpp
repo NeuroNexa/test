@@ -61,28 +61,32 @@ bool MotorsCanSendApi::send_motors_can(std::vector<motor_out> motors)
   struct canfd_frame frame;
   frame.len = 48U;
   auto now = get_current_time();
-  for (size_t id(0); id < motors.size()/2; id++) {
-    frame.can_id = CAN_ID_SEND_MOTORS + id;
-    memset(frame.data, 0x00U, sizeof(frame.data));
-    auto motor = motors[2 * id];
-    motor.timestamp = now;
-    std::memcpy(frame.data, &motor.timestamp, sizeof(motor.timestamp));
-    std::memcpy(frame.data + 4, &motor.position, sizeof(motor.position));
-    std::memcpy(frame.data + 8, &motor.kp, sizeof(motor.kp));
-    std::memcpy(frame.data + 12, &motor.velocity, sizeof(motor.velocity));
-    std::memcpy(frame.data + 16, &motor.kd, sizeof(motor.kd));
-    std::memcpy(frame.data + 20, &motor.torque, sizeof(motor.torque));
+  for (size_t board = 0; board < board_count_; ++board) {
+    const size_t base_index = board * motors_per_board_;
+    const canid_t base_can_id = static_cast<canid_t>(CAN_ID_SEND_MOTORS + board * can_board_stride_);
+    for (size_t frame_id = 0; frame_id < frames_per_board_; ++frame_id) {
+      frame.can_id = base_can_id + frame_id;
+      memset(frame.data, 0x00U, sizeof(frame.data));
+      auto motor = motors[base_index + 2 * frame_id];
+      motor.timestamp = now;
+      std::memcpy(frame.data, &motor.timestamp, sizeof(motor.timestamp));
+      std::memcpy(frame.data + 4, &motor.position, sizeof(motor.position));
+      std::memcpy(frame.data + 8, &motor.kp, sizeof(motor.kp));
+      std::memcpy(frame.data + 12, &motor.velocity, sizeof(motor.velocity));
+      std::memcpy(frame.data + 16, &motor.kd, sizeof(motor.kd));
+      std::memcpy(frame.data + 20, &motor.torque, sizeof(motor.torque));
 
-    motor = motors[2 * id + 1];
-    motor.timestamp = now;
-    std::memcpy(frame.data + 24, &motor.timestamp, sizeof(motor.timestamp));
-    std::memcpy(frame.data + 28, &motor.position, sizeof(motor.position));
-    std::memcpy(frame.data + 32, &motor.kp, sizeof(motor.kp));
-    std::memcpy(frame.data + 36, &motor.velocity, sizeof(motor.velocity));
-    std::memcpy(frame.data + 40, &motor.kd, sizeof(motor.kd));
-    std::memcpy(frame.data + 44, &motor.torque, sizeof(motor.torque));
-    send_success &= can_send_api_->send_can_message(frame);
-    std::this_thread::sleep_for(std::chrono::microseconds(150)); // 等待 100 微秒
+      motor = motors[base_index + 2 * frame_id + 1];
+      motor.timestamp = now;
+      std::memcpy(frame.data + 24, &motor.timestamp, sizeof(motor.timestamp));
+      std::memcpy(frame.data + 28, &motor.position, sizeof(motor.position));
+      std::memcpy(frame.data + 32, &motor.kp, sizeof(motor.kp));
+      std::memcpy(frame.data + 36, &motor.velocity, sizeof(motor.velocity));
+      std::memcpy(frame.data + 40, &motor.kd, sizeof(motor.kd));
+      std::memcpy(frame.data + 44, &motor.torque, sizeof(motor.torque));
+      send_success &= can_send_api_->send_can_message(frame);
+      std::this_thread::sleep_for(std::chrono::microseconds(150)); // 等待 100 微秒
+    }
   }
   return send_success;
 }

@@ -407,7 +407,7 @@ are enabled by default. Other robot executables can be re-enabled through the ne
 
    The program waits for the power-on self-test heartbeat (router mode 1/2) and then automatically calls `set_forcedirect_mode(true)` so that every CAN frame is transparently forwarded. The helper script keeps the router process alive (press `Ctrl+C` to stop) so the forwarding remains active while the master issues commands. Use `--once` if you only want to send the command and exit immediately.
 
-4. The master Jetson runs the new rl_sar hardware layer and publishes commands for all 16 actuators directly on the shared CAN bus once the slave reports "Router switched to forced-direct relay mode".
+4. The master Jetson runs the new rl_sar hardware layer and publishes commands for all 16 actuators directly on the shared CAN bus once the slave reports "Router switched to forced-direct relay mode". The CAN backend now mirrors the addressing used by `titati_control`: every torque frame is emitted once per motor board (IDs `0x120–0x123` for the front unit and `0x130–0x133` for the rear unit) and feedback frames from both boards are reassembled into a single 16-joint state vector.
 
 **Build options**
 
@@ -439,6 +439,7 @@ The program now samples the current joint configuration as the hold pose, stabil
 joint(s). Use `--joint=<index>` to command a single actuator, tune PD gains via `--kp/--kd` and `--wheel-kp/--wheel-kd`, or switch
 to pure torque mode with `--mode=torque` combined with `--torque-amplitude`/`--torque-bias`. Passing `--pose=default` falls back
 to the previously documented nominal stance.
+Each excitation step now confirms that both Titati motor boards respond in sequence—the sweep enumerates 12 leg joints followed by the 4 wheel motors—so you can validate end-to-end CAN coverage before loading any RL policy.
 
 **RL control entry-point**
 

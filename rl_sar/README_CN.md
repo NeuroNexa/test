@@ -407,7 +407,7 @@ ros2 run rl_sar rl_real_lite3
 
    程序会等待上电自检完成（路由板心跳 mode=1/2），随后自动调用 `set_forcedirect_mode(true)` 把 CAN 报文透传到总线上。脚本会让路由进程保持运行（需要停止时按 `Ctrl+C`），确保主机在发送指令期间转发始终有效；若只希望发送一次指令后退出，可使用 `--once` 参数。
 
-4. 待终端提示“Router switched to forced-direct relay mode”后，主机 Jetson 再启动 rl_sar 控制程序，在同一 CAN-FD 总线上直接下发 16 个电机命令。
+4. 待终端提示“Router switched to forced-direct relay mode”后，主机 Jetson 再启动 rl_sar 控制程序，在同一 CAN-FD 总线上直接下发 16 个电机命令。底层 CAN 发送策略与 `titati_control` 一致：每个力矩帧会针对前后两个控制板分别发送一遍（ID 范围分别为 `0x120-0x123` 与 `0x130-0x133`），反馈帧也会自动重组到一份 16 关节的状态向量中。
 
 **编译选项**
 
@@ -436,7 +436,7 @@ cmake --build cmake_build -j4
 
 程序会先读取当前关节位置作为保持姿态，稳定后再对目标关节进行激励。使用 `--joint=<索引>` 可以仅测试单个关节；
 `--kp/--kd` 与 `--wheel-kp/--wheel-kd` 可调整腿部/轮毂的 PD 增益；通过 `--mode=torque` 联合 `--torque-amplitude`、`--torque-bias`
-可以切换为直接施加力矩。若希望回到预设站姿，可加上 `--pose=default` 参数。
+可以切换为直接施加力矩。若希望回到预设站姿，可加上 `--pose=default` 参数。扫描过程中会依次验证 12 个腿部关节与 4 个轮毂电机，确保两块电机控制板都能被主机正确驱动。
 
 **RL 控制入口**
 

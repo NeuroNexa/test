@@ -82,11 +82,15 @@ namespace can_device
   public:
     MotorsCanSendApi(size_t size)
     {
-      if (size % 8 == 0)
+      if (size % 8 == 0) {
         leg_dof_ = 4;
-      else if (size % 6 == 0)
+      } else if (size % 6 == 0) {
         leg_dof_ = 3;
+      }
       leg_num_ = size / leg_dof_;
+      board_count_ = std::max<size_t>(1, size / motors_per_board_nominal_);
+      motors_per_board_ = size / board_count_;
+      frames_per_board_ = motors_per_board_ / 2;
     }
     ~MotorsCanSendApi() = default;
     bool send_motors_can(std::vector<motor_out> motors);
@@ -114,6 +118,11 @@ namespace can_device
       return std::move(tv.tv_sec * 1000000 + tv.tv_usec);
     }
     size_t leg_dof_{4}, leg_num_{2};
+    size_t board_count_{1};
+    size_t motors_per_board_{motors_per_board_nominal_};
+    size_t frames_per_board_{motors_per_board_nominal_ / 2};
+    static constexpr size_t motors_per_board_nominal_{8};
+    static constexpr uint32_t can_board_stride_{0x10U};
   };
 } // namespace can_device
 
