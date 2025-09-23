@@ -5,6 +5,7 @@
 
 #include "rl_real_titati.hpp"
 
+#include <algorithm>
 #include <iostream>
 
 RL_Real::RL_Real()
@@ -129,31 +130,30 @@ void RL_Real::SetCommand(const RobotCommand<double> *command)
         return;
     }
 
-    std::vector<double> q;
-    std::vector<double> v;
-    std::vector<double> kp;
-    std::vector<double> kd;
-    std::vector<double> tau;
-    q.reserve(this->params.num_of_dofs);
-    v.reserve(this->params.num_of_dofs);
-    kp.reserve(this->params.num_of_dofs);
-    kd.reserve(this->params.num_of_dofs);
-    tau.reserve(this->params.num_of_dofs);
+    std::vector<double> torque_commands;
+    torque_commands.reserve(this->params.num_of_dofs);
 
     for (int i = 0; i < this->params.num_of_dofs; ++i)
     {
-        q.push_back(command->motor_command.q[i]);
-        v.push_back(command->motor_command.dq[i]);
-        kp.push_back(command->motor_command.kp[i]);
-        kd.push_back(command->motor_command.kd[i]);
-        tau.push_back(command->motor_command.tau[i]);
+        const double q_cmd = command->motor_command.q[i];
+        const double dq_cmd = command->motor_command.dq[i];
+        const double kp_cmd = command->motor_command.kp[i];
+        const double kd_cmd = command->motor_command.kd[i];
+        const double tau_ff = command->motor_command.tau[i];
+        const double q_meas = joint_positions_[i];
+        const double dq_meas = joint_velocities_[i];
+
+        double torque = tau_ff + kp_cmd * (q_cmd - q_meas) + kd_cmd * (dq_cmd - dq_meas);
+        const double torque_limit = this->params.torque_limits[0][i].item<double>();
+        torque = std::clamp(torque, -torque_limit, torque_limit);
+        torque_commands.push_back(torque);
     }
 
-    if (!robot_->set_target_joint_mit(q, v, kp, kd, tau) && motors_sdk_enabled_)
+    if (!robot_->set_target_joint_t(torque_commands) && motors_sdk_enabled_)
     {
         motors_sdk_enabled_ = false;
         last_sdk_retry_ = std::chrono::steady_clock::now();
-        std::cout << LOGGER::WARNING << "Failed to send MIT command to Titati motors. Retrying SDK handshake." << std::endl;
+        std::cout << LOGGER::WARNING << "Failed to send torque command to Titati motors. Retrying SDK handshake." << std::endl;
     }
 }
 

@@ -245,24 +245,34 @@ public:
                   << " yaw:" << rl.control.yaw << std::flush;
 
         // 从 RL 输出队列里取动作（目标关节角/速度）
-        torch::Tensor _output_dof_pos, _output_dof_vel;
+        torch::Tensor _output_dof_pos;
+        torch::Tensor _output_dof_vel;
+        torch::Tensor _output_dof_tau;
         if (rl.output_dof_pos_queue.try_pop(_output_dof_pos) &&
             rl.output_dof_vel_queue.try_pop(_output_dof_vel))
         {
+            bool has_tau = rl.output_dof_tau_queue.try_pop(_output_dof_tau);
             for (int i = 0; i < rl.params.num_of_dofs; ++i)
             {
                 if (_output_dof_pos.defined() && _output_dof_pos.numel() > 0)
                 {
-                    fsm_command->motor_command.q[i] = rl.output_dof_pos[0][i].item<double>();
+                    fsm_command->motor_command.q[i] = _output_dof_pos[0][i].item<double>();
                 }
                 if (_output_dof_vel.defined() && _output_dof_vel.numel() > 0)
                 {
-                    fsm_command->motor_command.dq[i] = rl.output_dof_vel[0][i].item<double>();
+                    fsm_command->motor_command.dq[i] = _output_dof_vel[0][i].item<double>();
                 }
                 // 使用 RL 模式的 Kp/Kd
                 fsm_command->motor_command.kp[i] = rl.params.rl_kp[0][i].item<double>();
                 fsm_command->motor_command.kd[i] = rl.params.rl_kd[0][i].item<double>();
-                fsm_command->motor_command.tau[i] = 0;
+                if (has_tau && _output_dof_tau.defined() && _output_dof_tau.numel() > 0)
+                {
+                    fsm_command->motor_command.tau[i] = _output_dof_tau[0][i].item<double>();
+                }
+                else
+                {
+                    fsm_command->motor_command.tau[i] = 0;
+                }
             }
         }
     }
