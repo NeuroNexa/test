@@ -46,7 +46,12 @@ RL_Real::RL_Real()
     motors_sdk_enabled_ = robot_->set_motors_sdk(true);
     if (!motors_sdk_enabled_)
     {
-        std::cout << LOGGER::WARNING << "Failed to switch Titati motors to SDK control mode." << std::endl;
+        std::cout << LOGGER::WARNING << "Failed to switch Titati motors to SDK control mode. Will retry automatically." << std::endl;
+        last_sdk_retry_ = std::chrono::steady_clock::now() - std::chrono::seconds(1);
+    }
+    else
+    {
+        last_sdk_retry_ = std::chrono::steady_clock::now();
     }
 
     joint_positions_.assign(this->params.num_of_dofs, 0.0);
@@ -119,7 +124,7 @@ void RL_Real::GetState(RobotState<double> *state)
 
 void RL_Real::SetCommand(const RobotCommand<double> *command)
 {
-    if (!motors_sdk_enabled_)
+    if (!EnsureMotorsSdkMode())
     {
         return;
     }
@@ -144,7 +149,39 @@ void RL_Real::SetCommand(const RobotCommand<double> *command)
         tau.push_back(command->motor_command.tau[i]);
     }
 
-    robot_->set_target_joint_mit(q, v, kp, kd, tau);
+    if (!robot_->set_target_joint_mit(q, v, kp, kd, tau) && motors_sdk_enabled_)
+    {
+        motors_sdk_enabled_ = false;
+        last_sdk_retry_ = std::chrono::steady_clock::now();
+        std::cout << LOGGER::WARNING << "Failed to send MIT command to Titati motors. Retrying SDK handshake." << std::endl;
+    }
+}
+
+bool RL_Real::EnsureMotorsSdkMode()
+{
+    if (motors_sdk_enabled_)
+    {
+        return true;
+    }
+
+    const auto now = std::chrono::steady_clock::now();
+    constexpr auto kRetryInterval = std::chrono::milliseconds(200);
+    if (now - last_sdk_retry_ < kRetryInterval)
+    {
+        return false;
+    }
+
+    last_sdk_retry_ = now;
+    if (robot_->set_motors_sdk(true))
+    {
+        motors_sdk_enabled_ = true;
+        std::cout << LOGGER::INFO << "Titati motors switched to SDK control mode." << std::endl;
+        robot_->set_target_joint_t(std::vector<double>(this->params.num_of_dofs, 0.0));
+        return true;
+    }
+
+    std::cout << LOGGER::WARNING << "Retrying to switch Titati motors to SDK control mode..." << std::endl;
+    return false;
 }
 
 void RL_Real::RobotControl()
