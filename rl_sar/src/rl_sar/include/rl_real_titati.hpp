@@ -57,6 +57,8 @@ private:
     std::vector<double> joint_positions_;
     std::vector<double> joint_velocities_;
     std::vector<double> joint_torques_;
+    std::vector<double> hardware_positions_;
+    std::vector<double> hardware_velocities_;
 
 #if defined(USE_ROS1) && defined(USE_ROS)
     geometry_msgs::Twist cmd_vel;

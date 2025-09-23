@@ -6,7 +6,23 @@
 #include "rl_real_titati.hpp"
 
 #include <algorithm>
+#include <array>
 #include <iostream>
+
+namespace
+{
+constexpr double kHipOffset = 1.57;
+constexpr std::array<double, 16> kJointSign = {
+    1.0, 1.0, 1.0, 1.0,
+    1.0, 1.0, 1.0, 1.0,
+   -1.0,-1.0,-1.0,-1.0,
+   -1.0,-1.0,-1.0,-1.0};
+constexpr std::array<double, 16> kPositionOffset = {
+    kHipOffset, 0.0, 0.0, 0.0,
+    kHipOffset, 0.0, 0.0, 0.0,
+   -kHipOffset, 0.0, 0.0, 0.0,
+   -kHipOffset, 0.0, 0.0, 0.0};
+}
 
 RL_Real::RL_Real()
 #if defined(USE_ROS2) && defined(USE_ROS)
@@ -58,6 +74,8 @@ RL_Real::RL_Real()
     joint_positions_.assign(this->params.num_of_dofs, 0.0);
     joint_velocities_.assign(this->params.num_of_dofs, 0.0);
     joint_torques_.assign(this->params.num_of_dofs, 0.0);
+    hardware_positions_.assign(this->params.num_of_dofs, 0.0);
+    hardware_velocities_.assign(this->params.num_of_dofs, 0.0);
 
     this->InitOutputs();
     this->InitControl();
@@ -90,15 +108,28 @@ RL_Real::~RL_Real()
 
 void RL_Real::GetState(RobotState<double> *state)
 {
-    auto q = robot_->get_joint_q();
-    auto v = robot_->get_joint_v();
+    hardware_positions_ = robot_->get_joint_q();
+    hardware_velocities_ = robot_->get_joint_v();
     auto tau = robot_->get_joint_t();
 
     for (int i = 0; i < this->params.num_of_dofs; ++i)
     {
-        joint_positions_[i] = q[this->params.joint_mapping[i]];
-        joint_velocities_[i] = v[this->params.joint_mapping[i]];
-        joint_torques_[i] = tau[this->params.joint_mapping[i]];
+        const int motor_index = this->params.joint_mapping[i];
+        const double sign = kJointSign[i];
+        const double offset = kPositionOffset[i];
+
+        const double raw_position = hardware_positions_[motor_index];
+        const double raw_velocity = hardware_velocities_[motor_index];
+        const double raw_torque = tau[motor_index];
+
+        joint_positions_[i] = sign * raw_position + offset;
+        if (i % 4 == 3)
+        {
+            joint_positions_[i] = this->params.default_dof_pos[0][i].item<double>();
+        }
+        joint_velocities_[i] = sign * raw_velocity;
+        joint_torques_[i] = sign * raw_torque;
+
         state->motor_state.q[i] = joint_positions_[i];
         state->motor_state.dq[i] = joint_velocities_[i];
         state->motor_state.tau_est[i] = joint_torques_[i];
@@ -139,14 +170,20 @@ void RL_Real::SetCommand(const RobotCommand<double> *command)
         const double kp_cmd = command->motor_command.kp[i];
         const double kd_cmd = command->motor_command.kd[i];
         const double tau_ff = command->motor_command.tau[i];
-        const double q_meas = joint_positions_[i];
-        const double dq_meas = joint_velocities_[i];
+        const int motor_index = this->params.joint_mapping[i];
+        const double sign = kJointSign[i];
+        const double offset = kPositionOffset[i];
 
-        double torque = tau_ff + kp_cmd * (q_cmd - q_meas) + kd_cmd * (dq_cmd - dq_meas);
+        const double q_cmd_hw = (q_cmd - offset) / sign;
+        const double dq_cmd_hw = dq_cmd / sign;
+        const double tau_ff_hw = sign * tau_ff;
+
+        const double q_meas_hw = hardware_positions_[motor_index];
+        const double dq_meas_hw = hardware_velocities_[motor_index];
+
+        double torque = tau_ff_hw + kp_cmd * (q_cmd_hw - q_meas_hw) + kd_cmd * (dq_cmd_hw - dq_meas_hw);
         const double torque_limit = this->params.torque_limits[0][i].item<double>();
         torque = std::clamp(torque, -torque_limit, torque_limit);
-
-        const int motor_index = this->params.joint_mapping[i];
         if (motor_index >= 0 && motor_index < static_cast<int>(torque_commands.size()))
         {
             torque_commands[motor_index] = torque;
