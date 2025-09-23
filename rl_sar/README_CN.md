@@ -27,7 +27,7 @@
 |FFTAI-GR1T2 (gr1t2)</br>(Only available on Ubuntu20.04)|legged_gym (IsaacGym)|⚪|
 |GoldenRetriever-L4W4 (l4w4)|legged_gym (IsaacGym)</br>robot_lab (IsaacSim)|✅</br>✅|
 |Deeprobotics-Lite3 (lite3)|himloco (IsaacGym)|✅|
-|DDTRobot-Tita (tita)|robot_lab (IsaacSim)|⚪|
+|DDTRobot-Tita (tita)|robot_lab (IsaacSim)|✅|
 
 > [!IMPORTANT]
 > Python版本暂时停止维护，如有需要请使用[v2.3](https://github.com/fan-ziqi/rl_sar/releases/tag/v2.3)版本，后续可能会重新上线。
@@ -228,6 +228,39 @@ git clone https://github.com/osrf/gazebo_models.git ~/.gazebo/models
 |N/A(松开摇杆)|Space|将所有控制指令设置为零|
 
 ### 真实机器人
+
+<details>
+
+<summary>DDTRobot Titati（点击展开）</summary>
+
+Titati 采用主从双板架构，本仓库提供的硬件接口通过 `can0` 与两块板卡通信，因此可以在主机上直接控制 16 个电机。
+
+在部署强化学习控制之前，建议先使用交互式测试程序逐个检查电机状态：
+
+```bash
+# CMake
+./build.sh -m
+./cmake_build/bin/test_titati_motors
+```
+
+测试程序支持输入 `3 2.5`（对 3 号电机施加 2.5 Nm 力矩）、`read`（打印最新的关节状态）、`zero`（清除所有力矩）等命令，输入 `exit` 退出并恢复 MCU 默认控制模式。
+
+确认硬件正常后即可启动强化学习控制：
+
+```bash
+# ROS1
+source devel/setup.bash
+rosrun rl_sar rl_real_titati
+
+# ROS2
+source install/setup.bash
+ros2 run rl_sar rl_real_titati
+
+# CMake（无 ROS 运行时）
+./cmake_build/bin/rl_real_titati
+```
+
+</details>
 
 <details>
 

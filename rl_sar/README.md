@@ -27,7 +27,7 @@ Support List:
 |FFTAI-GR1T2 (gr1t2)</br>(Only available on Ubuntu20.04)|legged_gym (IsaacGym)|⚪|
 |GoldenRetriever-L4W4 (l4w4)|legged_gym (IsaacGym)</br>robot_lab (IsaacSim)|✅</br>✅|
 |Deeprobotics-Lite3 (lite3)|himloco (IsaacGym)|✅|
-|DDTRobot-Tita (tita)|robot_lab (IsaacSim)|⚪|
+|DDTRobot-Tita (tita)|robot_lab (IsaacSim)|✅|
 
 > [!IMPORTANT]
 > Python version temporarily suspended maintenance, please use [v2.3](https://github.com/fan-ziqi/rl_sar/releases/tag/v2.3) if necessary, may be re-released in the future.
@@ -228,6 +228,39 @@ git clone https://github.com/osrf/gazebo_models.git ~/.gazebo/models
 |N/A (Release joystick)|Space|Reset all control commands to zero|
 
 ### Real Robots
+
+<details>
+
+<summary>DDTRobot Titati (Click to expand)</summary>
+
+Titati uses a dual-mainboard architecture. The new hardware bridge in this repository communicates with both boards over the CAN-FD interface exposed as `can0`, so all 16 actuators can be driven directly from the host PC.
+
+Before deploying the RL controller, verify each joint independently using the interactive motor tester:
+
+```bash
+# CMake
+./build.sh -m
+./cmake_build/bin/test_titati_motors
+```
+
+The tester accepts commands such as `3 2.5` (apply 2.5 Nm on motor 3), `read` (print the latest joint states) and `zero` (clear torques). Enter `exit` to terminate and release the MCU back to its default mode.
+
+Once the hardware is validated, start the RL controller:
+
+```bash
+# ROS1
+source devel/setup.bash
+rosrun rl_sar rl_real_titati
+
+# ROS2
+source install/setup.bash
+ros2 run rl_sar rl_real_titati
+
+# CMake (no ROS runtime)
+./cmake_build/bin/rl_real_titati
+```
+
+</details>
 
 <details>
 
