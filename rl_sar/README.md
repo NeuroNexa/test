@@ -429,9 +429,16 @@ Before running reinforcement learning, verify CAN connectivity with the dedicate
 ./cmake_build/bin/titati_motor_test --robot=titati     # 16 motor sweep
 # or for a single robot
 ./cmake_build/bin/titati_motor_test --robot=tita       # 8 motor sweep
+# hold the measured pose and excite only joint 6 for 5 seconds at 1 Hz with 0.15 rad amplitude
+./cmake_build/bin/titati_motor_test --robot=titati --joint=6 --frequency=1.0 --duration=5.0 --amplitude=0.15
+# alternatively drive the joint with a sine torque (Nm)
+./cmake_build/bin/titati_motor_test --robot=titati --joint=6 --mode=torque --torque-amplitude=8.0
 ```
 
-The program sequentially excites each joint using MIT mode so that you can confirm that every actuator responds safely.
+The program now samples the current joint configuration as the hold pose, stabilises the robot, and then excites the selected
+joint(s). Use `--joint=<index>` to command a single actuator, tune PD gains via `--kp/--kd` and `--wheel-kp/--wheel-kd`, or switch
+to pure torque mode with `--mode=torque` combined with `--torque-amplitude`/`--torque-bias`. Passing `--pose=default` falls back
+to the previously documented nominal stance.
 
 **RL control entry-point**
 

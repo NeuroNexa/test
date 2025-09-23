@@ -428,9 +428,15 @@ cmake --build cmake_build -j4
 ./cmake_build/bin/titati_motor_test --robot=titati     # 16 个电机依次扫描
 # 单机测试
 ./cmake_build/bin/titati_motor_test --robot=tita       # 8 个电机依次扫描
+# 使用当前姿态保持，仅激励 6 号关节，持续 5 秒，频率 1 Hz，幅度 0.15 rad
+./cmake_build/bin/titati_motor_test --robot=titati --joint=6 --frequency=1.0 --duration=5.0 --amplitude=0.15
+# 或者改用力矩正弦波（单位：牛·米）
+./cmake_build/bin/titati_motor_test --robot=titati --joint=6 --mode=torque --torque-amplitude=8.0
 ```
 
-程序会在 MIT 模式下逐一激励每个关节，便于确认 CAN 链路、方向与限位。
+程序会先读取当前关节位置作为保持姿态，稳定后再对目标关节进行激励。使用 `--joint=<索引>` 可以仅测试单个关节；
+`--kp/--kd` 与 `--wheel-kp/--wheel-kd` 可调整腿部/轮毂的 PD 增益；通过 `--mode=torque` 联合 `--torque-amplitude`、`--torque-bias`
+可以切换为直接施加力矩。若希望回到预设站姿，可加上 `--pose=default` 参数。
 
 **RL 控制入口**
 
