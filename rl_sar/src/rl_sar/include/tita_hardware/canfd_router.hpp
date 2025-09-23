@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <limits>
 
 #include "tita_hardware/protocol/can_utils.hpp"
 
@@ -44,6 +45,8 @@ private:
     uint32_t mode_ {0U};
     uint32_t heart_cnt_ {0U};
     std::atomic_bool init_flag_ {false};
+    std::atomic_bool auto_retry_ {false};
+    std::atomic<uint32_t> last_mode_ {std::numeric_limits<uint32_t>::max()};
 };
 
 } // namespace can_device
