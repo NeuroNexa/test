@@ -64,6 +64,7 @@ private:
     // hardware interface
     std::unique_ptr<tita_robot> robot_;
     std::string robot_variant_;
+    std::vector<double> torque_limits_;
 
     // others
     int motiontime = 0;

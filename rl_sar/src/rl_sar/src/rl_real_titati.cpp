@@ -5,6 +5,7 @@
 
 #include "rl_real_titati.hpp"
 
+#include <algorithm>
 #include <cstring>
 #include <unistd.h>
 
@@ -29,6 +30,35 @@ RL_Real::RL_Real(const std::string &robot_variant)
     this->ang_vel_type = "ang_vel_body";
     this->robot_name = this->robot_variant_;
     this->ReadYamlBase(this->robot_name);
+
+    torque_limits_.assign(this->params.num_of_dofs, 0.0);
+    try
+    {
+        torch::Tensor limits = this->params.torque_limits.to(torch::kCPU).to(torch::kDouble);
+        limits = limits.reshape({limits.numel()});
+        if (limits.numel() == 1)
+        {
+            std::fill(torque_limits_.begin(), torque_limits_.end(), limits.item<double>());
+        }
+        else if (limits.numel() >= this->params.num_of_dofs)
+        {
+            for (int i = 0; i < this->params.num_of_dofs; ++i)
+            {
+                torque_limits_[i] = limits[i].item<double>();
+            }
+        }
+        else
+        {
+            std::fill(torque_limits_.begin(), torque_limits_.end(), 50.0);
+            std::cout << LOGGER::WARNING << "Torque limit tensor has insufficient entries; using 50Nm fallback." << std::endl;
+        }
+    }
+    catch (const c10::Error &err)
+    {
+        std::fill(torque_limits_.begin(), torque_limits_.end(), 50.0);
+        std::cout << LOGGER::WARNING << "Failed to parse torque limits tensor: " << err.what()
+                  << " Using 50Nm fallback." << std::endl;
+    }
 
     // auto load FSM by robot_name
     if (FSMManager::GetInstance().IsTypeSupported(this->robot_name))
@@ -145,23 +175,32 @@ void RL_Real::GetState(RobotState<double> *state)
 
 void RL_Real::SetCommand(const RobotCommand<double> *command)
 {
-    std::vector<double> q(this->params.num_of_dofs, 0.0);
-    std::vector<double> dq(this->params.num_of_dofs, 0.0);
-    std::vector<double> kp(this->params.num_of_dofs, 0.0);
-    std::vector<double> kd(this->params.num_of_dofs, 0.0);
-    std::vector<double> tau(this->params.num_of_dofs, 0.0);
+    std::vector<double> torques_hw(this->params.num_of_dofs, 0.0);
 
     for (int i = 0; i < this->params.num_of_dofs; ++i)
     {
         int mapped = this->params.joint_mapping[i];
-        q[mapped] = command->motor_command.q[i];
-        dq[mapped] = command->motor_command.dq[i];
-        kp[mapped] = command->motor_command.kp[i];
-        kd[mapped] = command->motor_command.kd[i];
-        tau[mapped] = command->motor_command.tau[i];
+        double q_des = command->motor_command.q[i];
+        double dq_des = command->motor_command.dq[i];
+        double kp = command->motor_command.kp[i];
+        double kd = command->motor_command.kd[i];
+        double ff = command->motor_command.tau[i];
+
+        double q_meas = this->robot_state.motor_state.q[i];
+        double dq_meas = this->robot_state.motor_state.dq[i];
+
+        double torque = kp * (q_des - q_meas) + kd * (dq_des - dq_meas) + ff;
+        if (i < static_cast<int>(torque_limits_.size()))
+        {
+            torque = std::clamp(torque, -torque_limits_[i], torque_limits_[i]);
+        }
+        torques_hw[mapped] = torque;
     }
 
-    robot_->set_target_joint_mit(q, dq, kp, kd, tau);
+    if (!robot_->set_target_joint_t(torques_hw))
+    {
+        std::cout << LOGGER::WARNING << "Failed to dispatch torque command on CAN-FD bus" << std::endl;
+    }
 }
 
 void RL_Real::RobotControl()
