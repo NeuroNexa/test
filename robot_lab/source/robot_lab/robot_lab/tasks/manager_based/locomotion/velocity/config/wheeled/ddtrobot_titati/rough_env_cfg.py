@@ -68,18 +68,21 @@ class TITATIRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
     # fmt: off
     leg_joint_names = [
-        "FR_hip_joint", "FR_thigh_joint", "FR_calf_joint",
         "FL_hip_joint", "FL_thigh_joint", "FL_calf_joint",
+        "FR_hip_joint", "FR_thigh_joint", "FR_calf_joint",
         "RR_hip_joint", "RR_thigh_joint", "RR_calf_joint",
         "RL_hip_joint", "RL_thigh_joint", "RL_calf_joint",
     ]
     wheel_joint_names = [
-        "FR_foot_joint", "FL_foot_joint", "RR_foot_joint", "RL_foot_joint",
+        "FL_foot_joint", "FR_foot_joint", "RR_foot_joint", "RL_foot_joint",
     ]
-    joint_names = ["FR_hip_joint", "FR_thigh_joint", "FR_calf_joint", "FR_foot_joint",
-                "FL_hip_joint", "FL_thigh_joint", "FL_calf_joint", "FL_foot_joint",
-                "RR_hip_joint", "RR_thigh_joint", "RR_calf_joint", "RR_foot_joint",
-                "RL_hip_joint", "RL_thigh_joint", "RL_calf_joint", "RL_foot_joint"]  # 关节总列表（腿 + 轮），顺序与训练/部署需一致
+    joint_names = [
+        "FL_hip_joint", "FL_thigh_joint", "FL_calf_joint", "FL_foot_joint",
+        "FR_hip_joint", "FR_thigh_joint", "FR_calf_joint", "FR_foot_joint",
+        "RR_hip_joint", "RR_thigh_joint", "RR_calf_joint", "RR_foot_joint",
+        "RL_hip_joint", "RL_thigh_joint", "RL_calf_joint", "RL_foot_joint",
+    ]
+    # 关节总列表（腿 + 轮），顺序与训练/部署需一致
     # fmt: on
 
     def __post_init__(self):

@@ -135,6 +135,7 @@ struct ModelParams
     double stiffness;
     torch::Tensor action_scale;
     std::vector<int> wheel_indices;
+    std::vector<int> policy_action_dof_order;
     int num_of_dofs;
     double lin_vel_scale;
     double ang_vel_scale;
