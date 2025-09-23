@@ -130,8 +130,7 @@ void RL_Real::SetCommand(const RobotCommand<double> *command)
         return;
     }
 
-    std::vector<double> torque_commands;
-    torque_commands.reserve(this->params.num_of_dofs);
+    std::vector<double> torque_commands(this->params.num_of_dofs, 0.0);
 
     for (int i = 0; i < this->params.num_of_dofs; ++i)
     {
@@ -146,7 +145,12 @@ void RL_Real::SetCommand(const RobotCommand<double> *command)
         double torque = tau_ff + kp_cmd * (q_cmd - q_meas) + kd_cmd * (dq_cmd - dq_meas);
         const double torque_limit = this->params.torque_limits[0][i].item<double>();
         torque = std::clamp(torque, -torque_limit, torque_limit);
-        torque_commands.push_back(torque);
+
+        const int motor_index = this->params.joint_mapping[i];
+        if (motor_index >= 0 && motor_index < static_cast<int>(torque_commands.size()))
+        {
+            torque_commands[motor_index] = torque;
+        }
     }
 
     if (!robot_->set_target_joint_t(torque_commands) && motors_sdk_enabled_)
