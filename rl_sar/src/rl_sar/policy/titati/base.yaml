@@ -6,53 +6,48 @@ titati:                                           # 机器人名称命名空间
   decimation: 4                                  # 策略推理频率与仿真步长的比值。
                                                  # 例如 dt=0.005, decimation=4 -> 策略每 20ms 更新一次 (50Hz)
 
-  fixed_kp: [70.0, 70.0, 70.0,
-             70.0, 70.0, 70.0,
-             70.0, 70.0, 70.0,
-             70.0, 70.0, 70.0,
-             0.0, 0.0, 0.0, 0.0]
+  fixed_kp: [70.0, 70.0, 70.0, 0.0,
+             70.0, 70.0, 70.0, 0.0,
+             70.0, 70.0, 70.0, 0.0,
+             70.0, 70.0, 70.0, 0.0]
                                                  # 固定控制模式下各关节的 Kp（刚度）
                                                  # 腿部关节高刚度 70.0，脚/轮关节刚度设为 0
 
-  fixed_kd: [5.0, 5.0, 5.0,
-             5.0, 5.0, 5.0,
-             5.0, 5.0, 5.0,
-             5.0, 5.0, 5.0,
-             0.5, 0.5, 0.5, 0.5]
+  fixed_kd: [5.0, 5.0, 5.0, 0.5,
+             5.0, 5.0, 5.0, 0.5,
+             5.0, 5.0, 5.0, 0.5,
+             5.0, 5.0, 5.0, 0.5]
                                                  # 固定控制模式下各关节的 Kd（阻尼）
                                                  # 腿部关节阻尼 5.0，脚/轮给少量阻尼 0.5
 
   num_of_dofs: 16                                # 机器人总自由度数（16 个关节）
 
-  wheel_indices: [12, 13, 14, 15]                # 脚/轮关节索引，用于特殊处理（禁用刚度等）
+  wheel_indices: [3, 7, 11, 15]                  # 脚/轮关节索引：每条腿的第 4 个关节
 
-  torque_limits: [85, 85, 85,
-                  85, 85, 85,
-                  85, 85, 85,
-                  85, 85, 85,
-                  7.5, 7.5, 7.5, 7.5]
-                                                 # 力矩上限 (Nm)，腿部 85Nm，脚/轮 7.5Nm
+  torque_limits: [85.0, 85.0, 85.0, 7.5,
+                  85.0, 85.0, 85.0, 7.5,
+                  85.0, 85.0, 85.0, 7.5,
+                  85.0, 85.0, 85.0, 7.5]
+                                                 # 力矩上限 (Nm)，与 titati_control 中 RL 参数保持一致
 
-  default_dof_pos: [ 0.00, 0.40, -0.917,
-                     0.00, 0.40, -0.917,
-                     0.00, -0.40, 0.917,
-                     0.00, -0.40, 0.917,
-                     0.00, 0.00, 0.00, 0.00]
-                                                 # 默认关节角(rad)，作为站立位姿或复位姿态
+  default_dof_pos: [ 0.00, 0.40, -1.00, 0.00,
+                     0.00, 0.40, -1.00, 0.00,
+                     0.00, -0.40, 1.00, 0.00,
+                     0.00, -0.40, 1.00, 0.00]
+                                                 # 默认关节角(rad)，同步官方 RL 期望的站立姿态
 
-  joint_names: ["FR_hip_joint", "FR_thigh_joint", "FR_calf_joint",
-                "FL_hip_joint", "FL_thigh_joint", "FL_calf_joint",
-                "RR_hip_joint", "RR_thigh_joint", "RR_calf_joint",
-                "RL_hip_joint", "RL_thigh_joint", "RL_calf_joint",
-                "FR_foot_joint", "FL_foot_joint", "RR_foot_joint", "RL_foot_joint"]
+  joint_names: ["FL_hip_joint", "FL_thigh_joint", "FL_calf_joint", "FL_foot_joint",
+                "FR_hip_joint", "FR_thigh_joint", "FR_calf_joint", "FR_foot_joint",
+                "RR_hip_joint", "RR_thigh_joint", "RR_calf_joint", "RR_foot_joint",
+                "RL_hip_joint", "RL_thigh_joint", "RL_calf_joint", "RL_foot_joint"]
                                                  # 物理机器人/URDF 中定义的关节名字，顺序要和训练配置保持一致
 
-  joint_controller_names: ["FR_hip_controller", "FR_thigh_controller", "FR_calf_controller",
-                           "FL_hip_controller", "FL_thigh_controller", "FL_calf_controller",
-                           "RR_hip_controller", "RR_thigh_controller", "RR_calf_controller",
-                           "RL_hip_controller", "RL_thigh_controller", "RL_calf_controller",
-                           "FR_foot_controller", "FL_foot_controller", "RR_foot_controller", "RL_foot_controller"]
+  joint_controller_names: ["FL_hip_controller", "FL_thigh_controller", "FL_calf_controller", "FL_foot_controller",
+                           "FR_hip_controller", "FR_thigh_controller", "FR_calf_controller", "FR_foot_controller",
+                           "RR_hip_controller", "RR_thigh_controller", "RR_calf_controller", "RR_foot_controller",
+                           "RL_hip_controller", "RL_thigh_controller", "RL_calf_controller", "RL_foot_controller"]
                                                  # ros2_control / Gazebo 控制器的名字，每个关节对应一个控制器
 
   joint_mapping: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
-                                                 # 动作/观测数组索引与物理关节的映射。这里是顺序一致 (0~15)
+                                                 # 真实titati机器人的电机：0-3是前左腿，4-7是前右腿。8-11是后右腿，12-15是后左腿
+                                                 # 动作/观测数组索引与物理关节的映射。RL 索引需映射到 CAN 顺序

@@ -5,7 +5,24 @@
 
 #include "rl_real_titati.hpp"
 
+#include <algorithm>
+#include <array>
 #include <iostream>
+
+namespace
+{
+constexpr double kHipOffset = 1.57;
+constexpr std::array<double, 16> kJointSign = {
+    1.0, 1.0, 1.0, 1.0,
+    1.0, 1.0, 1.0, 1.0,
+   -1.0,-1.0,-1.0,-1.0,
+   -1.0,-1.0,-1.0,-1.0};
+constexpr std::array<double, 16> kPositionOffset = {
+    kHipOffset, 0.0, 0.0, 0.0,
+    kHipOffset, 0.0, 0.0, 0.0,
+   -kHipOffset, 0.0, 0.0, 0.0,
+   -kHipOffset, 0.0, 0.0, 0.0};
+}
 
 RL_Real::RL_Real()
 #if defined(USE_ROS2) && defined(USE_ROS)
@@ -46,12 +63,19 @@ RL_Real::RL_Real()
     motors_sdk_enabled_ = robot_->set_motors_sdk(true);
     if (!motors_sdk_enabled_)
     {
-        std::cout << LOGGER::WARNING << "Failed to switch Titati motors to SDK control mode." << std::endl;
+        std::cout << LOGGER::WARNING << "Failed to switch Titati motors to SDK control mode. Will retry automatically." << std::endl;
+        last_sdk_retry_ = std::chrono::steady_clock::now() - std::chrono::seconds(1);
+    }
+    else
+    {
+        last_sdk_retry_ = std::chrono::steady_clock::now();
     }
 
     joint_positions_.assign(this->params.num_of_dofs, 0.0);
     joint_velocities_.assign(this->params.num_of_dofs, 0.0);
     joint_torques_.assign(this->params.num_of_dofs, 0.0);
+    hardware_positions_.assign(this->params.num_of_dofs, 0.0);
+    hardware_velocities_.assign(this->params.num_of_dofs, 0.0);
 
     this->InitOutputs();
     this->InitControl();
@@ -84,15 +108,28 @@ RL_Real::~RL_Real()
 
 void RL_Real::GetState(RobotState<double> *state)
 {
-    auto q = robot_->get_joint_q();
-    auto v = robot_->get_joint_v();
+    hardware_positions_ = robot_->get_joint_q();
+    hardware_velocities_ = robot_->get_joint_v();
     auto tau = robot_->get_joint_t();
 
     for (int i = 0; i < this->params.num_of_dofs; ++i)
     {
-        joint_positions_[i] = q[this->params.joint_mapping[i]];
-        joint_velocities_[i] = v[this->params.joint_mapping[i]];
-        joint_torques_[i] = tau[this->params.joint_mapping[i]];
+        const int motor_index = this->params.joint_mapping[i];
+        const double sign = kJointSign[i];
+        const double offset = kPositionOffset[i];
+
+        const double raw_position = hardware_positions_[motor_index];
+        const double raw_velocity = hardware_velocities_[motor_index];
+        const double raw_torque = tau[motor_index];
+
+        joint_positions_[i] = sign * raw_position + offset;
+        if (i % 4 == 3)
+        {
+            joint_positions_[i] = this->params.default_dof_pos[0][i].item<double>();
+        }
+        joint_velocities_[i] = sign * raw_velocity;
+        joint_torques_[i] = sign * raw_torque;
+
         state->motor_state.q[i] = joint_positions_[i];
         state->motor_state.dq[i] = joint_velocities_[i];
         state->motor_state.tau_est[i] = joint_torques_[i];
@@ -119,32 +156,73 @@ void RL_Real::GetState(RobotState<double> *state)
 
 void RL_Real::SetCommand(const RobotCommand<double> *command)
 {
-    if (!motors_sdk_enabled_)
+    if (!EnsureMotorsSdkMode())
     {
         return;
     }
 
-    std::vector<double> q;
-    std::vector<double> v;
-    std::vector<double> kp;
-    std::vector<double> kd;
-    std::vector<double> tau;
-    q.reserve(this->params.num_of_dofs);
-    v.reserve(this->params.num_of_dofs);
-    kp.reserve(this->params.num_of_dofs);
-    kd.reserve(this->params.num_of_dofs);
-    tau.reserve(this->params.num_of_dofs);
+    std::vector<double> torque_commands(this->params.num_of_dofs, 0.0);
 
     for (int i = 0; i < this->params.num_of_dofs; ++i)
     {
-        q.push_back(command->motor_command.q[i]);
-        v.push_back(command->motor_command.dq[i]);
-        kp.push_back(command->motor_command.kp[i]);
-        kd.push_back(command->motor_command.kd[i]);
-        tau.push_back(command->motor_command.tau[i]);
+        const double q_cmd = command->motor_command.q[i];
+        const double dq_cmd = command->motor_command.dq[i];
+        const double kp_cmd = command->motor_command.kp[i];
+        const double kd_cmd = command->motor_command.kd[i];
+        const double tau_ff = command->motor_command.tau[i];
+        const int motor_index = this->params.joint_mapping[i];
+        const double sign = kJointSign[i];
+        const double offset = kPositionOffset[i];
+
+        const double q_cmd_hw = (q_cmd - offset) / sign;
+        const double dq_cmd_hw = dq_cmd / sign;
+        const double tau_ff_hw = sign * tau_ff;
+
+        const double q_meas_hw = hardware_positions_[motor_index];
+        const double dq_meas_hw = hardware_velocities_[motor_index];
+
+        double torque = tau_ff_hw + kp_cmd * (q_cmd_hw - q_meas_hw) + kd_cmd * (dq_cmd_hw - dq_meas_hw);
+        const double torque_limit = this->params.torque_limits[0][i].item<double>();
+        torque = std::clamp(torque, -torque_limit, torque_limit);
+        if (motor_index >= 0 && motor_index < static_cast<int>(torque_commands.size()))
+        {
+            torque_commands[motor_index] = torque;
+        }
     }
 
-    robot_->set_target_joint_mit(q, v, kp, kd, tau);
+    if (!robot_->set_target_joint_t(torque_commands) && motors_sdk_enabled_)
+    {
+        motors_sdk_enabled_ = false;
+        last_sdk_retry_ = std::chrono::steady_clock::now();
+        std::cout << LOGGER::WARNING << "Failed to send torque command to Titati motors. Retrying SDK handshake." << std::endl;
+    }
+}
+
+bool RL_Real::EnsureMotorsSdkMode()
+{
+    if (motors_sdk_enabled_)
+    {
+        return true;
+    }
+
+    const auto now = std::chrono::steady_clock::now();
+    constexpr auto kRetryInterval = std::chrono::milliseconds(200);
+    if (now - last_sdk_retry_ < kRetryInterval)
+    {
+        return false;
+    }
+
+    last_sdk_retry_ = now;
+    if (robot_->set_motors_sdk(true))
+    {
+        motors_sdk_enabled_ = true;
+        std::cout << LOGGER::INFO << "Titati motors switched to SDK control mode." << std::endl;
+        robot_->set_target_joint_t(std::vector<double>(this->params.num_of_dofs, 0.0));
+        return true;
+    }
+
+    std::cout << LOGGER::WARNING << "Retrying to switch Titati motors to SDK control mode..." << std::endl;
+    return false;
 }
 
 void RL_Real::RobotControl()

@@ -19,6 +19,7 @@
 #include <csignal>
 #include <memory>
 #include <vector>
+#include <chrono>
 
 #if defined(USE_ROS1) && defined(USE_ROS)
 #include <ros/ros.h>
@@ -43,17 +44,21 @@ private:
     void SetCommand(const RobotCommand<double> *command) override;
     void RunModel();
     void RobotControl();
+    bool EnsureMotorsSdkMode();
 
     std::shared_ptr<LoopFunc> loop_keyboard;
     std::shared_ptr<LoopFunc> loop_control;
     std::shared_ptr<LoopFunc> loop_rl;
     std::unique_ptr<tita_robot> robot_;
     bool motors_sdk_enabled_{false};
+    std::chrono::steady_clock::time_point last_sdk_retry_{};
     int motiontime{0};
 
     std::vector<double> joint_positions_;
     std::vector<double> joint_velocities_;
     std::vector<double> joint_torques_;
+    std::vector<double> hardware_positions_;
+    std::vector<double> hardware_velocities_;
 
 #if defined(USE_ROS1) && defined(USE_ROS)
     geometry_msgs::Twist cmd_vel;

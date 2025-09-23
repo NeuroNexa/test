@@ -172,8 +172,34 @@ void RL::InitRL(std::string robot_path)
 void RL::ComputeOutput(const torch::Tensor &actions, torch::Tensor &output_dof_pos, torch::Tensor &output_dof_vel, torch::Tensor &output_dof_tau)
 {
     torch::Tensor actions_scaled = actions * this->params.action_scale;
+    if (!this->params.policy_action_dof_order.empty())
+    {
+        torch::Tensor reordered_actions = torch::zeros_like(actions_scaled);
+        const int64_t dof_count = actions_scaled.size(1);
+        const int dof_count_int = static_cast<int>(dof_count);
+        const int mapping_count = static_cast<int>(this->params.policy_action_dof_order.size());
+        const int limit = std::min(mapping_count, dof_count_int);
+        for (int src_idx = 0; src_idx < limit; ++src_idx)
+        {
+            int dst_idx = this->params.policy_action_dof_order[src_idx];
+            if (dst_idx < 0 || dst_idx >= dof_count_int)
+            {
+                std::cout << LOGGER::WARNING << "policy_action_dof_order index " << dst_idx
+                          << " is out of range for DOF count " << dof_count_int << std::endl;
+                continue;
+            }
+            reordered_actions[0][dst_idx] = actions_scaled[0][src_idx];
+        }
+        if (mapping_count != dof_count_int)
+        {
+            std::cout << LOGGER::WARNING << "policy_action_dof_order has size " << mapping_count
+                      << " but expected " << dof_count_int << std::endl;
+        }
+        actions_scaled = reordered_actions;
+    }
+
     torch::Tensor pos_actions_scaled = actions_scaled.clone();
-    torch::Tensor vel_actions_scaled = torch::zeros_like(actions);
+    torch::Tensor vel_actions_scaled = torch::zeros_like(actions_scaled);
     for (int i : this->params.wheel_indices)
     {
         pos_actions_scaled[0][i] = 0.0;
@@ -394,6 +420,14 @@ void RL::ReadYamlBase(std::string robot_path)
     this->params.joint_names = ReadVectorFromYaml<std::string>(config["joint_names"]);
     this->params.joint_controller_names = ReadVectorFromYaml<std::string>(config["joint_controller_names"]);
     this->params.joint_mapping = ReadVectorFromYaml<int>(config["joint_mapping"]);
+    if (config["policy_action_dof_order"])
+    {
+        this->params.policy_action_dof_order = ReadVectorFromYaml<int>(config["policy_action_dof_order"]);
+    }
+    else
+    {
+        this->params.policy_action_dof_order.clear();
+    }
 }
 
 void RL::ReadYamlRL(std::string robot_path)
@@ -450,6 +484,14 @@ void RL::ReadYamlRL(std::string robot_path)
     this->params.torque_limits = torch::tensor(ReadVectorFromYaml<double>(config["torque_limits"])).view({1, -1});
     this->params.default_dof_pos = torch::tensor(ReadVectorFromYaml<double>(config["default_dof_pos"])).view({1, -1});
     this->params.joint_mapping = ReadVectorFromYaml<int>(config["joint_mapping"]);
+    if (config["policy_action_dof_order"])
+    {
+        this->params.policy_action_dof_order = ReadVectorFromYaml<int>(config["policy_action_dof_order"]);
+    }
+    else
+    {
+        this->params.policy_action_dof_order.clear();
+    }
 }
 
 void RL::CSVInit(std::string robot_path)

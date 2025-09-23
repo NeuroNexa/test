@@ -2,6 +2,7 @@
 
 #include <cstring>
 #include <functional>
+#include <limits>
 #include <sys/time.h>
 #include <thread>
 
@@ -48,6 +49,11 @@ CanfdRouterCanReceiveApi::~CanfdRouterCanReceiveApi() = default;
 void CanfdRouterCanReceiveApi::set_forcedirect_mode(bool init_flag)
 {
     init_flag_.store(init_flag);
+    auto_retry_.store(init_flag);
+    if (init_flag)
+    {
+        last_mode_.store(std::numeric_limits<uint32_t>::max());
+    }
 }
 
 void CanfdRouterCanReceiveApi::register_canfd_router_device_can_filter()
@@ -70,6 +76,13 @@ void CanfdRouterCanReceiveApi::get_board_can_data(std::shared_ptr<struct canfd_f
 
     std::memcpy(&mode_, recv_frame->data + 4, sizeof(mode_));
     std::memcpy(&heart_cnt_, recv_frame->data + 8, sizeof(heart_cnt_));
+
+    const uint32_t previous_mode = last_mode_.load();
+    if (auto_retry_.load() && (mode_ == 1U || mode_ == 2U) && previous_mode != mode_)
+    {
+        init_flag_.store(true);
+    }
+    last_mode_.store(mode_);
 
     if (!init_flag_.load())
     {
