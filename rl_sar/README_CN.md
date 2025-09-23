@@ -235,7 +235,23 @@ git clone https://github.com/osrf/gazebo_models.git ~/.gazebo/models
 
 Titati 采用主从双板架构，本仓库提供的硬件接口通过 `can0` 与两块板卡通信，因此可以在主机上直接控制 16 个电机。
 
-在部署强化学习控制之前，建议先使用交互式测试程序逐个检查电机状态：
+1. 先按照 `titati_control` 的方式配置 CAN-FD 接口：
+
+   ```bash
+   ./src/rl_sar/scripts/setup_canfd.sh
+   ```
+
+   脚本会停止历史的 `tita-bringup` 服务（若存在），并以 1 Mbps/8 Mbps 的速率重新初始化 `can0`，确保与官方主从板时序一致。
+
+2. 当主控板进入待命状态后启动 CAN 路由：
+
+   ```bash
+   ./src/rl_sar/scripts/start_titati_router.sh ./cmake_build
+   ```
+
+   `titati_canfd_router` 等价于原来的 `titati_canfd_router_node`：侦听 `0x09F` 心跳并发送 READY→FORCE_DIRECT RPC，使主从两块板切换到 SDK 模式。`rl_real_titati` 内部也会执行同样的切换，但保持路由常驻可以在板卡意外挂起或重启时自动恢复。
+
+3. 在部署强化学习控制之前，建议先使用交互式测试程序逐个检查电机状态：
 
 ```bash
 # CMake

@@ -235,7 +235,23 @@ git clone https://github.com/osrf/gazebo_models.git ~/.gazebo/models
 
 Titati uses a dual-mainboard architecture. The new hardware bridge in this repository communicates with both boards over the CAN-FD interface exposed as `can0`, so all 16 actuators can be driven directly from the host PC.
 
-Before deploying the RL controller, verify each joint independently using the interactive motor tester:
+1. Configure the CAN-FD interface exactly as in `titati_control`:
+
+   ```bash
+   ./src/rl_sar/scripts/setup_canfd.sh
+   ```
+
+   This stops the legacy `tita-bringup` service (if it is still running) and re-initialises `can0` with a 1 Mbps nominal / 8 Mbps data bitrate, matching the master/slave timing budget from the official bringup scripts.
+
+2. Start the CAN router replacement when the master board is ready:
+
+   ```bash
+   ./src/rl_sar/scripts/start_titati_router.sh ./cmake_build
+   ```
+
+   The `titati_canfd_router` executable mirrors `titati_canfd_router_node`: it waits for the CAN heartbeat (ID `0x09F`) and pushes the READY→FORCE_DIRECT RPC sequence so both mainboards enter SDK control. This happens automatically inside `rl_real_titati` as well, but keeping the router running guarantees recovery if the boards reboot mid-session.
+
+3. Before deploying the RL controller, verify each joint independently using the interactive motor tester:
 
 ```bash
 # CMake

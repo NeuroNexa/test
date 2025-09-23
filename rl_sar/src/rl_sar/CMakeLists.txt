@@ -209,6 +209,7 @@ endif()
 add_library(titati_hardware
     src/hardware/can_receiver.cpp
     src/hardware/can_sender.cpp
+    src/hardware/canfd_router.cpp
     src/hardware/tita_robot.cpp
 )
 target_include_directories(titati_hardware PUBLIC
@@ -255,6 +256,11 @@ if(BUILD_TITATI)
         rl_sdk
         observation_buffer
         yaml-cpp
+        Threads::Threads
+    )
+    add_executable(titati_canfd_router src/titati_canfd_router.cpp)
+    target_link_libraries(titati_canfd_router
+        titati_hardware
         Threads::Threads
     )
     if(NOT USE_CMAKE)

@@ -49,6 +49,7 @@ private:
     std::shared_ptr<LoopFunc> loop_rl;
     std::unique_ptr<tita_robot> robot_;
     bool motors_sdk_enabled_{false};
+    int motiontime{0};
 
     std::vector<double> joint_positions_;
     std::vector<double> joint_velocities_;
