@@ -103,16 +103,16 @@ DDTROBOT_TITATI_CFG = ArticulationCfg(
             # 髋关节初始角度为 0
 
             "FR_thigh_joint": 0.40,
-            "FR_calf_joint": -0.917,
+            "FR_calf_joint": -1.00,
 
             "FL_thigh_joint": 0.40,
-            "FL_calf_joint": -0.917,
+            "FL_calf_joint": -1.00,
 
             "RR_thigh_joint": -0.40,
-            "RR_calf_joint": 0.917,
+            "RR_calf_joint": 1.00,
 
             "RL_thigh_joint": -0.40,
-            "RL_calf_joint": 0.917,
+            "RL_calf_joint": 1.00,
             
 
             # "F.*_thigh_joint": 0.80,
