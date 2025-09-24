@@ -8,6 +8,7 @@
 #include <iostream>
 #include <iomanip>
 #include <algorithm>
+#include <limits>
 
 RL_Real::RL_Real()
 #if defined(USE_ROS2) && defined(USE_ROS)
@@ -59,6 +60,9 @@ RL_Real::RL_Real()
     joint_positions_.assign(this->params.num_of_dofs, 0.0);
     joint_velocities_.assign(this->params.num_of_dofs, 0.0);
     joint_torques_.assign(this->params.num_of_dofs, 0.0);
+    last_hw_positions_.assign(this->params.num_of_dofs, 0.0);
+    last_hw_velocities_.assign(this->params.num_of_dofs, 0.0);
+    last_hw_torques_.assign(this->params.num_of_dofs, 0.0);
 
     this->InitOutputs();
     this->InitControl();
@@ -95,6 +99,13 @@ void RL_Real::GetState(RobotState<double> *state)
     auto v = robot_->get_joint_v();
     auto tau = robot_->get_joint_t();
 
+    last_hw_positions_ = q;
+    last_hw_velocities_ = v;
+    last_hw_torques_ = tau;
+
+    ++state_update_count_;
+    const bool should_log_feedback = state_update_count_ <= 5 || state_update_count_ % 200 == 0;
+
     for (int i = 0; i < this->params.num_of_dofs; ++i)
     {
         joint_positions_[i] = q[this->params.joint_mapping[i]];
@@ -103,6 +114,39 @@ void RL_Real::GetState(RobotState<double> *state)
         state->motor_state.q[i] = joint_positions_[i];
         state->motor_state.dq[i] = joint_velocities_[i];
         state->motor_state.tau_est[i] = joint_torques_[i];
+    }
+
+    if (should_log_feedback)
+    {
+        std::cout << LOGGER::DEBUG
+                  << "Hardware feedback snapshot. count=" << state_update_count_;
+        for (int idx : {0, 1, 2, 3, 4, 5})
+        {
+            if (idx >= static_cast<int>(q.size()))
+            {
+                break;
+            }
+            std::cout << " [hw " << idx
+                      << ": q=" << std::fixed << std::setprecision(3) << q[idx]
+                      << ", dq=" << v[idx]
+                      << ", tau=" << tau[idx]
+                      << "]";
+        }
+        std::cout << std::endl;
+        std::cout << LOGGER::DEBUG << "RL-order feedback q:";
+        for (int idx : {0, 1, 2, 3, 4, 5})
+        {
+            if (idx >= static_cast<int>(state->motor_state.q.size()))
+            {
+                break;
+            }
+            std::cout << " [" << idx
+                      << ": q=" << std::fixed << std::setprecision(3) << state->motor_state.q[idx]
+                      << ", dq=" << state->motor_state.dq[idx]
+                      << ", tau=" << state->motor_state.tau_est[idx]
+                      << "]";
+        }
+        std::cout << std::endl;
     }
 
     auto quat = robot_->get_imu_quaternion();
@@ -216,6 +260,23 @@ void RL_Real::SetCommand(const RobotCommand<double> *command)
                           << "]";
             }
             std::cout << std::endl;
+            std::cout << LOGGER::WARNING << "Hardware feedback vs command:";
+            for (int idx : {0, 1, 2, 3, 4, 5})
+            {
+                if (idx >= static_cast<int>(q.size()))
+                {
+                    break;
+                }
+                const double measured = idx < static_cast<int>(last_hw_positions_.size())
+                                            ? last_hw_positions_[idx]
+                                            : std::numeric_limits<double>::quiet_NaN();
+                std::cout << " [hw " << idx
+                          << ": tgt=" << std::fixed << std::setprecision(3) << q[idx]
+                          << ", meas=" << measured
+                          << ", err=" << (q[idx] - measured)
+                          << "]";
+            }
+            std::cout << std::endl;
         }
     }
     else if (mit_result)
@@ -231,6 +292,49 @@ void RL_Real::SetCommand(const RobotCommand<double> *command)
                       << ", kd=" << kd[0]
                       << ", tau=" << tau[0]
                       << "]" << std::endl;
+            std::cout << LOGGER::DEBUG << "MIT targets vs feedback (hw order):";
+            for (int idx : {0, 1, 2, 3, 4, 5})
+            {
+                if (idx >= static_cast<int>(q.size()))
+                {
+                    break;
+                }
+                const double measured = idx < static_cast<int>(last_hw_positions_.size())
+                                            ? last_hw_positions_[idx]
+                                            : std::numeric_limits<double>::quiet_NaN();
+                const double measured_vel = idx < static_cast<int>(last_hw_velocities_.size())
+                                                 ? last_hw_velocities_[idx]
+                                                 : std::numeric_limits<double>::quiet_NaN();
+                const double measured_tau = idx < static_cast<int>(last_hw_torques_.size())
+                                                 ? last_hw_torques_[idx]
+                                                 : std::numeric_limits<double>::quiet_NaN();
+                std::cout << " [hw " << idx
+                          << ": tgt_q=" << std::fixed << std::setprecision(3) << q[idx]
+                          << ", meas_q=" << measured
+                          << ", err_q=" << (q[idx] - measured)
+                          << ", tgt_dq=" << v[idx]
+                          << ", meas_dq=" << measured_vel
+                          << ", tgt_tau=" << tau[idx]
+                          << ", meas_tau=" << measured_tau
+                          << "]";
+            }
+            std::cout << std::endl;
+            std::cout << LOGGER::DEBUG << "MIT command (RL order snapshot):";
+            for (int idx : {0, 1, 2, 3, 4, 5})
+            {
+                if (idx >= static_cast<int>(command->motor_command.q.size()))
+                {
+                    break;
+                }
+                std::cout << " [" << idx
+                          << ": q=" << std::fixed << std::setprecision(3) << command->motor_command.q[idx]
+                          << ", dq=" << command->motor_command.dq[idx]
+                          << ", kp=" << command->motor_command.kp[idx]
+                          << ", kd=" << command->motor_command.kd[idx]
+                          << ", tau=" << command->motor_command.tau[idx]
+                          << "]";
+            }
+            std::cout << std::endl;
         }
     }
 }
