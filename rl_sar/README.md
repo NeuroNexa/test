@@ -205,7 +205,7 @@ The Titati platform is composed of a **master Jetson** (the front Tita) and a **
    source /opt/ros/humble/setup.bash
    ./build.sh tita_system_interfaces titati_canfd_router
    ```
-   This wraps `colcon build --packages-select tita_system_interfaces titati_canfd_router` and creates `install/setup.bash` for the CAN router node.
+   This wraps `colcon build --packages-select tita_system_interfaces titati_canfd_router` and creates `install/local_setup.bash` for the CAN router node.
 
 #### 1. Build the binaries on both Jetsons (master & slave)
 
@@ -222,13 +222,14 @@ After building the helper packages once, you only need to source the generated w
 
 ```bash
 source /opt/ros/humble/setup.bash
-source install/setup.bash
+source install/local_setup.bash
 ```
 
 #### 3. Start the CAN-FD router on the **slave Jetson**
 
 ```bash
 cd rl_sar
+ros2 pkg executables titati_canfd_router   # optional sanity check
 ros2 run titati_canfd_router titati_canfd_router_node
 ```
 

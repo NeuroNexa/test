@@ -8,7 +8,12 @@
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
-  <depend>ament_cmake_auto</depend>
-  <depend>rclcpp</depend>
-  <depend>tita_system_interfaces</depend>
+  <build_depend>rclcpp</build_depend>
+  <build_depend>tita_system_interfaces</build_depend>
+
+  <build_export_depend>rclcpp</build_export_depend>
+  <build_export_depend>tita_system_interfaces</build_export_depend>
+
+  <exec_depend>rclcpp</exec_depend>
+  <exec_depend>tita_system_interfaces</exec_depend>
 </package>

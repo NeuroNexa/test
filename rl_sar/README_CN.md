@@ -237,7 +237,7 @@ git clone https://github.com/osrf/gazebo_models.git ~/.gazebo/models
   source /opt/ros/humble/setup.bash
   ./build.sh tita_system_interfaces titati_canfd_router
   ```
-  上述命令会调用 `colcon build --packages-select tita_system_interfaces titati_canfd_router`，生成 `install/setup.bash` 以便后续启动 ROS2 节点。
+  上述命令会调用 `colcon build --packages-select tita_system_interfaces titati_canfd_router`，生成 `install/local_setup.bash` 以便后续启动 ROS2 节点。
 
 - **主从机均需编译硬件可执行文件**
   ```bash
@@ -249,7 +249,8 @@ git clone https://github.com/osrf/gazebo_models.git ~/.gazebo/models
   ```bash
   cd rl_sar
   source /opt/ros/humble/setup.bash
-  source install/setup.bash
+  source install/local_setup.bash
+  ros2 pkg executables titati_canfd_router   # 可选自检
   ros2 run titati_canfd_router titati_canfd_router_node
   ```
   保持该终端运行，用于将 CAN 路由盒持续置于强制直驱（FORCE_DIRECT）模式。
