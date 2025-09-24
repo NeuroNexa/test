@@ -54,6 +54,9 @@ private:
     std::chrono::steady_clock::time_point last_sdk_retry_{};
     std::chrono::steady_clock::time_point last_sdk_warning_{};
     std::chrono::steady_clock::time_point last_command_debug_log_{};
+    std::chrono::steady_clock::time_point last_command_summary_log_{};
+    std::chrono::steady_clock::time_point last_small_delta_warning_{};
+    std::chrono::steady_clock::time_point last_rl_staleness_warning_{};
     int motiontime{0};
 
     std::vector<double> joint_positions_;
@@ -62,6 +65,8 @@ private:
     std::vector<double> latest_hw_positions_;
     std::vector<double> previous_hw_positions_;
     std::vector<double> last_command_hw_positions_;
+    std::vector<double> last_logged_command_snapshot_;
+    std::vector<double> default_joint_positions_rl_order_;
     bool joint_mapping_valid_{false};
     bool state_size_warning_emitted_{false};
     bool state_value_warning_emitted_{false};

@@ -9,6 +9,12 @@
 #include "fsm_core.hpp"   // FSM 基类与核心逻辑
 #include "rl_sdk.hpp"     // RL 控制相关的接口
 
+#include <algorithm>
+#include <chrono>
+#include <cmath>
+#include <iomanip>
+#include <sstream>
+
 namespace titati_fsm
 {
 
@@ -245,24 +251,76 @@ public:
                   << " yaw:" << rl.control.yaw << std::flush;
 
         // 从 RL 输出队列里取动作（目标关节角/速度）
-        torch::Tensor _output_dof_pos, _output_dof_vel;
-        if (rl.output_dof_pos_queue.try_pop(_output_dof_pos) &&
-            rl.output_dof_vel_queue.try_pop(_output_dof_vel))
+        static auto last_summary_log = std::chrono::steady_clock::time_point{};
+        static auto last_empty_log = std::chrono::steady_clock::time_point{};
+        static auto last_vel_wait_log = std::chrono::steady_clock::time_point{};
+        static double last_reported_delta = 0.0;
+
+        const auto now = std::chrono::steady_clock::now();
+        torch::Tensor _output_dof_pos;
+        if (rl.output_dof_pos_queue.try_pop(_output_dof_pos))
         {
+            torch::Tensor _output_dof_vel;
+            if (!rl.output_dof_vel_queue.try_pop(_output_dof_vel))
+            {
+                if (now - last_vel_wait_log > std::chrono::milliseconds(500))
+                {
+                    last_vel_wait_log = now;
+                    std::cout << LOGGER::WARNING
+                              << "Received RL position targets without matching velocities yet; waiting for next pair."
+                              << std::endl;
+                }
+                return;
+            }
+
+            rl.MarkActionDequeued();
+
+            double max_delta = 0.0;
+            double max_abs_vel = 0.0;
             for (int i = 0; i < rl.params.num_of_dofs; ++i)
             {
+                double q_target = 0.0;
                 if (_output_dof_pos.defined() && _output_dof_pos.numel() > 0)
                 {
-                    fsm_command->motor_command.q[i] = rl.output_dof_pos[0][i].item<double>();
+                    q_target = _output_dof_pos[0][i].item<double>();
+                    fsm_command->motor_command.q[i] = q_target;
                 }
                 if (_output_dof_vel.defined() && _output_dof_vel.numel() > 0)
                 {
-                    fsm_command->motor_command.dq[i] = rl.output_dof_vel[0][i].item<double>();
+                    double dq_target = _output_dof_vel[0][i].item<double>();
+                    fsm_command->motor_command.dq[i] = dq_target;
+                    max_abs_vel = std::max(max_abs_vel, std::abs(dq_target));
                 }
-                // 使用 RL 模式的 Kp/Kd
+                double default_q = rl.params.default_dof_pos[0][i].item<double>();
+                max_delta = std::max(max_delta, std::abs(q_target - default_q));
+
                 fsm_command->motor_command.kp[i] = rl.params.rl_kp[0][i].item<double>();
                 fsm_command->motor_command.kd[i] = rl.params.rl_kd[0][i].item<double>();
                 fsm_command->motor_command.tau[i] = 0;
+            }
+
+            if (now - last_summary_log > std::chrono::milliseconds(700) ||
+                std::abs(max_delta - last_reported_delta) > 0.05)
+            {
+                last_summary_log = now;
+                last_reported_delta = max_delta;
+                std::ostringstream oss;
+                oss << std::fixed << std::setprecision(3)
+                    << "RL policy action ready (max |q-default|=" << max_delta
+                    << " rad, max |dq|=" << max_abs_vel << " rad/s)";
+                std::cout << LOGGER::DEBUG << oss.str() << std::endl;
+            }
+
+            last_empty_log = std::chrono::steady_clock::time_point{};
+            last_vel_wait_log = std::chrono::steady_clock::time_point{};
+        }
+        else
+        {
+            if (now - last_empty_log > std::chrono::milliseconds(700))
+            {
+                last_empty_log = now;
+                std::cout << LOGGER::WARNING
+                          << "RL output queues empty; waiting for next policy evaluation." << std::endl;
             }
         }
     }

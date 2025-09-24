@@ -21,6 +21,8 @@ constexpr uint32_t kRpcCanId = 0x170U;
 constexpr uint16_t kRpcKeyReadyNext = 0x200U;
 constexpr uint32_t kReadyWaiting = 0x00U;
 constexpr uint32_t kForceDirect = 0x03U;
+const auto kHeartbeatGapThreshold = std::chrono::milliseconds(1500);
+const auto kHandshakeCooldown = std::chrono::seconds(2);
 } // namespace
 
 CanfdRouterCanReceiveApi::CanfdRouterCanReceiveApi()
@@ -90,15 +92,16 @@ void CanfdRouterCanReceiveApi::get_board_can_data(std::shared_ptr<struct canfd_f
 
     static auto last_frame_time = std::chrono::steady_clock::time_point{};
     static auto last_gap_log = std::chrono::steady_clock::time_point{};
+    static auto last_handshake_time = std::chrono::steady_clock::time_point{};
     auto gap_duration = std::chrono::steady_clock::duration::zero();
     bool heartbeat_gap_detected = false;
     if (last_frame_time.time_since_epoch().count() != 0)
     {
         gap_duration = now - last_frame_time;
-        if (gap_duration > std::chrono::milliseconds(200))
+        if (gap_duration > kHeartbeatGapThreshold)
         {
             heartbeat_gap_detected = true;
-            if (now - last_gap_log > std::chrono::milliseconds(500))
+            if (now - last_gap_log > std::chrono::seconds(1))
             {
                 last_gap_log = now;
                 std::cout << "[ROUTER] Heartbeat gap detected: "
@@ -133,7 +136,7 @@ void CanfdRouterCanReceiveApi::get_board_can_data(std::shared_ptr<struct canfd_f
             trigger_handshake = true;
             handshake_reason = "heartbeat reset";
         }
-        else if (heartbeat_gap_detected && gap_duration > std::chrono::milliseconds(500))
+        else if (heartbeat_gap_detected)
         {
             trigger_handshake = true;
             handshake_reason = "heartbeat gap " +
@@ -144,9 +147,25 @@ void CanfdRouterCanReceiveApi::get_board_can_data(std::shared_ptr<struct canfd_f
 
     if (trigger_handshake)
     {
-        init_flag_.store(true);
-        std::cout << "[ROUTER] Triggering FORCE_DIRECT handshake due to " << handshake_reason
-                  << ". mode=" << mode_ << ", heart_cnt=" << heart_cnt_ << std::endl;
+        if (last_handshake_time.time_since_epoch().count() != 0 &&
+            now - last_handshake_time < kHandshakeCooldown)
+        {
+            trigger_handshake = false;
+            if (now - last_gap_log > std::chrono::seconds(1))
+            {
+                last_gap_log = now;
+                std::cout << "[ROUTER] Skipping FORCE_DIRECT retry due to cooldown ("
+                          << std::chrono::duration_cast<std::chrono::milliseconds>(kHandshakeCooldown).count()
+                          << " ms)." << std::endl;
+            }
+        }
+        else
+        {
+            init_flag_.store(true);
+            last_handshake_time = now;
+            std::cout << "[ROUTER] Triggering FORCE_DIRECT handshake due to " << handshake_reason
+                      << ". mode=" << mode_ << ", heart_cnt=" << heart_cnt_ << std::endl;
+        }
     }
 
     if (!init_flag_.load())

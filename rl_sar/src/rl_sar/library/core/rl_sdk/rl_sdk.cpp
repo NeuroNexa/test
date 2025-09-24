@@ -184,6 +184,28 @@ void RL::ComputeOutput(const torch::Tensor &actions, torch::Tensor &output_dof_p
     output_dof_vel = vel_actions_scaled;
     output_dof_tau = this->params.rl_kp * (all_actions_scaled + this->params.default_dof_pos - this->obs.dof_pos) - this->params.rl_kd * this->obs.dof_vel;
     output_dof_tau = torch::clamp(output_dof_tau, -(this->params.torque_limits), this->params.torque_limits);
+
+    double max_pos_delta = 0.0;
+    double max_abs_vel = 0.0;
+    double max_abs_tau = 0.0;
+    for (int i = 0; i < this->params.num_of_dofs; ++i)
+    {
+        const double target_q = output_dof_pos[0][i].item<double>();
+        const double target_v = output_dof_vel[0][i].item<double>();
+        const double target_tau = output_dof_tau[0][i].item<double>();
+        const double default_q = this->params.default_dof_pos[0][i].item<double>();
+
+        max_pos_delta = std::max(max_pos_delta, std::abs(target_q - default_q));
+        max_abs_vel = std::max(max_abs_vel, std::abs(target_v));
+        max_abs_tau = std::max(max_abs_tau, std::abs(target_tau));
+    }
+
+    const auto now_us = std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
+    last_action_publish_time_us.store(now_us, std::memory_order_relaxed);
+    last_action_max_pos_delta.store(max_pos_delta, std::memory_order_relaxed);
+    last_action_max_vel.store(max_abs_vel, std::memory_order_relaxed);
+    last_action_max_tau.store(max_abs_tau, std::memory_order_relaxed);
 }
 
 torch::Tensor RL::QuatRotateInverse(torch::Tensor q, torch::Tensor v)
@@ -201,6 +223,13 @@ torch::Tensor RL::QuatRotateInverse(torch::Tensor q, torch::Tensor v)
     torch::Tensor b = torch::cross(q_vec, v, -1) * q_w.unsqueeze(-1) * 2.0;
     torch::Tensor c = q_vec * torch::bmm(q_vec.view({shape[0], 1, 3}), v.view({shape[0], 3, 1})).squeeze(-1) * 2.0;
     return a - b + c;
+}
+
+void RL::MarkActionDequeued()
+{
+    const auto now_us = std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
+    last_action_dequeue_time_us.store(now_us, std::memory_order_relaxed);
 }
 
 void RL::TorqueProtect(torch::Tensor origin_output_dof_tau)

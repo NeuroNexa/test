@@ -214,6 +214,13 @@ RL_Real::RL_Real()
     joint_torques_.assign(this->params.num_of_dofs, 0.0);
     latest_hw_positions_.assign(this->params.num_of_dofs, 0.0);
     previous_hw_positions_.assign(this->params.num_of_dofs, 0.0);
+    last_command_hw_positions_.assign(this->params.num_of_dofs, 0.0);
+    last_logged_command_snapshot_.assign(this->params.num_of_dofs, 0.0);
+    default_joint_positions_rl_order_.resize(this->params.num_of_dofs, 0.0);
+    for (int i = 0; i < this->params.num_of_dofs; ++i)
+    {
+        default_joint_positions_rl_order_[i] = this->params.default_dof_pos[0][i].item<double>();
+    }
 
     this->InitOutputs();
     this->InitControl();
@@ -398,9 +405,74 @@ void RL_Real::GetState(RobotState<double> *state)
 
 void RL_Real::SetCommand(const RobotCommand<double> *command)
 {
-    if (!EnsureMotorsSdkMode())
+    const bool motors_ready = EnsureMotorsSdkMode();
+    const auto now = std::chrono::steady_clock::now();
+
+    const bool is_rl_locomotion =
+        this->fsm.current_state_ && this->fsm.current_state_->GetStateName() == "RLFSMStateRL_Locomotion";
+
+    if (is_rl_locomotion && !default_joint_positions_rl_order_.empty())
     {
-        const auto now = std::chrono::steady_clock::now();
+        double max_delta_from_default = 0.0;
+        double max_abs_velocity = 0.0;
+        for (int i = 0; i < this->params.num_of_dofs; ++i)
+        {
+            max_delta_from_default = std::max(
+                max_delta_from_default,
+                std::abs(command->motor_command.q[i] - default_joint_positions_rl_order_[i]));
+            max_abs_velocity = std::max(max_abs_velocity, std::abs(command->motor_command.dq[i]));
+        }
+
+        const auto now_us = std::chrono::duration_cast<std::chrono::microseconds>(now.time_since_epoch()).count();
+        const long long last_publish_us = this->last_action_publish_time_us.load(std::memory_order_relaxed);
+        const long long last_dequeue_us = this->last_action_dequeue_time_us.load(std::memory_order_relaxed);
+        const double action_age_ms =
+            last_publish_us > 0 ? static_cast<double>(now_us - last_publish_us) / 1000.0 : -1.0;
+        const double dequeue_age_ms =
+            last_dequeue_us > 0 ? static_cast<double>(now_us - last_dequeue_us) / 1000.0 : -1.0;
+
+        if (now - last_command_summary_log_ > std::chrono::seconds(1))
+        {
+            std::ostringstream oss;
+            oss << std::fixed << std::setprecision(3)
+                << "RL command summary: max |q-default|=" << max_delta_from_default
+                << " rad, max |dq|=" << max_abs_velocity << " rad/s";
+            oss << std::setprecision(1);
+            if (action_age_ms >= 0.0)
+            {
+                oss << ", policy age=" << action_age_ms << " ms";
+            }
+            if (dequeue_age_ms >= 0.0)
+            {
+                oss << ", apply age=" << dequeue_age_ms << " ms";
+            }
+            std::cout << LOGGER::INFO << oss.str() << std::endl;
+            last_command_summary_log_ = now;
+        }
+
+        if (max_delta_from_default < 0.02 && now - last_small_delta_warning_ > std::chrono::seconds(3))
+        {
+            last_small_delta_warning_ = now;
+            std::cout << LOGGER::NOTE
+                      << "RL targets remain close to default (<0.02 rad). If motion is expected, check velocity commands (x="
+                      << this->control.x << ", y=" << this->control.y << ", yaw=" << this->control.yaw << ")."
+                      << std::endl;
+        }
+
+        if (action_age_ms >= 0.0 && action_age_ms > 400.0 &&
+            now - last_rl_staleness_warning_ > std::chrono::milliseconds(800))
+        {
+            last_rl_staleness_warning_ = now;
+            std::ostringstream age_stream;
+            age_stream << std::fixed << std::setprecision(1) << action_age_ms;
+            std::cout << LOGGER::WARNING
+                      << "Latest RL policy output is " << age_stream.str()
+                      << " ms old. Waiting for fresh data." << std::endl;
+        }
+    }
+
+    if (!motors_ready)
+    {
         if (now - last_sdk_warning_ > std::chrono::milliseconds(500))
         {
             std::cout << LOGGER::WARNING
@@ -475,6 +547,18 @@ void RL_Real::SetCommand(const RobotCommand<double> *command)
         std::cout << LOGGER::WARNING << invalid_value_details.str() << std::endl;
     }
 
+    double max_hw_diff_since_log = 0.0;
+    bool have_snapshot = last_logged_command_snapshot_.size() == q.size();
+    if (have_snapshot)
+    {
+        for (std::size_t idx = 0; idx < q.size(); ++idx)
+        {
+            max_hw_diff_since_log = std::max(
+                max_hw_diff_since_log,
+                std::abs(q[idx] - last_logged_command_snapshot_[idx]));
+        }
+    }
+    const bool log_snapshot_due_to_change = max_hw_diff_since_log > 0.05;
     const bool success = robot_->set_target_joint_mit(q, v, kp, kd, tau);
     if (!success)
     {
@@ -497,10 +581,10 @@ void RL_Real::SetCommand(const RobotCommand<double> *command)
     {
         ++mit_send_success_;
         last_command_hw_positions_ = q;
-        const auto now = std::chrono::steady_clock::now();
-        if (now - last_command_debug_log_ > std::chrono::milliseconds(200))
+        if ((now - last_command_debug_log_ > std::chrono::seconds(2)) || log_snapshot_due_to_change)
         {
             last_command_debug_log_ = now;
+            last_logged_command_snapshot_ = q;
             std::cout << LOGGER::DEBUG
                       << "MIT command sent successfully (successes: " << mit_send_success_
                       << ", failures: " << mit_send_failures_ << "). Snapshot: "

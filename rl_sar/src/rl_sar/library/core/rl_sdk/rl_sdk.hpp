@@ -12,6 +12,8 @@
 #include <exception>
 #include <unistd.h>
 #include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <tbb/concurrent_queue.h>
 
 #include <yaml-cpp/yaml.h>
@@ -183,6 +185,12 @@ public:
     tbb::concurrent_queue<torch::Tensor> output_dof_vel_queue;
     tbb::concurrent_queue<torch::Tensor> output_dof_tau_queue;
 
+    std::atomic<long long> last_action_publish_time_us{0};
+    std::atomic<long long> last_action_dequeue_time_us{0};
+    std::atomic<double> last_action_max_pos_delta{0.0};
+    std::atomic<double> last_action_max_vel{0.0};
+    std::atomic<double> last_action_max_tau{0.0};
+
     FSM fsm;
     RobotState<double> start_state;
     RobotState<double> now_state;
@@ -203,6 +211,7 @@ public:
     void StateController(const RobotState<double> *state, RobotCommand<double> *command);
     void ComputeOutput(const torch::Tensor &actions, torch::Tensor &output_dof_pos, torch::Tensor &output_dof_vel, torch::Tensor &output_dof_tau);
     torch::Tensor QuatRotateInverse(torch::Tensor q, torch::Tensor v);
+    void MarkActionDequeued();
 
     // yaml params
     void ReadYamlBase(std::string robot_name);
