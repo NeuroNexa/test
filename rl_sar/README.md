@@ -385,9 +385,23 @@ ros2 run rl_sar rl_real_lite3
 
 The Titati platform is assembled from two Tita wheeled-legged robots that share a CAN-FD backbone. Each half has a Jetson Orin NX 16G acting as a **master** or **slave** controller. To switch the hardware stack over to the reinforcement-learning controller shipped in `rl_real_titati`, follow the steps below on both computers.
 
-#### 0. Validate the CAN backbone with the motor tester
+#### 0. Prepare the CAN interface
 
-Before streaming a policy, bring the platform into direct-SDK mode and confirm every actuator responds. Build the standalone tools with CMake (`./build.sh -m`) and then launch the tester:
+Stop the vendor bringup service and configure the CAN-FD port before launching any control software. The helper scripts from `titati_control/src` are left in this workspace (`can_setup_8m_master.sh` / `can_setup_8m_slave.sh`) and show the exact sequence. The relevant commands are:
+
+```bash
+sudo systemctl stop tita-bringup.service
+sudo ip link set can0 down
+sudo ip link set can0 up type can bitrate 1000000 sample-point 0.80 \
+    dbitrate 8000000 dsample-point 0.80 fd on restart-ms 100
+sudo ifconfig can0 txqueuelen 1000
+```
+
+Run the commands on the Jetson that acts as the **master** first. Repeat the CAN bring-up on the **slave** Jetson that drives the other pair of legs so both sides appear on the shared CAN bus. The hardware drivers in `rl_real_titati` expect the interface to be called `can0`; adjust the source in `library/hardware/titati/tita_robot/include/tita_robot/*` only if your network uses a different device name.
+
+#### 1. Validate the CAN backbone with the motor tester
+
+Once both Jetsons have the CAN interface online, bring the platform into direct-SDK mode and confirm every actuator responds before streaming a policy. Build the standalone tools with CMake (`./build.sh -m`) and then launch the tester:
 
 ```bash
 # CMake
@@ -412,20 +426,6 @@ Key commands inside the shell:
 - `exit` – stop commanding and quit (the tester also zeros the torques during shutdown).
 
 Leave the robot lifted while validating torque polarity. When the tester shows that all 16 actuators report reasonable state feedback, continue with the policy bring-up below.
-
-#### 1. Prepare the CAN interface
-
-Stop the vendor bringup service and configure the CAN-FD port before launching any control software. The helper scripts from `titati_control/src` are left in this workspace (`can_setup_8m_master.sh` / `can_setup_8m_slave.sh`) and show the exact sequence. The relevant commands are:
-
-```bash
-sudo systemctl stop tita-bringup.service
-sudo ip link set can0 down
-sudo ip link set can0 up type can bitrate 1000000 sample-point 0.80 \
-    dbitrate 8000000 dsample-point 0.80 fd on restart-ms 100
-sudo ifconfig can0 txqueuelen 1000
-```
-
-Run the commands on the Jetson that acts as the **master** first. Repeat the CAN bring-up on the **slave** Jetson that drives the other pair of legs so both sides appear on the shared CAN bus. The hardware drivers in `rl_real_titati` expect the interface to be called `can0`; adjust the source in `library/hardware/titati/tita_robot/include/tita_robot/*` only if your network uses a different device name.
 
 #### 2. Deploy the RL controller
 
