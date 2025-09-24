@@ -59,12 +59,18 @@ private:
     std::vector<double> joint_positions_;
     std::vector<double> joint_velocities_;
     std::vector<double> joint_torques_;
+    std::vector<double> latest_hw_positions_;
+    std::vector<double> previous_hw_positions_;
+    std::vector<double> last_command_hw_positions_;
     bool joint_mapping_valid_{false};
     bool state_size_warning_emitted_{false};
     bool state_value_warning_emitted_{false};
     std::size_t mit_send_failures_{0};
     std::size_t mit_send_success_{0};
     std::size_t sdk_retry_counter_{0};
+    std::size_t tracking_error_streak_{0};
+    bool hardware_state_initialized_{false};
+    std::chrono::steady_clock::time_point last_tracking_warning_{};
 
 #if defined(USE_ROS1) && defined(USE_ROS)
     geometry_msgs::Twist cmd_vel;

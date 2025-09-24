@@ -8,6 +8,7 @@
 #include <sstream>
 #include <sys/time.h>
 #include <thread>
+#include <string>
 
 namespace can_device
 {
@@ -87,6 +88,28 @@ void CanfdRouterCanReceiveApi::get_board_can_data(std::shared_ptr<struct canfd_f
     last_heartbeat_timestamp_us_.store(
         static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(now.time_since_epoch()).count()));
 
+    static auto last_frame_time = std::chrono::steady_clock::time_point{};
+    static auto last_gap_log = std::chrono::steady_clock::time_point{};
+    auto gap_duration = std::chrono::steady_clock::duration::zero();
+    bool heartbeat_gap_detected = false;
+    if (last_frame_time.time_since_epoch().count() != 0)
+    {
+        gap_duration = now - last_frame_time;
+        if (gap_duration > std::chrono::milliseconds(200))
+        {
+            heartbeat_gap_detected = true;
+            if (now - last_gap_log > std::chrono::milliseconds(500))
+            {
+                last_gap_log = now;
+                std::cout << "[ROUTER] Heartbeat gap detected: "
+                          << std::chrono::duration_cast<std::chrono::milliseconds>(gap_duration).count()
+                          << " ms (mode=" << mode_ << ", auto_retry=" << (auto_retry_.load() ? "true" : "false") << ")."
+                          << std::endl;
+            }
+        }
+    }
+    last_frame_time = now;
+
     static auto last_status_log = std::chrono::steady_clock::time_point{};
     if (now - last_status_log > std::chrono::seconds(1))
     {
@@ -109,6 +132,13 @@ void CanfdRouterCanReceiveApi::get_board_can_data(std::shared_ptr<struct canfd_f
         {
             trigger_handshake = true;
             handshake_reason = "heartbeat reset";
+        }
+        else if (heartbeat_gap_detected && gap_duration > std::chrono::milliseconds(500))
+        {
+            trigger_handshake = true;
+            handshake_reason = "heartbeat gap " +
+                                std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(gap_duration).count()) +
+                                " ms";
         }
     }
 

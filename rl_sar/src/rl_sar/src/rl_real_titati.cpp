@@ -9,6 +9,7 @@
 #include <cmath>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <sstream>
 
 namespace
@@ -111,6 +112,35 @@ std::string FormatCommandSample(const std::vector<double> &q,
     return oss.str();
 }
 
+std::string FormatTrackingComparison(const std::vector<double> &commanded,
+                                     const std::vector<double> &measured,
+                                     const std::vector<int> &sample_indices)
+{
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(3);
+    for (std::size_t i = 0; i < sample_indices.size(); ++i)
+    {
+        const int idx = sample_indices[i];
+        if (idx < 0 || static_cast<std::size_t>(idx) >= commanded.size() ||
+            static_cast<std::size_t>(idx) >= measured.size())
+        {
+            continue;
+        }
+
+        const double cmd = commanded[idx];
+        const double obs = measured[idx];
+        oss << "[" << idx
+            << ": cmd=" << cmd
+            << ", meas=" << obs
+            << ", err=" << (obs - cmd) << "]";
+        if (i + 1 < sample_indices.size())
+        {
+            oss << " ";
+        }
+    }
+    return oss.str();
+}
+
 const std::vector<int> &SampledHardwareIndices()
 {
     static const std::vector<int> indices{0, 1, 2, 3, 4, 5, 6, 7, 12, 13, 14, 15};
@@ -175,12 +205,15 @@ RL_Real::RL_Real()
     }
     else
     {
+        std::cout << LOGGER::INFO << "Titati motors switched to SDK control mode (startup handshake)." << std::endl;
         last_sdk_retry_ = std::chrono::steady_clock::now();
     }
 
     joint_positions_.assign(this->params.num_of_dofs, 0.0);
     joint_velocities_.assign(this->params.num_of_dofs, 0.0);
     joint_torques_.assign(this->params.num_of_dofs, 0.0);
+    latest_hw_positions_.assign(this->params.num_of_dofs, 0.0);
+    previous_hw_positions_.assign(this->params.num_of_dofs, 0.0);
 
     this->InitOutputs();
     this->InitControl();
@@ -231,6 +264,61 @@ void RL_Real::GetState(RobotState<double> *state)
         state_size_warning_emitted_ = true;
     }
 
+    const std::size_t hardware_count = std::min({q.size(), v.size(), tau.size(), static_cast<std::size_t>(dof)});
+    if (hardware_count > 0 && latest_hw_positions_.size() >= hardware_count)
+    {
+        std::copy_n(q.begin(), hardware_count, latest_hw_positions_.begin());
+
+        if (hardware_state_initialized_)
+        {
+            double max_delta = 0.0;
+            for (std::size_t idx = 0; idx < hardware_count; ++idx)
+            {
+                max_delta = std::max(max_delta, std::abs(latest_hw_positions_[idx] - previous_hw_positions_[idx]));
+            }
+
+            double max_command_error = 0.0;
+            bool command_error_valid = last_command_hw_positions_.size() >= hardware_count;
+            if (command_error_valid)
+            {
+                for (std::size_t idx = 0; idx < hardware_count; ++idx)
+                {
+                    max_command_error = std::max(max_command_error, std::abs(latest_hw_positions_[idx] - last_command_hw_positions_[idx]));
+                }
+            }
+
+            if (command_error_valid && max_command_error > 0.25 && max_delta < 1e-4)
+            {
+                ++tracking_error_streak_;
+            }
+            else
+            {
+                tracking_error_streak_ = 0;
+            }
+
+            if (tracking_error_streak_ > 40)
+            {
+                const auto now = std::chrono::steady_clock::now();
+                if (now - last_tracking_warning_ > std::chrono::seconds(1))
+                {
+                    last_tracking_warning_ = now;
+                    std::cout << LOGGER::WARNING
+                              << "Hardware joints not tracking MIT targets (max error: " << max_command_error
+                              << " rad, recent delta: " << max_delta << ").\n"
+                              << "  Command vs measured snapshot: "
+                              << FormatTrackingComparison(last_command_hw_positions_, latest_hw_positions_, SampledHardwareIndices())
+                              << std::endl;
+                }
+            }
+        }
+
+        if (previous_hw_positions_.size() >= hardware_count)
+        {
+            std::copy_n(latest_hw_positions_.begin(), hardware_count, previous_hw_positions_.begin());
+        }
+        hardware_state_initialized_ = true;
+    }
+
     std::vector<int> hardware_to_rl(dof, -1);
     for (int rl_index = 0; rl_index < dof; ++rl_index)
     {
@@ -242,7 +330,6 @@ void RL_Real::GetState(RobotState<double> *state)
     }
 
     std::vector<bool> rl_values_assigned(dof, false);
-    const std::size_t hardware_count = std::min({q.size(), v.size(), tau.size(), static_cast<std::size_t>(dof)});
     for (std::size_t hardware_index = 0; hardware_index < hardware_count; ++hardware_index)
     {
         const int rl_index = hardware_to_rl[hardware_index];
@@ -409,6 +496,7 @@ void RL_Real::SetCommand(const RobotCommand<double> *command)
     else
     {
         ++mit_send_success_;
+        last_command_hw_positions_ = q;
         const auto now = std::chrono::steady_clock::now();
         if (now - last_command_debug_log_ > std::chrono::milliseconds(200))
         {
