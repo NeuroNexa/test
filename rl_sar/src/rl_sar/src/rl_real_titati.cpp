@@ -5,6 +5,7 @@
 
 #include "rl_real_titati.hpp"
 
+#include <algorithm>
 #include <iostream>
 
 RL_Real::RL_Real()
@@ -93,14 +94,50 @@ void RL_Real::GetState(RobotState<double> *state)
     auto v = robot_->get_joint_v();
     auto tau = robot_->get_joint_t();
 
-    for (int i = 0; i < this->params.num_of_dofs; ++i)
+    const int dof = this->params.num_of_dofs;
+    std::vector<int> hardware_to_rl(dof, -1);
+    for (int rl_index = 0; rl_index < dof; ++rl_index)
     {
-        joint_positions_[i] = q[this->params.joint_mapping[i]];
-        joint_velocities_[i] = v[this->params.joint_mapping[i]];
-        joint_torques_[i] = tau[this->params.joint_mapping[i]];
-        state->motor_state.q[i] = joint_positions_[i];
-        state->motor_state.dq[i] = joint_velocities_[i];
-        state->motor_state.tau_est[i] = joint_torques_[i];
+        const int hardware_index = this->params.joint_mapping[rl_index];
+        if (hardware_index >= 0 && hardware_index < dof)
+        {
+            hardware_to_rl[hardware_index] = rl_index;
+        }
+    }
+
+    std::vector<bool> rl_values_assigned(dof, false);
+    const std::size_t hardware_count = std::min({q.size(), v.size(), tau.size(), static_cast<std::size_t>(dof)});
+    for (std::size_t hardware_index = 0; hardware_index < hardware_count; ++hardware_index)
+    {
+        const int rl_index = hardware_to_rl[hardware_index];
+        if (rl_index < 0)
+        {
+            continue;
+        }
+
+        joint_positions_[rl_index] = q[hardware_index];
+        joint_velocities_[rl_index] = v[hardware_index];
+        joint_torques_[rl_index] = tau[hardware_index];
+
+        state->motor_state.q[rl_index] = joint_positions_[rl_index];
+        state->motor_state.dq[rl_index] = joint_velocities_[rl_index];
+        state->motor_state.tau_est[rl_index] = joint_torques_[rl_index];
+        rl_values_assigned[rl_index] = true;
+    }
+
+    for (int rl_index = 0; rl_index < dof; ++rl_index)
+    {
+        if (rl_values_assigned[rl_index])
+        {
+            continue;
+        }
+
+        joint_positions_[rl_index] = 0.0;
+        joint_velocities_[rl_index] = 0.0;
+        joint_torques_[rl_index] = 0.0;
+        state->motor_state.q[rl_index] = 0.0;
+        state->motor_state.dq[rl_index] = 0.0;
+        state->motor_state.tau_est[rl_index] = 0.0;
     }
 
     auto quat = robot_->get_imu_quaternion();
