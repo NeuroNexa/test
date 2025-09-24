@@ -127,10 +127,11 @@ To clean the build, use the following command. This will remove all compiled out
 ./build.sh -c  # or ./build.sh --clean
 ```
 
-If simulation is not needed and you only want to run on the robot, you can compile using CMake while disabling ROS (the compiled executables will be in `cmake_build/bin` and libraries in `cmake_build/lib`):
+If simulation is not needed and you only want to run on the robot, you can compile using CMake while disabling ROS (the compiled executables will be in `cmake_build/bin` and libraries in `cmake_build/lib`). By default the script configures a Titati-only toolchain; pass `--all-robots` together with `-m` if you still need the other hardware targets:
 
 ```bash
-./build.sh -m  # or ./build.sh --cmake
+./build.sh -m  # or ./build.sh --cmake (Titati-only build)
+./build.sh -m --all-robots
 ```
 
 For detailed usage instructions, you can check them via `./build.sh -h`:
@@ -141,6 +142,7 @@ Usage: ./build.sh [OPTIONS] [PACKAGE_NAMES...]
 Options:
   -c, --clean    Clean workspace (remove symlinks and build artifacts)
   -m, --cmake    Build using CMake (for hardware deployment only)
+      --all-robots  Build every hardware controller when used with --cmake
   -h, --help     Show this help message
 
 Examples:
@@ -148,7 +150,8 @@ Examples:
   ./build.sh package1 package2  # Build specific ROS packages
   ./build.sh -c                 # Clean all symlinks and build artifacts
   ./build.sh --clean package1   # Clean specific package and build artifacts
-  ./build.sh -m                 # Build with CMake for hardware deployment
+  ./build.sh -m                 # Build Titati controllers with CMake
+  ./build.sh -m --all-robots    # Build every hardware controller with CMake
 ```
 
 > [!TIP]
@@ -431,7 +434,7 @@ Run the commands on the Jetson that acts as the **master** first. Repeat the CAN
 3. Compile the standalone controller on the Jetson that talks to the CAN backbone:
 
     ```bash
-    ./build.sh -m rl_real_titati
+    ./build.sh -m  # add --all-robots if you also need the other platforms
     ```
 
 4. Launch the controller. The ROS and pure CMake entry points are both available—pick whichever matches your runtime environment:

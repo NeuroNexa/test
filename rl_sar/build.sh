@@ -64,11 +64,21 @@ ask_confirmation() {
 # ========================
 
 run_cmake_build() {
+    local build_all_robots="$1"
+
     print_header "[Running CMake Build]"
     print_warning "NOTE: CMake build is for hardware deployment only, not for simulation."
+    if [ "$build_all_robots" != "true" ]; then
+        print_info "Configuring Titati-only targets (pass --all-robots to enable every controller)."
+    fi
     print_separator
 
-    cmake src/rl_sar/ -B cmake_build -DUSE_CMAKE=ON
+    local cmake_args=(-B cmake_build -DUSE_CMAKE=ON)
+    if [ "$build_all_robots" != "true" ]; then
+        cmake_args+=(-DBUILD_TITATI_ONLY=ON)
+    fi
+
+    cmake src/rl_sar/ "${cmake_args[@]}"
     cmake --build cmake_build -j4
 
     print_success "CMake build completed!"
@@ -317,6 +327,7 @@ show_usage() {
     echo -e "${COLOR_INFO}Options:${COLOR_RESET}"
     echo -e "  -c, --clean    Clean workspace (remove symlinks and build artifacts)"
     echo -e "  -m, --cmake    Build using CMake (for hardware deployment only)"
+    echo -e "      --all-robots  Build every hardware controller when used with --cmake"
     echo -e "  -h, --help     Show this help message"
     echo ""
     echo -e "${COLOR_INFO}Examples:${COLOR_RESET}"
@@ -324,19 +335,22 @@ show_usage() {
     echo -e "  $0 package1 package2  # Build specific ROS packages"
     echo -e "  $0 -c                 # Clean all symlinks and build artifacts"
     echo -e "  $0 --clean package1   # Clean specific package and build artifacts"
-    echo -e "  $0 -m                 # Build with CMake for hardware deployment"
+    echo -e "  $0 -m                 # Build Titati controllers with CMake"
+    echo -e "  $0 -m --all-robots    # Build every hardware controller with CMake"
 }
 
 main() {
     local packages=()
     local clean_mode=false
     local cmake_mode=false
+    local build_all_robots=false
 
     # Parse command line arguments
     while [[ $# -gt 0 ]]; do
         case $1 in
             -c|--clean) clean_mode=true; shift ;;
             -m|--cmake) cmake_mode=true; shift ;;
+            --all-robots) build_all_robots=true; shift ;;
             -h|--help) show_usage; exit 0 ;;
             --) shift; packages+=("$@"); break ;;
             -*) print_error "Unknown option: $1"; show_usage; exit 1 ;;
@@ -346,7 +360,7 @@ main() {
 
     # Handle CMake build mode
     if [ "$cmake_mode" = true ]; then
-        run_cmake_build
+        run_cmake_build "$build_all_robots"
         exit 0
     fi
 
