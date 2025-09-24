@@ -6,6 +6,7 @@
 #include "rl_real_titati.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <iostream>
 #include <sstream>
 
@@ -53,6 +54,7 @@ RL_Real::RL_Real()
     }
     else
     {
+        std::cout << LOGGER::INFO << "Titati motors switched to SDK control mode." << std::endl;
         last_sdk_retry_ = std::chrono::steady_clock::now();
     }
 
@@ -94,6 +96,8 @@ void RL_Real::GetState(RobotState<double> *state)
     auto q = robot_->get_joint_q();
     auto v = robot_->get_joint_v();
     auto tau = robot_->get_joint_t();
+
+    static int state_snapshot_count = 0;
 
     const int dof = this->params.num_of_dofs;
     const int mapping_count = std::min<int>(this->params.joint_mapping.size(), dof);
@@ -231,6 +235,50 @@ void RL_Real::GetState(RobotState<double> *state)
         state_log_printed = true;
     }
 
+    if (state_snapshot_count < 5)
+    {
+        bool nonzero_detected = false;
+        for (int rl_index = 0; rl_index < dof; ++rl_index)
+        {
+            if (std::fabs(state->motor_state.q[rl_index]) > 1e-4 || std::fabs(state->motor_state.dq[rl_index]) > 1e-4)
+            {
+                nonzero_detected = true;
+                break;
+            }
+        }
+
+        if (nonzero_detected)
+        {
+            std::ostringstream oss;
+            oss << "Titati RL-order joint state snapshot " << state_snapshot_count << " (q): [";
+            for (int rl_index = 0; rl_index < dof; ++rl_index)
+            {
+                oss << state->motor_state.q[rl_index];
+                if (rl_index + 1 < dof)
+                {
+                    oss << ", ";
+                }
+            }
+            oss << "]";
+            std::cout << LOGGER::DEBUG << oss.str() << std::endl;
+
+            std::ostringstream dq_log;
+            dq_log << "Titati RL-order joint state snapshot " << state_snapshot_count << " (dq): [";
+            for (int rl_index = 0; rl_index < dof; ++rl_index)
+            {
+                dq_log << state->motor_state.dq[rl_index];
+                if (rl_index + 1 < dof)
+                {
+                    dq_log << ", ";
+                }
+            }
+            dq_log << "]";
+            std::cout << LOGGER::DEBUG << dq_log.str() << std::endl;
+
+            ++state_snapshot_count;
+        }
+    }
+
     auto quat = robot_->get_imu_quaternion();
     state->imu.quaternion[0] = quat[3];
     state->imu.quaternion[1] = quat[0];
@@ -271,6 +319,55 @@ void RL_Real::SetCommand(const RobotCommand<double> *command)
     }
 
     const int dof = this->params.num_of_dofs;
+
+    auto log_vector = [](const char *label, const std::vector<double> &values) {
+        std::ostringstream oss;
+        oss << label << " [";
+        for (std::size_t i = 0; i < values.size(); ++i)
+        {
+            oss << values[i];
+            if (i + 1 < values.size())
+            {
+                oss << ", ";
+            }
+        }
+        oss << "]";
+        std::cout << LOGGER::DEBUG << oss.str() << std::endl;
+    };
+
+    const std::size_t rl_command_size = command->motor_command.q.size();
+    if (rl_command_size < static_cast<std::size_t>(dof))
+    {
+        std::cout << LOGGER::ERROR << "RobotCommand motor_command.q has size " << rl_command_size
+                  << " but Titati expects " << dof << " DoFs." << std::endl;
+    }
+
+    static bool rl_command_log_printed = false;
+    if (!rl_command_log_printed)
+    {
+        std::vector<double> rl_q(dof, 0.0);
+        std::vector<double> rl_dq(dof, 0.0);
+        std::vector<double> rl_kp(dof, 0.0);
+        std::vector<double> rl_kd(dof, 0.0);
+        std::vector<double> rl_tau(dof, 0.0);
+
+        for (int i = 0; i < dof && i < static_cast<int>(rl_command_size); ++i)
+        {
+            rl_q[i] = command->motor_command.q[i];
+            rl_dq[i] = command->motor_command.dq[i];
+            rl_kp[i] = command->motor_command.kp[i];
+            rl_kd[i] = command->motor_command.kd[i];
+            rl_tau[i] = command->motor_command.tau[i];
+        }
+
+        log_vector("First Titati MIT command (RL order q):", rl_q);
+        log_vector("First Titati MIT command (RL order dq):", rl_dq);
+        log_vector("First Titati MIT command (RL order kp):", rl_kp);
+        log_vector("First Titati MIT command (RL order kd):", rl_kd);
+        log_vector("First Titati MIT command (RL order tau):", rl_tau);
+        rl_command_log_printed = true;
+    }
+
     std::vector<double> q(dof, 0.0);
     std::vector<double> v(dof, 0.0);
     std::vector<double> kp(dof, 0.0);
