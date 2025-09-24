@@ -171,7 +171,7 @@ include_directories(
 
 add_library(rl_sdk library/core/rl_sdk/rl_sdk.cpp)
 set_target_properties(rl_sdk PROPERTIES
-    CXX_STANDARD 14
+    CXX_STANDARD 17
     CXX_STANDARD_REQUIRED ON
 )
 target_link_libraries(rl_sdk PUBLIC
@@ -195,7 +195,7 @@ endif()
 add_library(observation_buffer library/core/observation_buffer/observation_buffer.cpp)
 target_link_libraries(observation_buffer PUBLIC "${TORCH_LIBRARIES}")
 set_target_properties(observation_buffer PROPERTIES
-    CXX_STANDARD 14
+    CXX_STANDARD 17
     CXX_STANDARD_REQUIRED ON
 )
 if(NOT USE_CMAKE)
