@@ -60,6 +60,7 @@ private:
 
     bool mapping_warning_printed_{false};
     bool state_mapping_warning_printed_{false};
+    bool state_signal_size_warning_printed_{false};
     bool command_log_printed_{false};
     int sdk_fail_log_count_{0};
     int mit_fail_log_count_{0};
