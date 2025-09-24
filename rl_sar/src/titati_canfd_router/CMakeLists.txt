@@ -38,4 +38,5 @@ if(BUILD_TESTING)
   ament_lint_auto_find_test_dependencies()
 endif()
 
+set(AMENT_CMAKE_AUTO_INSTALL_USE_SCOPED_HEADER_INSTALL_DIR ON)
 ament_auto_package()

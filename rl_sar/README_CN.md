@@ -229,6 +229,46 @@ git clone https://github.com/osrf/gazebo_models.git ~/.gazebo/models
 
 ### 真实机器人
 
+#### Titati 机器人部署流程
+
+- **从机 Jetson（后半身）首次构建 ROS2 帮助包**
+  ```bash
+  cd rl_sar
+  source /opt/ros/humble/setup.bash
+  ./build.sh tita_system_interfaces titati_canfd_router
+  ```
+  上述命令会调用 `colcon build --packages-select tita_system_interfaces titati_canfd_router`，生成 `install/setup.bash` 以便后续启动 ROS2 节点。
+
+- **主从机均需编译硬件可执行文件**
+  ```bash
+  ./build.sh -m
+  ```
+  生成的程序位于 `cmake_build/bin/`（`rl_real_titati` 与 `titati_motor_test`）。
+
+- **从机 Jetson 启动 CAN-FD 路由器**
+  ```bash
+  cd rl_sar
+  source /opt/ros/humble/setup.bash
+  source install/setup.bash
+  ros2 run titati_canfd_router titati_canfd_router_node
+  ```
+  保持该终端运行，用于将 CAN 路由盒持续置于强制直驱（FORCE_DIRECT）模式。
+
+- **主机 Jetson 进行电机联调与 RL 控制**
+  1. 通过 `cmake_build/bin/titati_motor_test` 读取 16 个电机的状态或单独下发力矩 / MIT 指令，确保每个电机均可正常响应：
+     ```bash
+     ./cmake_build/bin/titati_motor_test --read
+     ./cmake_build/bin/titati_motor_test --monitor
+     ./cmake_build/bin/titati_motor_test --mode torque --id 3 --tau 0.6 --duration 3.0
+     ./cmake_build/bin/titati_motor_test --mode mit --id 7 --pos 0.0 --vel 0.0 --kp 20.0 --kd 1.0 --tau 0.2 --duration 2.0
+     ```
+  2. 拷贝策略文件到 `src/rl_sar/policy/titati/robot_lab/policy.pt`，检查 `base.yaml` 与 `config.yaml`。
+  3. 启动 RL 控制：
+     ```bash
+     ./cmake_build/bin/rl_real_titati
+     ```
+     按 `Ctrl+C` 退出时程序会自动将电机力矩归零。
+
 <details>
 
 <summary>Unitree A1（点击展开）</summary>

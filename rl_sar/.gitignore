@@ -12,3 +12,5 @@ __pycache__
 cmake_build
 
 package.xml
+!src/tita_system_interfaces/package.xml
+!src/titati_canfd_router/package.xml

@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>titati_canfd_router</name>
+  <version>0.1.0</version>
+  <description>ROS 2 node that keeps the Titati MCU in SDK forced-direct mode by proxying CAN-FD commands.</description>
+  <maintainer email="dev@tita.example">Titati Maintainer</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>ament_cmake_auto</depend>
+  <depend>rclcpp</depend>
+  <depend>tita_system_interfaces</depend>
+</package>

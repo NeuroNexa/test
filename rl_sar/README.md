@@ -199,6 +199,14 @@ git clone https://github.com/osrf/gazebo_models.git ~/.gazebo/models
 
 The Titati platform is composed of a **master Jetson** (the front Tita) and a **slave Jetson** (the rear Tita).  The master runs the RL policy and motor diagnostics while the slave keeps the CAN-FD router locked in forced-direct mode so that both halves accept SDK commands.  The following steps assume you are inside the `rl_sar` workspace on each Jetson.
 
+1. **Build the ROS 2 helper packages on the slave Jetson (once after cloning or updating)**
+   ```bash
+   cd rl_sar
+   source /opt/ros/humble/setup.bash
+   ./build.sh tita_system_interfaces titati_canfd_router
+   ```
+   This wraps `colcon build --packages-select tita_system_interfaces titati_canfd_router` and creates `install/setup.bash` for the CAN router node.
+
 #### 1. Build the binaries on both Jetsons (master & slave)
 
 ```bash
@@ -208,22 +216,19 @@ The Titati platform is composed of a **master Jetson** (the front Tita) and a **
 
 This produces the hardware executables in `cmake_build/bin` (`rl_real_titati` and `titati_motor_test`) and the SDK libraries in `cmake_build/lib`.
 
-#### 2. Build the ROS2 CAN router package on the **slave Jetson**
+#### 2. Source the ROS2 CAN router workspace on the **slave Jetson**
+
+After building the helper packages once, you only need to source the generated workspace before launching ROS nodes:
 
 ```bash
 source /opt/ros/humble/setup.bash
-./build.sh tita_system_interfaces titati_canfd_router
-```
-
-The command above invokes `colcon build` for only the Titati ROS packages and places the result in `install/`.  Afterwards, source the workspace before launching ROS nodes:
-
-```bash
 source install/setup.bash
 ```
 
 #### 3. Start the CAN-FD router on the **slave Jetson**
 
 ```bash
+cd rl_sar
 ros2 run titati_canfd_router titati_canfd_router_node
 ```
 
