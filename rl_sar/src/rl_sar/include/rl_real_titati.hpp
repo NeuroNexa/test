@@ -20,6 +20,7 @@
 #include <memory>
 #include <vector>
 #include <chrono>
+#include <cstdint>
 
 #if defined(USE_ROS1) && defined(USE_ROS)
 #include <ros/ros.h>
@@ -57,6 +58,12 @@ private:
     std::vector<double> joint_positions_;
     std::vector<double> joint_velocities_;
     std::vector<double> joint_torques_;
+
+    std::uint64_t ensure_sdk_skip_count_{0};
+    std::uint64_t ensure_sdk_success_count_{0};
+    std::uint64_t mit_send_fail_count_{0};
+    std::uint64_t mit_send_success_count_{0};
+    bool invalid_joint_mapping_reported_{false};
 
 #if defined(USE_ROS1) && defined(USE_ROS)
     geometry_msgs::Twist cmd_vel;

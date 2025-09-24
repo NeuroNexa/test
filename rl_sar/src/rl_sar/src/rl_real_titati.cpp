@@ -6,6 +6,8 @@
 #include "rl_real_titati.hpp"
 
 #include <iostream>
+#include <iomanip>
+#include <algorithm>
 
 RL_Real::RL_Real()
 #if defined(USE_ROS2) && defined(USE_ROS)
@@ -126,34 +128,110 @@ void RL_Real::SetCommand(const RobotCommand<double> *command)
 {
     if (!EnsureMotorsSdkMode())
     {
+        ++ensure_sdk_skip_count_;
+        if (ensure_sdk_skip_count_ <= 5 || ensure_sdk_skip_count_ % 100 == 0)
+        {
+            std::cout << LOGGER::WARNING
+                      << "SetCommand skipped because motors are not in SDK mode."
+                      << " skip_count=" << ensure_sdk_skip_count_
+                      << " last_retry_elapsed_ms="
+                      << std::chrono::duration_cast<std::chrono::milliseconds>(
+                             std::chrono::steady_clock::now() - last_sdk_retry_)
+                             .count()
+                      << std::endl;
+        }
         return;
     }
 
-    std::vector<double> q;
-    std::vector<double> v;
-    std::vector<double> kp;
-    std::vector<double> kd;
-    std::vector<double> tau;
-    q.reserve(this->params.num_of_dofs);
-    v.reserve(this->params.num_of_dofs);
-    kp.reserve(this->params.num_of_dofs);
-    kd.reserve(this->params.num_of_dofs);
-    tau.reserve(this->params.num_of_dofs);
-
-    for (int i = 0; i < this->params.num_of_dofs; ++i)
+    if (ensure_sdk_skip_count_ > 0)
     {
-        q.push_back(command->motor_command.q[i]);
-        v.push_back(command->motor_command.dq[i]);
-        kp.push_back(command->motor_command.kp[i]);
-        kd.push_back(command->motor_command.kd[i]);
-        tau.push_back(command->motor_command.tau[i]);
+        std::cout << LOGGER::INFO
+                  << "SetCommand resumed after SDK mode was restored. skipped_frames="
+                  << ensure_sdk_skip_count_ << std::endl;
+        ensure_sdk_skip_count_ = 0;
     }
 
-    if (!robot_->set_target_joint_mit(q, v, kp, kd, tau) && motors_sdk_enabled_)
+    ++ensure_sdk_success_count_;
+
+    const auto num_dofs = this->params.num_of_dofs;
+    std::vector<double> q(num_dofs, 0.0);
+    std::vector<double> v(num_dofs, 0.0);
+    std::vector<double> kp(num_dofs, 0.0);
+    std::vector<double> kd(num_dofs, 0.0);
+    std::vector<double> tau(num_dofs, 0.0);
+
+    const bool has_valid_mapping =
+        static_cast<std::size_t>(num_dofs) == this->params.joint_mapping.size();
+    if (!has_valid_mapping && !invalid_joint_mapping_reported_)
     {
+        std::cout << LOGGER::WARNING
+                  << "Joint mapping size (" << this->params.joint_mapping.size()
+                  << ") does not match number of dofs (" << num_dofs
+                  << "). Falling back to identity mapping." << std::endl;
+        invalid_joint_mapping_reported_ = true;
+    }
+
+    for (int i = 0; i < num_dofs; ++i)
+    {
+        int hw_index = has_valid_mapping ? this->params.joint_mapping[i] : i;
+        if (hw_index < 0 || hw_index >= num_dofs)
+        {
+            if (!invalid_joint_mapping_reported_)
+            {
+                std::cout << LOGGER::WARNING
+                          << "Joint mapping index " << hw_index
+                          << " is out of range for dof count " << num_dofs
+                          << ". Ignoring this entry." << std::endl;
+                invalid_joint_mapping_reported_ = true;
+            }
+            continue;
+        }
+
+        q[hw_index] = command->motor_command.q[i];
+        v[hw_index] = command->motor_command.dq[i];
+        kp[hw_index] = command->motor_command.kp[i];
+        kd[hw_index] = command->motor_command.kd[i];
+        tau[hw_index] = command->motor_command.tau[i];
+    }
+
+    const bool mit_result = robot_->set_target_joint_mit(q, v, kp, kd, tau);
+    if (!mit_result && motors_sdk_enabled_)
+    {
+        ++mit_send_fail_count_;
         motors_sdk_enabled_ = false;
         last_sdk_retry_ = std::chrono::steady_clock::now();
         std::cout << LOGGER::WARNING << "Failed to send MIT command to Titati motors. Retrying SDK handshake." << std::endl;
+        if (mit_send_fail_count_ <= 5 || mit_send_fail_count_ % 50 == 0)
+        {
+            std::cout << LOGGER::WARNING
+                      << "Last MIT command snapshot (first 6 joints):";
+            for (int i = 0; i < std::min<int>(6, this->params.num_of_dofs); ++i)
+            {
+                std::cout << " [" << i
+                          << ": q=" << std::fixed << std::setprecision(3) << q[i]
+                          << ", dq=" << v[i]
+                          << ", kp=" << kp[i]
+                          << ", kd=" << kd[i]
+                          << ", tau=" << tau[i]
+                          << "]";
+            }
+            std::cout << std::endl;
+        }
+    }
+    else if (mit_result)
+    {
+        ++mit_send_success_count_;
+        if (mit_send_success_count_ <= 5 || mit_send_success_count_ % 200 == 0)
+        {
+            std::cout << LOGGER::DEBUG
+                      << "MIT command sent successfully. success_count=" << mit_send_success_count_;
+            std::cout << " first_joint=[q=" << std::fixed << std::setprecision(3) << q[0]
+                      << ", dq=" << v[0]
+                      << ", kp=" << kp[0]
+                      << ", kd=" << kd[0]
+                      << ", tau=" << tau[0]
+                      << "]" << std::endl;
+        }
     }
 }
 
@@ -161,6 +239,12 @@ bool RL_Real::EnsureMotorsSdkMode()
 {
     if (motors_sdk_enabled_)
     {
+        if (ensure_sdk_success_count_ <= 5 || ensure_sdk_success_count_ % 200 == 0)
+        {
+            std::cout << LOGGER::DEBUG
+                      << "EnsureMotorsSdkMode OK. success_count=" << ensure_sdk_success_count_ + 1
+                      << " motors_sdk_enabled=" << motors_sdk_enabled_ << std::endl;
+        }
         return true;
     }
 
@@ -175,12 +259,16 @@ bool RL_Real::EnsureMotorsSdkMode()
     if (robot_->set_motors_sdk(true))
     {
         motors_sdk_enabled_ = true;
+        ++ensure_sdk_success_count_;
         std::cout << LOGGER::INFO << "Titati motors switched to SDK control mode." << std::endl;
         robot_->set_target_joint_t(std::vector<double>(this->params.num_of_dofs, 0.0));
         return true;
     }
 
-    std::cout << LOGGER::WARNING << "Retrying to switch Titati motors to SDK control mode..." << std::endl;
+    std::cout << LOGGER::WARNING
+              << "Retrying to switch Titati motors to SDK control mode... retry_interval_ms="
+              << std::chrono::duration_cast<std::chrono::milliseconds>(kRetryInterval).count()
+              << std::endl;
     return false;
 }
 
