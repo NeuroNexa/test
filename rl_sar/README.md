@@ -399,7 +399,29 @@ sudo ifconfig can0 txqueuelen 1000
 
 Run the commands on the Jetson that acts as the **master** first. Repeat the CAN bring-up on the **slave** Jetson that drives the other pair of legs so both sides appear on the shared CAN bus. The hardware drivers in `rl_real_titati` expect the interface to be called `can0`; adjust the source in `library/hardware/titati/tita_robot/include/tita_robot/*` only if your network uses a different device name.
 
-#### 1. Validate the CAN backbone with the motor tester
+#### 1. Start the Titati CAN router on both Jetsons
+
+The Titati control box expects each Jetson to request **FORCE_DIRECT** mode once the CAN link is up. Launch the router helper on
+both machines to replay the vendor handshake before you try to command any motors:
+
+```bash
+# CMake
+./cmake_build/bin/titati_can_router
+
+# ROS1
+source devel/setup.bash
+rosrun rl_sar titati_can_router
+
+# ROS2
+source install/setup.bash
+ros2 run rl_sar titati_can_router
+```
+
+Run the tool on the **slave** Jetson first, then start it on the **master**. Each instance prints the router heartbeat and exits
+when you press `Ctrl+C`. If your wiring uses a different CAN device name, add `--interface can1` (and optionally
+`--rpc-interface canX`) to override the defaults.
+
+#### 2. Validate the CAN backbone with the motor tester
 
 Once both Jetsons have the CAN interface online, bring the platform into direct-SDK mode and confirm every actuator responds before streaming a policy. Build the standalone tools with CMake (`./build.sh -m`) and then launch the tester:
 
@@ -427,7 +449,7 @@ Key commands inside the shell:
 
 Leave the robot lifted while validating torque polarity. When the tester shows that all 16 actuators report reasonable state feedback, continue with the policy bring-up below.
 
-#### 2. Deploy the RL controller
+#### 3. Deploy the RL controller
 
 1. Copy the trained policy to `rl_sar/src/rl_sar/policy/titati/robot_lab/policy.pt`. Tune the gains, torque limits, and joint remapping in `policy/titati/base.yaml` and `policy/titati/robot_lab/config.yaml` before first power-on.
 2. Export `Torch_DIR` to point at a libtorch installation that matches your target architecture.
@@ -454,7 +476,7 @@ Leave the robot lifted while validating torque polarity. When the tester shows t
 
 The executable starts in manual keyboard mode (`W`, `A`, `S`, `D`, `Q`, `E` for planar motion, `Space` to stop). Press `N` to toggle navigation mode when you want the controller to consume `/cmd_vel` commands from ROS instead. When shutting down, the node automatically zeroes commanded torques before exiting.
 
-#### 3. Safety checks
+#### 4. Safety checks
 
 - Keep the robot lifted while validating the torque polarity and joint mapping.
 - Confirm the CAN interface shows traffic (`candump can0`) before handing control over to the RL policy.

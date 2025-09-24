@@ -135,6 +135,23 @@ target_include_directories(titati_hardware PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/library/hardware/titati
 )
 target_link_libraries(titati_hardware PUBLIC Threads::Threads)
+set_target_properties(titati_hardware PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+)
+
+add_library(titati_router
+    library/hardware/titati/router/src/canfd_router_can_receive_api.cpp
+)
+target_include_directories(titati_router PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/hardware/titati/router/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/hardware/titati/router
+)
+target_link_libraries(titati_router PUBLIC Threads::Threads)
+set_target_properties(titati_router PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+)
 
 if(NOT BUILD_TITATI_ONLY)
     # Lite3_MotionSDK
@@ -352,6 +369,23 @@ if(NOT USE_CMAKE)
         target_link_libraries(titati_motor_test ${catkin_LIBRARIES})
     elseif($ENV{ROS_DISTRO} MATCHES "foxy|humble")
         install(TARGETS titati_motor_test DESTINATION lib/${PROJECT_NAME})
+    endif()
+endif()
+
+add_executable(titati_can_router src/titati_can_router.cpp)
+target_link_libraries(titati_can_router
+    titati_router
+    Threads::Threads
+)
+set_target_properties(titati_can_router PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+)
+if(NOT USE_CMAKE)
+    if($ENV{ROS_DISTRO} MATCHES "noetic")
+        target_link_libraries(titati_can_router ${catkin_LIBRARIES})
+    elseif($ENV{ROS_DISTRO} MATCHES "foxy|humble")
+        install(TARGETS titati_can_router DESTINATION lib/${PROJECT_NAME})
     endif()
 endif()
 

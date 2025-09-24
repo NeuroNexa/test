@@ -235,6 +235,9 @@ int main(int argc, char *argv[])
         std::cerr << "Failed to switch the Titati MCU into SDK (direct torque) mode." << std::endl;
     }
 
+    std::cout << "[titati_motor_test] Tip: start `titati_can_router` on both Jetsons so all 16 actuators report telemetry."
+              << std::endl;
+
     CommandBuffers command_buffers;
     command_buffers.position.resize(motor_count, 0.0);
     command_buffers.velocity.resize(motor_count, 0.0);
