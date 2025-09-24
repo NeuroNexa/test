@@ -9,6 +9,8 @@ find_package(ament_cmake_auto REQUIRED)
 ament_auto_find_build_dependencies()
 
 find_package(rosidl_default_generators REQUIRED)
+find_package(std_srvs REQUIRED)
+find_package(diagnostic_msgs REQUIRED)
 
 set(SRV_FILES
   "srv/PowerStateSetSrv.srv"
