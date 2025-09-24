@@ -1,5 +1,7 @@
 #include <algorithm>
+#include <atomic>
 #include <chrono>
+#include <csignal>
 #include <iostream>
 #include <limits>
 #include <sstream>
@@ -12,6 +14,13 @@
 namespace
 {
 constexpr std::size_t kNumMotors = 16;
+std::atomic_bool g_shutdown_requested{false};
+
+void SignalHandler(int)
+{
+    g_shutdown_requested.store(true);
+}
+
 void PrintState(const tita_robot &robot)
 {
     auto positions = robot.get_joint_q();
@@ -32,6 +41,9 @@ void PrintState(const tita_robot &robot)
 
 int main()
 {
+    std::signal(SIGINT, SignalHandler);
+    std::signal(SIGTERM, SignalHandler);
+
     tita_robot robot(kNumMotors);
     if (!robot.set_motors_sdk(true))
     {
@@ -51,8 +63,24 @@ int main()
     std::vector<double> torques(kNumMotors, 0.0);
     std::string line;
     bool running = true;
-    while (running && std::getline(std::cin, line))
+    while (running && !g_shutdown_requested.load())
     {
+        if (!std::getline(std::cin, line))
+        {
+            if (g_shutdown_requested.load())
+            {
+                break;
+            }
+
+            if (std::cin.eof())
+            {
+                break;
+            }
+
+            std::cin.clear();
+            continue;
+        }
+
         std::istringstream iss(line);
         std::string command;
         if (!(iss >> command))
@@ -178,10 +206,22 @@ int main()
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
+
+        if (g_shutdown_requested.load())
+        {
+            break;
+        }
     }
 
     robot.set_target_joint_t(std::vector<double>(kNumMotors, 0.0));
     robot.set_motors_sdk(false);
-    std::cout << "Test finished." << std::endl;
+    if (g_shutdown_requested.load())
+    {
+        std::cout << "\n[INFO] Interrupt received. Motors restored to MCU control." << std::endl;
+    }
+    else
+    {
+        std::cout << "Test finished." << std::endl;
+    }
     return 0;
 }

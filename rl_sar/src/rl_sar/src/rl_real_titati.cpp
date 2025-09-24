@@ -5,7 +5,26 @@
 
 #include "rl_real_titati.hpp"
 
+#include <atomic>
+#include <csignal>
 #include <iostream>
+#include <thread>
+#include <chrono>
+
+namespace
+{
+std::atomic_bool g_shutdown_requested{false};
+
+void HandleSignal(int)
+{
+    g_shutdown_requested.store(true);
+#if defined(USE_ROS1) && defined(USE_ROS)
+    ros::shutdown();
+#elif defined(USE_ROS2) && defined(USE_ROS)
+    rclcpp::shutdown();
+#endif
+}
+} // namespace
 
 RL_Real::RL_Real()
 #if defined(USE_ROS2) && defined(USE_ROS)
@@ -79,6 +98,7 @@ RL_Real::~RL_Real()
     {
         robot_->set_target_joint_t(std::vector<double>(this->params.num_of_dofs, 0.0));
         robot_->set_motors_sdk(false);
+        motors_sdk_enabled_ = false;
     }
 
     this->loop_keyboard->shutdown();
@@ -315,28 +335,40 @@ void RL_Real::CmdvelCallback(
 }
 #endif
 
-#if defined(USE_ROS1) && defined(USE_ROS)
-void signalHandler(int signum)
-{
-    ros::shutdown();
-    exit(0);
-}
-#endif
-
 int main(int argc, char **argv)
 {
 #if defined(USE_ROS1) && defined(USE_ROS)
-    signal(SIGINT, signalHandler);
+    std::signal(SIGINT, HandleSignal);
+    std::signal(SIGTERM, HandleSignal);
     ros::init(argc, argv, "rl_sar");
     RL_Real rl_sar;
     ros::spin();
 #elif defined(USE_ROS2) && defined(USE_ROS)
+    std::signal(SIGINT, HandleSignal);
+    std::signal(SIGTERM, HandleSignal);
     rclcpp::init(argc, argv);
-    rclcpp::spin(std::make_shared<RL_Real>());
-    rclcpp::shutdown();
+    auto node = std::make_shared<RL_Real>();
+    while (rclcpp::ok() && !g_shutdown_requested.load())
+    {
+        rclcpp::spin_some(node);
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
 #elif defined(USE_CMAKE) || !defined(USE_ROS)
+    std::signal(SIGINT, HandleSignal);
+    std::signal(SIGTERM, HandleSignal);
     RL_Real rl_sar;
-    while (1) { sleep(10); }
+    while (!g_shutdown_requested.load())
+    {
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
 #endif
+    if (!g_shutdown_requested.load())
+    {
+#if defined(USE_ROS1) && defined(USE_ROS)
+        ros::shutdown();
+#elif defined(USE_ROS2) && defined(USE_ROS)
+        rclcpp::shutdown();
+#endif
+    }
     return 0;
 }
