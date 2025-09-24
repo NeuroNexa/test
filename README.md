@@ -1,1 +1,98 @@
-# test
+# Titati RL Control Integration
+
+This repository replaces the original `titati_control` motion controller with the reinforcement-learning pipeline from `rl_sar` while keeping the CAN/MCU communication model used on the Titati platform.  The new workflow focuses exclusively on the Titati quadruped (two Tita bases connected by the bridge box) and provides:
+
+- a C++17 hardware SDK (`titati_sdk`) reused by the RL controller and the diagnostic tools;
+- a real-robot RL executable (`rl_real_titati`) that reads the Titati CAN bus directly and publishes MIT commands for all 16 actuators;
+- a command-line motor test utility (`titati_motor_test`) for checking and exercising every actuator before running the RL policy;
+- updated build and deployment instructions for a master/slave Jetson Orin NX set-up.
+
+## 1. Build Instructions
+
+### 1.1 CMake build (recommended for hardware deployment)
+```bash
+cd rl_sar
+./build.sh -m        # or: cmake -S src/rl_sar -B cmake_build -DUSE_CMAKE=ON
+cmake --build cmake_build -j$(nproc)
+```
+The resulting binaries are placed under `rl_sar/cmake_build/bin/`.
+
+### 1.2 ROS build (optional)
+If you prefer to keep the ROS launch environment, build the `rl_sar` package inside a ROS workspace (Humble or Noetic). Only the Titati targets (`rl_real_titati`, `titati_motor_test`) are compiled.
+
+```bash
+cd <your_ros_ws>
+# copy or symlink this repository into the workspace `src/`
+colcon build --merge-install --packages-select rl_sar
+```
+
+## 2. Hardware Bring-up Sequence
+
+The following steps must be executed every time the robot boots. The master Jetson controls all 16 motors; the slave Jetson only keeps the MCU in direct-drive mode.
+
+1. **On both Jetsons (master and slave)**
+   ```bash
+   sudo systemctl stop tita-bringup.service
+   sudo ip link set can0 down
+   sudo ip link set can0 up type can bitrate 1000000 sample-point 0.80 \
+        dbitrate 8000000 dsample-point 0.80 fd on restart-ms 100
+   sudo ifconfig can0 txqueuelen 1000
+   ```
+
+2. **On the slave Jetson** run the original CAN-FD router so that the MCU switches to `FORCE_DIRECT` mode (same as in `titati_control`).
+   ```bash
+   source /opt/ros/humble/setup.bash
+   ros2 run titati_canfd_router titati_canfd_router_node
+   ```
+   Keep this process running in the background. The node forwards the master’s request to enter SDK control mode.
+
+3. **On the master Jetson** launch the RL stack (after optional motor diagnostics as described below).
+
+## 3. Motor Diagnostic Workflow
+
+Before activating the RL controller, verify all actuators with `titati_motor_test`.
+
+1. **Read all joint states once**
+   ```bash
+   ./cmake_build/bin/titati_motor_test --read
+   ```
+
+2. **Continuous monitoring (Ctrl+C to stop)**
+   ```bash
+   ./cmake_build/bin/titati_motor_test --monitor
+   ```
+
+3. **Exercise a single joint** (example: apply a 1.0 Nm torque on joint 3 for 2 seconds):
+   ```bash
+   ./cmake_build/bin/titati_motor_test --mode torque --id 3 --tau 1.0 --duration 2.0
+   ```
+
+4. **MIT test** (set position/velocity gains for joint 5):
+   ```bash
+   ./cmake_build/bin/titati_motor_test --mode mit \
+       --id 5 --pos 0.2 --vel 0.0 --kp 60 --kd 3 --tau 0.0 --duration 1.5
+   ```
+
+Each command automatically switches the MCU into SDK mode, sends the command repeatedly for the requested duration, and finally releases the joint with zero torque.
+
+## 4. Running the RL Controller
+
+After all motors are verified, start the RL controller on the **master Jetson**:
+```bash
+./cmake_build/bin/rl_real_titati
+```
+
+Key notes:
+- The controller loads parameters from `rl_sar/src/rl_sar/policy/titati/base.yaml` and the default lab policy located at `policy/titati/robot_lab/`.
+- Keyboard commands follow the existing `rl_sar` convention (WASD for linear velocity, Q/E for yaw, `Space` to reset commands, `N` to toggle navigation mode). Gamepad support is also available when ROS is enabled.
+- Use ROS topics (`/cmd_vel`) when running under ROS (source the appropriate workspace before execution).
+- The process keeps the robot in SDK mode; terminate with `Ctrl+C` to stop control. Motors are commanded back to zero torque during shutdown.
+
+## 5. Repository Layout Highlights
+
+- `rl_sar/src/rl_sar/library/titati_sdk/` – CAN sender/receiver and Titati hardware wrapper copied from `titati_control`.
+- `rl_sar/src/rl_sar/src/rl_real_titati.cpp` – real-robot RL executable.
+- `rl_sar/src/rl_sar/src/titati_motor_test.cpp` – CLI diagnostics tool.
+- `titati_control/src/can_setup_8m_master.sh`, `titati_control/src/can_setup_8m_slave.sh` – reference scripts for CAN initialisation (retained for convenience).
+
+Follow the sequence: **bring up CAN → keep the slave router alive → run `titati_motor_test` → launch `rl_real_titati`**. This ensures the robot is safe and fully verified before the RL policy takes control.
