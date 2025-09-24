@@ -376,6 +376,61 @@ ros2 run rl_sar rl_real_lite3
 
 </details>
 
+<details>
+
+<summary>DDT Titati (Click to expand)</summary>
+
+The Titati platform is assembled from two Tita wheeled-legged robots that share a CAN-FD backbone. Each half has a Jetson Orin NX 16G acting as a **master** or **slave** controller. To switch the hardware stack over to the reinforcement-learning controller shipped in `rl_real_titati`, follow the steps below on both computers.
+
+#### 1. Prepare the CAN interface
+
+Stop the vendor bringup service and configure the CAN-FD port before launching any control software. The helper scripts from `titati_control/src` are left in this workspace (`can_setup_8m_master.sh` / `can_setup_8m_slave.sh`) and show the exact sequence. The relevant commands are:
+
+```bash
+sudo systemctl stop tita-bringup.service
+sudo ip link set can0 down
+sudo ip link set can0 up type can bitrate 1000000 sample-point 0.80 \
+    dbitrate 8000000 dsample-point 0.80 fd on restart-ms 100
+sudo ifconfig can0 txqueuelen 1000
+```
+
+Run the commands on the Jetson that acts as the **master** first. Repeat the CAN bring-up on the **slave** Jetson that drives the other pair of legs so both sides appear on the shared CAN bus. The hardware drivers in `rl_real_titati` expect the interface to be called `can0`; adjust the source in `library/hardware/titati/tita_robot/include/tita_robot/*` only if your network uses a different device name.
+
+#### 2. Deploy the RL controller
+
+1. Copy the trained policy to `rl_sar/src/rl_sar/policy/titati/robot_lab/policy.pt`. Tune the gains, torque limits, and joint remapping in `policy/titati/base.yaml` and `policy/titati/robot_lab/config.yaml` before first power-on.
+2. Export `Torch_DIR` to point at a libtorch installation that matches your target architecture.
+3. Compile the standalone controller on the Jetson that talks to the CAN backbone:
+
+    ```bash
+    ./build.sh -m rl_real_titati
+    ```
+
+4. Launch the controller. The ROS and pure CMake entry points are both available—pick whichever matches your runtime environment:
+
+    ```bash
+    # ROS1
+    source devel/setup.bash
+    rosrun rl_sar rl_real_titati
+
+    # ROS2
+    source install/setup.bash
+    ros2 run rl_sar rl_real_titati
+
+    # CMake (no ROS)
+    ./cmake_build/bin/rl_real_titati
+    ```
+
+The executable starts in manual keyboard mode (`W`, `A`, `S`, `D`, `Q`, `E` for planar motion, `Space` to stop). Press `N` to toggle navigation mode when you want the controller to consume `/cmd_vel` commands from ROS instead. When shutting down, the node automatically zeroes commanded torques before exiting.
+
+#### 3. Safety checks
+
+- Keep the robot lifted while validating the torque polarity and joint mapping.
+- Confirm the CAN interface shows traffic (`candump can0`) before handing control over to the RL policy.
+- Re-run the CAN configuration commands whenever the interface is reset.
+
+</details>
+
 ### Train the actuator network
 
 Take A1 as an example below
