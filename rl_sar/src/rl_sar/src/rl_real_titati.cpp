@@ -129,24 +129,25 @@ void RL_Real::SetCommand(const RobotCommand<double> *command)
         return;
     }
 
-    std::vector<double> q;
-    std::vector<double> v;
-    std::vector<double> kp;
-    std::vector<double> kd;
-    std::vector<double> tau;
-    q.reserve(this->params.num_of_dofs);
-    v.reserve(this->params.num_of_dofs);
-    kp.reserve(this->params.num_of_dofs);
-    kd.reserve(this->params.num_of_dofs);
-    tau.reserve(this->params.num_of_dofs);
+    std::vector<double> q(this->params.num_of_dofs, 0.0);
+    std::vector<double> v(this->params.num_of_dofs, 0.0);
+    std::vector<double> kp(this->params.num_of_dofs, 0.0);
+    std::vector<double> kd(this->params.num_of_dofs, 0.0);
+    std::vector<double> tau(this->params.num_of_dofs, 0.0);
 
     for (int i = 0; i < this->params.num_of_dofs; ++i)
     {
-        q.push_back(command->motor_command.q[i]);
-        v.push_back(command->motor_command.dq[i]);
-        kp.push_back(command->motor_command.kp[i]);
-        kd.push_back(command->motor_command.kd[i]);
-        tau.push_back(command->motor_command.tau[i]);
+        const auto hardware_index = this->params.joint_mapping[i];
+        if (hardware_index < 0 || hardware_index >= this->params.num_of_dofs)
+        {
+            continue;
+        }
+
+        q[hardware_index] = command->motor_command.q[i];
+        v[hardware_index] = command->motor_command.dq[i];
+        kp[hardware_index] = command->motor_command.kp[i];
+        kd[hardware_index] = command->motor_command.kd[i];
+        tau[hardware_index] = command->motor_command.tau[i];
     }
 
     if (!robot_->set_target_joint_mit(q, v, kp, kd, tau) && motors_sdk_enabled_)
