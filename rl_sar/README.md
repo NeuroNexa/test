@@ -195,6 +195,75 @@ If Gazebo cannot be opened when you start it for the first time, you need to dow
 git clone https://github.com/osrf/gazebo_models.git ~/.gazebo/models
 ```
 
+### Titati real-robot deployment
+
+The Titati platform is composed of a **master Jetson** (the front Tita) and a **slave Jetson** (the rear Tita).  The master runs the RL policy and motor diagnostics while the slave keeps the CAN-FD router locked in forced-direct mode so that both halves accept SDK commands.  The following steps assume you are inside the `rl_sar` workspace on each Jetson.
+
+#### 1. Build the binaries on both Jetsons (master & slave)
+
+```bash
+# inside ~/wjl_slave/test/rl_sar or the workspace you cloned to
+./build.sh -m
+```
+
+This produces the hardware executables in `cmake_build/bin` (`rl_real_titati` and `titati_motor_test`) and the SDK libraries in `cmake_build/lib`.
+
+#### 2. Build the ROS2 CAN router package on the **slave Jetson**
+
+```bash
+source /opt/ros/humble/setup.bash
+./build.sh tita_system_interfaces titati_canfd_router
+```
+
+The command above invokes `colcon build` for only the Titati ROS packages and places the result in `install/`.  Afterwards, source the workspace before launching ROS nodes:
+
+```bash
+source install/setup.bash
+```
+
+#### 3. Start the CAN-FD router on the **slave Jetson**
+
+```bash
+ros2 run titati_canfd_router titati_canfd_router_node
+```
+
+Keep this terminal running; it performs the forced-direct handshake with the CAN router box.
+
+#### 4. Perform motor bring-up on the **master Jetson**
+
+Before loading the RL policy, exercise every motor from the master Jetson with the diagnostic CLI located in `cmake_build/bin`:
+
+```bash
+# Inspect a single snapshot of all 16 actuators
+./cmake_build/bin/titati_motor_test --read
+
+# Continuously monitor telemetry until interrupted (Ctrl+C)
+./cmake_build/bin/titati_motor_test --monitor
+
+# Command motor 3 in torque mode with 0.6 Nm for 3 seconds
+./cmake_build/bin/titati_motor_test --mode torque --id 3 --tau 0.6 --duration 3.0
+
+# Command motor 7 in MIT mode
+./cmake_build/bin/titati_motor_test --mode mit --id 7 --pos 0.0 --vel 0.0 --kp 20.0 --kd 1.0 --tau 0.2 --duration 2.0
+```
+
+Verify that each of the 16 motors responds correctly before moving on to the RL controller.
+
+#### 5. Launch the Titati RL controller on the **master Jetson**
+
+1. Copy the trained policy checkpoint to `src/rl_sar/policy/titati/robot_lab/policy.pt` (replace the placeholder if necessary).
+2. Review `src/rl_sar/policy/titati/base.yaml` and `src/rl_sar/policy/titati/robot_lab/config.yaml` for gains and joint mappings.
+3. Run the controller:
+
+   ```bash
+   ./cmake_build/bin/rl_real_titati
+   ```
+
+   The process automatically loads the Titati configuration, switches the hardware into SDK mode, and starts streaming commands.  Use Ctrl+C to terminate safely.
+
+> [!TIP]
+> If you need ROS2 teleoperation on the master, rebuild without the `-m` flag (or pass `USE_ROS=ON` via CMake), then source `install/setup.bash` and remap `/cmd_vel` as required.
+
 ### Gamepad and Keyboard Controls
 
 |Gamepad Control|Keyboard Control|Description|

@@ -1,0 +1,6 @@
+# Request
+uint8 power_domain_id
+uint8 power_state
+---
+# Response
+uint8 result
