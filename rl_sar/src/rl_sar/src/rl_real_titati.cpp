@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <iostream>
+#include <sstream>
 
 RL_Real::RL_Real()
 #if defined(USE_ROS2) && defined(USE_ROS)
@@ -95,8 +96,17 @@ void RL_Real::GetState(RobotState<double> *state)
     auto tau = robot_->get_joint_t();
 
     const int dof = this->params.num_of_dofs;
+    const int mapping_count = std::min<int>(this->params.joint_mapping.size(), dof);
+    if (!state_mapping_warning_printed_ && static_cast<int>(this->params.joint_mapping.size()) != dof)
+    {
+        std::cout << LOGGER::WARNING << "Titati joint_mapping size (" << this->params.joint_mapping.size()
+                  << ") does not match num_of_dofs (" << dof
+                  << ") when reading joint state. Using the first " << mapping_count << " entries." << std::endl;
+        state_mapping_warning_printed_ = true;
+    }
+
     std::vector<int> hardware_to_rl(dof, -1);
-    for (int rl_index = 0; rl_index < dof; ++rl_index)
+    for (int rl_index = 0; rl_index < mapping_count; ++rl_index)
     {
         const int hardware_index = this->params.joint_mapping[rl_index];
         if (hardware_index >= 0 && hardware_index < dof)
@@ -140,6 +150,51 @@ void RL_Real::GetState(RobotState<double> *state)
         state->motor_state.tau_est[rl_index] = 0.0;
     }
 
+    static bool state_log_printed = false;
+    if (!state_log_printed)
+    {
+        std::ostringstream hardware_log;
+        hardware_log << "Initial Titati joint feedback (hardware order q): [";
+        for (int hardware_index = 0; hardware_index < dof && hardware_index < static_cast<int>(q.size()); ++hardware_index)
+        {
+            hardware_log << q[hardware_index];
+            if (hardware_index + 1 < dof && hardware_index + 1 < static_cast<int>(q.size()))
+            {
+                hardware_log << ", ";
+            }
+        }
+        hardware_log << "]";
+        std::cout << LOGGER::DEBUG << hardware_log.str() << std::endl;
+
+        std::ostringstream rl_log;
+        rl_log << "Initial Titati joint feedback (RL order q): [";
+        for (int rl_index = 0; rl_index < dof; ++rl_index)
+        {
+            rl_log << state->motor_state.q[rl_index];
+            if (rl_index + 1 < dof)
+            {
+                rl_log << ", ";
+            }
+        }
+        rl_log << "]";
+        std::cout << LOGGER::DEBUG << rl_log.str() << std::endl;
+
+        std::ostringstream mapping_log;
+        mapping_log << "Titati joint_mapping rl->hw indices: [";
+        for (int rl_index = 0; rl_index < mapping_count; ++rl_index)
+        {
+            mapping_log << rl_index << "->" << this->params.joint_mapping[rl_index];
+            if (rl_index + 1 < mapping_count)
+            {
+                mapping_log << ", ";
+            }
+        }
+        mapping_log << "]";
+        std::cout << LOGGER::DEBUG << mapping_log.str() << std::endl;
+
+        state_log_printed = true;
+    }
+
     auto quat = robot_->get_imu_quaternion();
     state->imu.quaternion[0] = quat[3];
     state->imu.quaternion[1] = quat[0];
@@ -163,22 +218,61 @@ void RL_Real::SetCommand(const RobotCommand<double> *command)
 {
     if (!EnsureMotorsSdkMode())
     {
+        if (sdk_fail_log_count_ < 10 || sdk_fail_log_count_ % 200 == 0)
+        {
+            std::cout << LOGGER::WARNING
+                      << "Titati motors are not yet in SDK mode; skipping MIT command dispatch." << std::endl;
+        }
+        ++sdk_fail_log_count_;
         return;
     }
 
-    std::vector<double> q(this->params.num_of_dofs, 0.0);
-    std::vector<double> v(this->params.num_of_dofs, 0.0);
-    std::vector<double> kp(this->params.num_of_dofs, 0.0);
-    std::vector<double> kd(this->params.num_of_dofs, 0.0);
-    std::vector<double> tau(this->params.num_of_dofs, 0.0);
+    if (sdk_fail_log_count_ > 0)
+    {
+        std::cout << LOGGER::INFO << "Titati motors accepted SDK control after " << sdk_fail_log_count_
+                  << " skipped control cycles." << std::endl;
+        sdk_fail_log_count_ = 0;
+    }
 
-    for (int i = 0; i < this->params.num_of_dofs; ++i)
+    const int dof = this->params.num_of_dofs;
+    std::vector<double> q(dof, 0.0);
+    std::vector<double> v(dof, 0.0);
+    std::vector<double> kp(dof, 0.0);
+    std::vector<double> kd(dof, 0.0);
+    std::vector<double> tau(dof, 0.0);
+
+    bool mapping_issue_detected = false;
+    std::ostringstream mapping_issue_stream;
+    if (static_cast<int>(this->params.joint_mapping.size()) != dof)
+    {
+        mapping_issue_detected = true;
+        mapping_issue_stream << "joint_mapping has " << this->params.joint_mapping.size()
+                             << " entries, but Titati expects " << dof << ". ";
+    }
+
+    const int mapped_count = std::min<int>(this->params.joint_mapping.size(), dof);
+    std::vector<bool> hardware_assigned(dof, false);
+
+    for (int i = 0; i < mapped_count; ++i)
     {
         const auto hardware_index = this->params.joint_mapping[i];
         if (hardware_index < 0 || hardware_index >= this->params.num_of_dofs)
         {
+            mapping_issue_detected = true;
+            mapping_issue_stream << "Mapping entry rl[" << i << "] -> hw[" << hardware_index
+                                 << "] is out of range. ";
             continue;
         }
+
+        if (hardware_assigned[hardware_index])
+        {
+            mapping_issue_detected = true;
+            mapping_issue_stream << "Hardware index " << hardware_index
+                                 << " receives multiple RL joints. ";
+            continue;
+        }
+
+        hardware_assigned[hardware_index] = true;
 
         q[hardware_index] = command->motor_command.q[i];
         v[hardware_index] = command->motor_command.dq[i];
@@ -187,11 +281,64 @@ void RL_Real::SetCommand(const RobotCommand<double> *command)
         tau[hardware_index] = command->motor_command.tau[i];
     }
 
+    for (int hardware_index = 0; hardware_index < dof; ++hardware_index)
+    {
+        if (!hardware_assigned[hardware_index])
+        {
+            mapping_issue_detected = true;
+            mapping_issue_stream << "Hardware index " << hardware_index
+                                 << " is not covered by joint_mapping. ";
+        }
+    }
+
+    if (mapping_issue_detected && !mapping_warning_printed_)
+    {
+        std::cout << LOGGER::ERROR << "Titati joint_mapping configuration issue: "
+                  << mapping_issue_stream.str() << std::endl;
+        mapping_warning_printed_ = true;
+    }
+
     if (!robot_->set_target_joint_mit(q, v, kp, kd, tau) && motors_sdk_enabled_)
     {
         motors_sdk_enabled_ = false;
         last_sdk_retry_ = std::chrono::steady_clock::now();
-        std::cout << LOGGER::WARNING << "Failed to send MIT command to Titati motors. Retrying SDK handshake." << std::endl;
+        if (mit_fail_log_count_ < 10 || mit_fail_log_count_ % 200 == 0)
+        {
+            std::cout << LOGGER::WARNING
+                      << "Failed to send MIT command to Titati motors. Retrying SDK handshake." << std::endl;
+        }
+        ++mit_fail_log_count_;
+    }
+    else if (!motors_sdk_enabled_)
+    {
+        std::cout << LOGGER::INFO << "Titati motors resumed MIT command acceptance." << std::endl;
+        mit_fail_log_count_ = 0;
+    }
+    else
+    {
+        if (mit_fail_log_count_ > 0)
+        {
+            std::cout << LOGGER::INFO << "Titati MIT command transmission recovered after " << mit_fail_log_count_
+                      << " failed attempts." << std::endl;
+            mit_fail_log_count_ = 0;
+        }
+
+        if (!command_log_printed_)
+        {
+            std::ostringstream oss;
+            oss << "First Titati MIT command (hardware order q): [";
+            for (int hardware_index = 0; hardware_index < dof; ++hardware_index)
+            {
+                oss << q[hardware_index];
+                if (hardware_index + 1 < dof)
+                {
+                    oss << ", ";
+                }
+            }
+            oss << "]";
+            std::cout << LOGGER::DEBUG << oss.str() << std::endl;
+            command_log_printed_ = true;
+        }
     }
 }
 

@@ -58,6 +58,12 @@ private:
     std::vector<double> joint_velocities_;
     std::vector<double> joint_torques_;
 
+    bool mapping_warning_printed_{false};
+    bool state_mapping_warning_printed_{false};
+    bool command_log_printed_{false};
+    int sdk_fail_log_count_{0};
+    int mit_fail_log_count_{0};
+
 #if defined(USE_ROS1) && defined(USE_ROS)
     geometry_msgs::Twist cmd_vel;
     ros::Subscriber cmd_vel_subscriber;
