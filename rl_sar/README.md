@@ -382,6 +382,34 @@ ros2 run rl_sar rl_real_lite3
 
 The Titati platform is assembled from two Tita wheeled-legged robots that share a CAN-FD backbone. Each half has a Jetson Orin NX 16G acting as a **master** or **slave** controller. To switch the hardware stack over to the reinforcement-learning controller shipped in `rl_real_titati`, follow the steps below on both computers.
 
+#### 0. Validate the CAN backbone with the motor tester
+
+Before streaming a policy, bring the platform into direct-SDK mode and confirm every actuator responds. Build the standalone tools with CMake (`./build.sh -m`) and then launch the tester:
+
+```bash
+# CMake
+./cmake_build/bin/titati_motor_test --mode torque --monitor 1000
+
+# ROS1
+source devel/setup.bash
+rosrun rl_sar titati_motor_test --mode torque
+
+# ROS2
+source install/setup.bash
+ros2 run rl_sar titati_motor_test --mode torque
+```
+
+Key commands inside the shell:
+
+- `status` / `status 5` – print all joints or a single joint (indices are zero-based).
+- `monitor 500` – stream the table every 500 ms (toggle off with `monitor off`).
+- `set 3 0.3` – command motor 3 with 0.3 Nm in torque mode.
+- `mode mit` followed by `set 7 0.0 0.0 20.0 1.0 0.0` – drive motor 7 with MIT gains (`q`, `dq`, `kp`, `kd`, `tau`).
+- `zero 3` / `zero all` – clear the active command.
+- `exit` – stop commanding and quit (the tester also zeros the torques during shutdown).
+
+Leave the robot lifted while validating torque polarity. When the tester shows that all 16 actuators report reasonable state feedback, continue with the policy bring-up below.
+
 #### 1. Prepare the CAN interface
 
 Stop the vendor bringup service and configure the CAN-FD port before launching any control software. The helper scripts from `titati_control/src` are left in this workspace (`can_setup_8m_master.sh` / `can_setup_8m_slave.sh`) and show the exact sequence. The relevant commands are:

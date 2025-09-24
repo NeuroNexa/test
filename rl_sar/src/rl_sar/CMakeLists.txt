@@ -333,6 +333,19 @@ if(NOT USE_CMAKE)
     endif()
 endif()
 
+add_executable(titati_motor_test src/titati_motor_test.cpp)
+target_link_libraries(titati_motor_test
+    titati_hardware
+    Threads::Threads
+)
+if(NOT USE_CMAKE)
+    if($ENV{ROS_DISTRO} MATCHES "noetic")
+        target_link_libraries(titati_motor_test ${catkin_LIBRARIES})
+    elseif($ENV{ROS_DISTRO} MATCHES "foxy|humble")
+        install(TARGETS titati_motor_test DESTINATION lib/${PROJECT_NAME})
+    endif()
+endif()
+
 add_executable(rl_real_l4w4 src/rl_real_l4w4.cpp)
 target_link_libraries(rl_real_l4w4
     l4w4_sdk
