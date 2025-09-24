@@ -119,6 +119,18 @@ target_include_directories(l4w4_sdk INTERFACE
 )
 target_link_libraries(l4w4_sdk INTERFACE Threads::Threads)
 
+# Titati hardware
+add_library(titati_hardware
+    library/hardware/titati/tita_robot/src/can_receiver.cpp
+    library/hardware/titati/tita_robot/src/can_sender.cpp
+    library/hardware/titati/tita_robot/src/tita_robot.cpp
+)
+target_include_directories(titati_hardware PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/hardware/titati/tita_robot/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/hardware/titati
+)
+target_link_libraries(titati_hardware PUBLIC Threads::Threads)
+
 # Lite3_MotionSDK
 add_library(lite3_motionsdk SHARED IMPORTED)
 set_target_properties(lite3_motionsdk PROPERTIES
@@ -299,6 +311,25 @@ if(NOT USE_CMAKE)
             geometry_msgs
         )
         install(TARGETS rl_real_g1 DESTINATION lib/${PROJECT_NAME})
+    endif()
+endif()
+
+add_executable(rl_real_titati src/rl_real_titati.cpp)
+target_link_libraries(rl_real_titati
+    titati_hardware
+    rl_sdk
+    observation_buffer
+    yaml-cpp
+)
+if(NOT USE_CMAKE)
+    if($ENV{ROS_DISTRO} MATCHES "noetic")
+        target_link_libraries(rl_real_titati ${catkin_LIBRARIES})
+    elseif($ENV{ROS_DISTRO} MATCHES "foxy|humble")
+        ament_target_dependencies(rl_real_titati
+            rclcpp
+            geometry_msgs
+        )
+        install(TARGETS rl_real_titati DESTINATION lib/${PROJECT_NAME})
     endif()
 endif()
 
