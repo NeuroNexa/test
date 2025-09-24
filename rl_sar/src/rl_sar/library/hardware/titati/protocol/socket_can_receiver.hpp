@@ -28,9 +28,7 @@
 #include "socket_can_id.hpp"
 #include "visibility_control.hpp"
 
-#define TARGET_CAN_DEVICE "vcan0"
-
-namespace tita
+namespace can_device
 {
 namespace socket_can
 {
@@ -40,7 +38,7 @@ class SOCKETCAN_PUBLIC SocketCanReceiver
 {
 public:
   explicit SocketCanReceiver(
-    const std::string & interface = TARGET_CAN_DEVICE, bool canfd_on = false)
+    const std::string & interface = "can0", bool canfd_on = false)
   {
     if (!bind_can_socket(fd_, interface, canfd_on)) {
       printf("bind_can_socket failed!\r\n");
@@ -71,7 +69,7 @@ public:
     }
 
     auto receive_id = CanId{frame.can_id, frame.len};
-    if (receive_id.frame_type() == tita::socket_can::FrameType::DATA) {
+    if (receive_id.frame_type() == can_device::socket_can::FrameType::DATA) {
       rx_frame->can_id = receive_id.standard().get();
       rx_frame->can_id = receive_id.length();
       std::memcpy(rx_frame->data, frame.data, sizeof(rx_frame->data));
@@ -98,7 +96,7 @@ public:
     }
 
     auto receive_id = CanId{frame.can_id, frame.len};
-    if (receive_id.frame_type() == tita::socket_can::FrameType::DATA) {
+    if (receive_id.frame_type() == can_device::socket_can::FrameType::DATA) {
       rx_frame->can_id = receive_id.standard().get();
       rx_frame->len = receive_id.length();
       std::memcpy(rx_frame->data, frame.data, sizeof(rx_frame->data));
@@ -142,6 +140,6 @@ private:
   int32_t fd_;
 };  // class SocketCanReceiver
 }  // namespace socket_can
-}  // namespace tita
+}  // namespace can_device
 
 #endif  // POWER_CONTROLLER__UTILS__PROTOCOL__SOCKET_CAN_RECEIVER_HPP_

@@ -22,7 +22,7 @@
 
 #include "visibility_control.hpp"
 
-namespace tita
+namespace can_device
 {
 namespace socket_can
 {
@@ -183,6 +183,6 @@ private:
   LengthT m_data_length{};
 };  // class CanId
 }  // namespace socket_can
-}  // namespace tita
+}  // namespace can_device
 
 #endif  // POWER_CONTROLLER__UTILS__PROTOCOL__SOCKET_CAN_ID_HPP_
