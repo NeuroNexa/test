@@ -41,10 +41,12 @@ int main()
 
     std::cout << "Titati motor test utility" << std::endl;
     std::cout << "Commands:\n"
-              << "  <index> <torque>  - set torque (Nm) on motor index 0-15\n"
-              << "  read              - print current joint states\n"
-              << "  zero              - zero all joint torques\n"
-              << "  exit              - stop test and restore MCU control\n";
+              << "  <index> <torque>        - set torque (Nm) on motor index 0-15\n"
+              << "  mit <index> <pos> [kp] [kd] [vel] [tau]" << std::endl
+              << "                        - single joint MIT test (rad, rad/s, Nm)\n"
+              << "  read                    - print current joint states\n"
+              << "  zero                    - zero all joint torques\n"
+              << "  exit                    - stop test and restore MCU control\n";
 
     std::vector<double> torques(kNumMotors, 0.0);
     std::string line;
@@ -72,6 +74,68 @@ int main()
             continue;
         }
 
+        if (command == "mit")
+        {
+            std::size_t motor_index;
+            double target_position;
+            if (!(iss >> motor_index >> target_position))
+            {
+                std::cerr << "[WARNING] Usage: mit <index> <pos> [kp] [kd] [vel] [tau]" << std::endl;
+                continue;
+            }
+
+            if (motor_index >= kNumMotors)
+            {
+                std::cerr << "[WARNING] Motor index out of range. Expected 0-" << kNumMotors - 1 << std::endl;
+                continue;
+            }
+
+            double kp_value = 50.0;
+            double kd_value = 5.0;
+            double velocity_value = 0.0;
+            double torque_value = 0.0;
+            if (iss >> kp_value)
+            {
+                if (iss >> kd_value)
+                {
+                    if (iss >> velocity_value)
+                    {
+                        if (iss >> torque_value)
+                        {
+                            // nothing else to parse
+                        }
+                    }
+                }
+            }
+
+            auto q_targets = robot.get_joint_q();
+            auto v_targets = std::vector<double>(kNumMotors, 0.0);
+            auto kp_targets = std::vector<double>(kNumMotors, 0.0);
+            auto kd_targets = std::vector<double>(kNumMotors, 0.0);
+            auto tau_targets = std::vector<double>(kNumMotors, 0.0);
+
+            q_targets[motor_index] = target_position;
+            v_targets[motor_index] = velocity_value;
+            kp_targets[motor_index] = kp_value;
+            kd_targets[motor_index] = kd_value;
+            tau_targets[motor_index] = torque_value;
+
+            if (!robot.set_target_joint_mit(q_targets, v_targets, kp_targets, kd_targets, tau_targets))
+            {
+                std::cerr << "[ERROR] Failed to send MIT command." << std::endl;
+            }
+            else
+            {
+                std::cout << "Applied MIT target to motor " << motor_index
+                          << ": q=" << target_position << " rad, kp=" << kp_value
+                          << ", kd=" << kd_value << ", vel=" << velocity_value
+                          << " rad/s, tau=" << torque_value << " Nm" << std::endl;
+            }
+
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            continue;
+        }
+        
         if (command == "exit" || command == "quit")
         {
             running = false;
