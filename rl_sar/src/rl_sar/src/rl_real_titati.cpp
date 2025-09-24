@@ -5,7 +5,20 @@
 
 #include "rl_real_titati.hpp"
 
+#include <chrono>
+#include <csignal>
 #include <iostream>
+#include <thread>
+
+namespace
+{
+volatile std::sig_atomic_t g_shutdown_requested = 0;
+
+void HandleSignal(int)
+{
+    g_shutdown_requested = 1;
+}
+} // namespace
 
 RL_Real::RL_Real()
 #if defined(USE_ROS2) && defined(USE_ROS)
@@ -335,8 +348,14 @@ int main(int argc, char **argv)
     rclcpp::spin(std::make_shared<RL_Real>());
     rclcpp::shutdown();
 #elif defined(USE_CMAKE) || !defined(USE_ROS)
+    std::signal(SIGINT, HandleSignal);
+    std::signal(SIGTERM, HandleSignal);
+
     RL_Real rl_sar;
-    while (1) { sleep(10); }
+    while (!g_shutdown_requested)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
 #endif
     return 0;
 }

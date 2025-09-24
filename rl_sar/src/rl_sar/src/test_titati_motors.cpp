@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <chrono>
+#include <csignal>
 #include <iostream>
 #include <limits>
 #include <sstream>
@@ -12,6 +13,12 @@
 namespace
 {
 constexpr std::size_t kNumMotors = 16;
+volatile std::sig_atomic_t g_shutdown_requested = 0;
+
+void HandleSignal(int)
+{
+    g_shutdown_requested = 1;
+}
 void PrintState(const tita_robot &robot)
 {
     auto positions = robot.get_joint_q();
@@ -39,6 +46,9 @@ int main()
         return 1;
     }
 
+    std::signal(SIGINT, HandleSignal);
+    std::signal(SIGTERM, HandleSignal);
+
     std::cout << "Titati motor test utility" << std::endl;
     std::cout << "Commands:\n"
               << "  <index> <torque>        - set torque (Nm) on motor index 0-15\n"
@@ -51,8 +61,18 @@ int main()
     std::vector<double> torques(kNumMotors, 0.0);
     std::string line;
     bool running = true;
-    while (running && std::getline(std::cin, line))
+    while (running)
     {
+        if (g_shutdown_requested)
+        {
+            break;
+        }
+
+        if (!std::getline(std::cin, line))
+        {
+            break;
+        }
+
         std::istringstream iss(line);
         std::string command;
         if (!(iss >> command))
