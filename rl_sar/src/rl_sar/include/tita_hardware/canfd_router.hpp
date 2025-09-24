@@ -47,6 +47,8 @@ private:
     std::atomic_bool init_flag_ {false};
     std::atomic_bool auto_retry_ {false};
     std::atomic<uint32_t> last_mode_ {std::numeric_limits<uint32_t>::max()};
+    std::atomic<uint32_t> last_heart_cnt_ {std::numeric_limits<uint32_t>::max()};
+    std::atomic<uint64_t> last_heartbeat_timestamp_us_ {0};
 };
 
 } // namespace can_device

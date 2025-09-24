@@ -1,8 +1,11 @@
 #include "tita_hardware/canfd_router.hpp"
 
+#include <chrono>
 #include <cstring>
 #include <functional>
+#include <iostream>
 #include <limits>
+#include <sstream>
 #include <sys/time.h>
 #include <thread>
 
@@ -77,12 +80,44 @@ void CanfdRouterCanReceiveApi::get_board_can_data(std::shared_ptr<struct canfd_f
     std::memcpy(&mode_, recv_frame->data + 4, sizeof(mode_));
     std::memcpy(&heart_cnt_, recv_frame->data + 8, sizeof(heart_cnt_));
 
-    const uint32_t previous_mode = last_mode_.load();
-    if (auto_retry_.load() && (mode_ == 1U || mode_ == 2U) && previous_mode != mode_)
+    const uint32_t previous_mode = last_mode_.exchange(mode_);
+    const uint32_t previous_heart = last_heart_cnt_.exchange(heart_cnt_);
+
+    const auto now = std::chrono::steady_clock::now();
+    last_heartbeat_timestamp_us_.store(
+        static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(now.time_since_epoch()).count()));
+
+    static auto last_status_log = std::chrono::steady_clock::time_point{};
+    if (now - last_status_log > std::chrono::seconds(1))
+    {
+        std::cout << "[ROUTER] mode=" << mode_ << ", heart_cnt=" << heart_cnt_
+                  << ", auto_retry=" << (auto_retry_.load() ? "true" : "false")
+                  << ", init_flag=" << (init_flag_.load() ? "true" : "false") << std::endl;
+        last_status_log = now;
+    }
+
+    bool trigger_handshake = false;
+    std::string handshake_reason;
+    if (auto_retry_.load() && (mode_ == 1U || mode_ == 2U))
+    {
+        if (previous_mode != mode_)
+        {
+            trigger_handshake = true;
+            handshake_reason = "mode change";
+        }
+        else if (previous_heart != std::numeric_limits<uint32_t>::max() && heart_cnt_ < previous_heart)
+        {
+            trigger_handshake = true;
+            handshake_reason = "heartbeat reset";
+        }
+    }
+
+    if (trigger_handshake)
     {
         init_flag_.store(true);
+        std::cout << "[ROUTER] Triggering FORCE_DIRECT handshake due to " << handshake_reason
+                  << ". mode=" << mode_ << ", heart_cnt=" << heart_cnt_ << std::endl;
     }
-    last_mode_.store(mode_);
 
     if (!init_flag_.load())
     {
@@ -91,11 +126,14 @@ void CanfdRouterCanReceiveApi::get_board_can_data(std::shared_ptr<struct canfd_f
 
     if (mode_ != 1U && mode_ != 2U)
     {
+        std::cout << "[ROUTER] Waiting for MCU to enter locomotion mode before forcing direct control. Current mode="
+                  << mode_ << std::endl;
         return;
     }
 
     if (!set_forcedirect_can_send_api_)
     {
+        std::cerr << "[ROUTER] CAN send API not initialised. Cannot request FORCE_DIRECT." << std::endl;
         return;
     }
 
@@ -112,7 +150,11 @@ void CanfdRouterCanReceiveApi::get_board_can_data(std::shared_ptr<struct canfd_f
     std::memcpy(frame.data + 4, &key, sizeof(key));
     std::memcpy(frame.data + 6, &value, sizeof(value));
 
-    set_forcedirect_can_send_api_->send_can_message(frame);
+    bool ready_waiting_sent = set_forcedirect_can_send_api_->send_can_message(frame);
+    if (!ready_waiting_sent)
+    {
+        std::cerr << "[ROUTER] Failed to send READY_WAITING command to MCU." << std::endl;
+    }
 
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
@@ -123,7 +165,18 @@ void CanfdRouterCanReceiveApi::get_board_can_data(std::shared_ptr<struct canfd_f
     std::memcpy(frame.data + 4, &key, sizeof(key));
     std::memcpy(frame.data + 6, &value, sizeof(value));
 
-    set_forcedirect_can_send_api_->send_can_message(frame);
+    bool force_direct_sent = set_forcedirect_can_send_api_->send_can_message(frame);
+    if (!force_direct_sent)
+    {
+        std::cerr << "[ROUTER] Failed to send FORCE_DIRECT command to MCU." << std::endl;
+    }
+    else
+    {
+        std::cout << "[ROUTER] FORCE_DIRECT handshake sent (ready_waiting="
+                  << (ready_waiting_sent ? "ok" : "fail")
+                  << ", force_direct=" << (force_direct_sent ? "ok" : "fail")
+                  << ")." << std::endl;
+    }
     init_flag_.store(false);
 }
 

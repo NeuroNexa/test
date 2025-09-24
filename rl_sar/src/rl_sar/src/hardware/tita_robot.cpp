@@ -1,5 +1,10 @@
 #include "tita_hardware/tita_robot.hpp"
 
+#include <cmath>
+#include <iostream>
+#include <sstream>
+#include <thread>
+
 std::vector<double> tita_robot::get_joint_q() const
 {
   auto infos = can_receiver_->get_motors_in();
@@ -72,16 +77,41 @@ std::array<double, 3> tita_robot::get_imu_angular_velocity() const
 
 bool tita_robot::set_target_joint_t(const std::vector<double> & t)
 {
+  if (t.size() != motor_num_) {
+    std::cerr << "[tita_robot] Torque vector size mismatch. Expected " << motor_num_
+              << " values, received " << t.size() << std::endl;
+    return false;
+  }
+
   std::vector<can_device::motor_out> motors;
+  motors.reserve(motor_num_);
+  bool non_finite_detected = false;
+  std::ostringstream non_finite_details;
+
   for (size_t id = 0; id < motor_num_; id++) {
-    can_device::motor_out motor;
-    motor.torque = t[id];
+    can_device::motor_out motor{};
+    const double torque_value = t[id];
+    if (!std::isfinite(torque_value)) {
+      non_finite_detected = true;
+      if (non_finite_details.tellp() == std::streampos(0)) {
+        non_finite_details << "Non-finite torques:";
+      }
+      non_finite_details << " (" << id << "=" << torque_value << ")";
+    }
+
+    motor.torque = std::isfinite(torque_value) ? static_cast<float>(torque_value) : 0.0f;
     motor.kp = 0.0f;
     motor.kd = 0.0f;
     motor.velocity = 0.0f;
     motor.position = 0.0f;
     motors.push_back(motor);
   }
+
+  if (non_finite_detected) {
+    std::cerr << "[tita_robot] " << non_finite_details.str()
+              << ". Replaced with zero before sending." << std::endl;
+  }
+
   return can_sender_->send_motors_can(motors);
 }
 
@@ -89,16 +119,62 @@ bool tita_robot::set_target_joint_mit(
   const std::vector<double> & q, const std::vector<double> & v, const std::vector<double> & kp,
   const std::vector<double> & kd, const std::vector<double> & t)
 {
+  auto validate_size = [&](const std::vector<double> & data, const char * name) {
+    if (data.size() != motor_num_) {
+      std::cerr << "[tita_robot] " << name << " vector size mismatch. Expected " << motor_num_
+                << " values, received " << data.size() << std::endl;
+      return false;
+    }
+    return true;
+  };
+
+  if (!validate_size(q, "position") || !validate_size(v, "velocity") ||
+      !validate_size(kp, "kp") || !validate_size(kd, "kd") || !validate_size(t, "torque")) {
+    return false;
+  }
+
   std::vector<can_device::motor_out> motors;
+  motors.reserve(motor_num_);
+  bool non_finite_detected = false;
+  std::ostringstream non_finite_details;
+
   for (size_t id = 0; id < motor_num_; id++) {
-    can_device::motor_out motor;
-    motor.torque = t[id];
-    motor.kp = kp[id];
-    motor.kd = kd[id];
-    motor.velocity = v[id];
-    motor.position = q[id];
+    can_device::motor_out motor{};
+    const double values[5] = {q[id], v[id], kp[id], kd[id], t[id]};
+    bool has_nan = false;
+    for (double value : values) {
+      if (!std::isfinite(value)) {
+        has_nan = true;
+        break;
+      }
+    }
+
+    if (has_nan) {
+      non_finite_detected = true;
+      if (non_finite_details.tellp() == std::streampos(0)) {
+        non_finite_details << "Non-finite MIT targets:";
+      }
+      non_finite_details << " (joint " << id
+                         << ": q=" << q[id]
+                         << ", dq=" << v[id]
+                         << ", kp=" << kp[id]
+                         << ", kd=" << kd[id]
+                         << ", tau=" << t[id] << ")";
+    }
+
+    motor.position = std::isfinite(q[id]) ? static_cast<float>(q[id]) : 0.0f;
+    motor.velocity = std::isfinite(v[id]) ? static_cast<float>(v[id]) : 0.0f;
+    motor.kp = std::isfinite(kp[id]) ? static_cast<float>(kp[id]) : 0.0f;
+    motor.kd = std::isfinite(kd[id]) ? static_cast<float>(kd[id]) : 0.0f;
+    motor.torque = std::isfinite(t[id]) ? static_cast<float>(t[id]) : 0.0f;
     motors.push_back(motor);
   }
+
+  if (non_finite_detected) {
+    std::cerr << "[tita_robot] " << non_finite_details.str()
+              << ". Replaced with zero before sending." << std::endl;
+  }
+
   return can_sender_->send_motors_can(motors);
 }
 

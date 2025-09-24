@@ -6,7 +6,117 @@
 #include "rl_real_titati.hpp"
 
 #include <algorithm>
+#include <cmath>
+#include <iomanip>
 #include <iostream>
+#include <sstream>
+
+namespace
+{
+std::string FormatJointMapping(const std::vector<int> &mapping)
+{
+    std::ostringstream oss;
+    oss << "[";
+    for (std::size_t i = 0; i < mapping.size(); ++i)
+    {
+        oss << mapping[i];
+        if (i + 1 < mapping.size())
+        {
+            oss << ", ";
+        }
+    }
+    oss << "]";
+    return oss.str();
+}
+
+bool ValidateJointMapping(const std::vector<int> &mapping, int dof)
+{
+    bool valid = true;
+    if (mapping.size() != static_cast<std::size_t>(dof))
+    {
+        std::cout << LOGGER::WARNING << "joint_mapping size (" << mapping.size()
+                  << ") does not match number of dofs (" << dof << ")." << std::endl;
+        valid = false;
+    }
+
+    std::vector<bool> seen(dof, false);
+    for (int rl_index = 0; rl_index < dof; ++rl_index)
+    {
+        if (rl_index >= static_cast<int>(mapping.size()))
+        {
+            std::cout << LOGGER::ERROR << "joint_mapping missing entry for RL index " << rl_index << "." << std::endl;
+            valid = false;
+            continue;
+        }
+
+        const int hardware_index = mapping[rl_index];
+        if (hardware_index < 0 || hardware_index >= dof)
+        {
+            std::cout << LOGGER::ERROR << "joint_mapping[" << rl_index << "] = " << hardware_index
+                      << " is outside valid range [0, " << dof - 1 << "]." << std::endl;
+            valid = false;
+            continue;
+        }
+
+        if (seen[hardware_index])
+        {
+            std::cout << LOGGER::ERROR << "joint_mapping maps multiple RL joints to hardware index " << hardware_index
+                      << "." << std::endl;
+            valid = false;
+            continue;
+        }
+
+        seen[hardware_index] = true;
+    }
+
+    for (int hardware_index = 0; hardware_index < dof; ++hardware_index)
+    {
+        if (!seen[hardware_index])
+        {
+            std::cout << LOGGER::WARNING << "No RL joint mapped to hardware joint " << hardware_index << "." << std::endl;
+            valid = false;
+        }
+    }
+
+    return valid;
+}
+
+std::string FormatCommandSample(const std::vector<double> &q,
+                                const std::vector<double> &v,
+                                const std::vector<double> &kp,
+                                const std::vector<double> &kd,
+                                const std::vector<double> &tau,
+                                const std::vector<int> &sample_indices)
+{
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(3);
+    for (std::size_t i = 0; i < sample_indices.size(); ++i)
+    {
+        const int idx = sample_indices[i];
+        if (idx < 0 || static_cast<std::size_t>(idx) >= q.size())
+        {
+            continue;
+        }
+        oss << "[" << idx
+            << ": q=" << q[idx]
+            << ", dq=" << v[idx]
+            << ", kp=" << kp[idx]
+            << ", kd=" << kd[idx]
+            << ", tau=" << tau[idx] << "]";
+        if (i + 1 < sample_indices.size())
+        {
+            oss << " ";
+        }
+    }
+    return oss.str();
+}
+
+const std::vector<int> &SampledHardwareIndices()
+{
+    static const std::vector<int> indices{0, 1, 2, 3, 4, 5, 6, 7, 12, 13, 14, 15};
+    return indices;
+}
+} // namespace
 
 RL_Real::RL_Real()
 #if defined(USE_ROS2) && defined(USE_ROS)
@@ -26,6 +136,19 @@ RL_Real::RL_Real()
     this->ang_vel_type = "ang_vel_body";
     this->robot_name = "titati";
     this->ReadYamlBase(this->robot_name);
+
+    std::cout << LOGGER::INFO << "Titati joint_mapping (rl -> hardware): "
+              << FormatJointMapping(this->params.joint_mapping) << std::endl;
+    joint_mapping_valid_ = ValidateJointMapping(this->params.joint_mapping, this->params.num_of_dofs);
+    if (joint_mapping_valid_)
+    {
+        std::cout << LOGGER::DEBUG << "Joint mapping validation succeeded." << std::endl;
+    }
+    else
+    {
+        std::cout << LOGGER::WARNING
+                  << "Joint mapping validation detected issues. Please verify RL <-> hardware indices carefully." << std::endl;
+    }
 
     if (FSMManager::GetInstance().IsTypeSupported(this->robot_name))
     {
@@ -95,6 +218,19 @@ void RL_Real::GetState(RobotState<double> *state)
     auto tau = robot_->get_joint_t();
 
     const int dof = this->params.num_of_dofs;
+    if (!state_size_warning_emitted_ &&
+        (q.size() < static_cast<std::size_t>(dof) ||
+         v.size() < static_cast<std::size_t>(dof) ||
+         tau.size() < static_cast<std::size_t>(dof)))
+    {
+        std::cout << LOGGER::WARNING
+                  << "Received fewer joint samples than expected. q=" << q.size()
+                  << ", v=" << v.size()
+                  << ", tau=" << tau.size()
+                  << ", expected=" << dof << std::endl;
+        state_size_warning_emitted_ = true;
+    }
+
     std::vector<int> hardware_to_rl(dof, -1);
     for (int rl_index = 0; rl_index < dof; ++rl_index)
     {
@@ -118,6 +254,20 @@ void RL_Real::GetState(RobotState<double> *state)
         joint_positions_[rl_index] = q[hardware_index];
         joint_velocities_[rl_index] = v[hardware_index];
         joint_torques_[rl_index] = tau[hardware_index];
+
+        if (!state_value_warning_emitted_ &&
+            (!std::isfinite(joint_positions_[rl_index]) ||
+             !std::isfinite(joint_velocities_[rl_index]) ||
+             !std::isfinite(joint_torques_[rl_index])))
+        {
+            std::cout << LOGGER::WARNING
+                      << "Detected non-finite joint state on RL index " << rl_index
+                      << " (hardware " << hardware_index << ")"
+                      << ". Values: q=" << joint_positions_[rl_index]
+                      << ", dq=" << joint_velocities_[rl_index]
+                      << ", tau=" << joint_torques_[rl_index] << std::endl;
+            state_value_warning_emitted_ = true;
+        }
 
         state->motor_state.q[rl_index] = joint_positions_[rl_index];
         state->motor_state.dq[rl_index] = joint_velocities_[rl_index];
@@ -163,6 +313,13 @@ void RL_Real::SetCommand(const RobotCommand<double> *command)
 {
     if (!EnsureMotorsSdkMode())
     {
+        const auto now = std::chrono::steady_clock::now();
+        if (now - last_sdk_warning_ > std::chrono::milliseconds(500))
+        {
+            std::cout << LOGGER::WARNING
+                      << "Motors not in SDK mode. Dropping current MIT command." << std::endl;
+            last_sdk_warning_ = now;
+        }
         return;
     }
 
@@ -172,26 +329,96 @@ void RL_Real::SetCommand(const RobotCommand<double> *command)
     std::vector<double> kd(this->params.num_of_dofs, 0.0);
     std::vector<double> tau(this->params.num_of_dofs, 0.0);
 
+    bool invalid_mapping_detected = false;
+    std::ostringstream invalid_mapping_details;
+    bool invalid_value_detected = false;
+    std::ostringstream invalid_value_details;
+
     for (int i = 0; i < this->params.num_of_dofs; ++i)
     {
         const auto hardware_index = this->params.joint_mapping[i];
         if (hardware_index < 0 || hardware_index >= this->params.num_of_dofs)
         {
+            if (!invalid_mapping_detected)
+            {
+                invalid_mapping_detected = true;
+                invalid_mapping_details << "Invalid joint mapping entries:";
+            }
+            invalid_mapping_details << " (rl " << i << " -> " << hardware_index << ")";
             continue;
         }
 
-        q[hardware_index] = command->motor_command.q[i];
-        v[hardware_index] = command->motor_command.dq[i];
-        kp[hardware_index] = command->motor_command.kp[i];
-        kd[hardware_index] = command->motor_command.kd[i];
-        tau[hardware_index] = command->motor_command.tau[i];
+        const double target_q = command->motor_command.q[i];
+        const double target_v = command->motor_command.dq[i];
+        const double target_kp = command->motor_command.kp[i];
+        const double target_kd = command->motor_command.kd[i];
+        const double target_tau = command->motor_command.tau[i];
+
+        if (!std::isfinite(target_q) || !std::isfinite(target_v) ||
+            !std::isfinite(target_kp) || !std::isfinite(target_kd) ||
+            !std::isfinite(target_tau))
+        {
+            if (!invalid_value_detected)
+            {
+                invalid_value_detected = true;
+                invalid_value_details << "Non-finite MIT targets:";
+            }
+            invalid_value_details << " (rl " << i << " -> hw " << hardware_index
+                                  << ": q=" << target_q
+                                  << ", dq=" << target_v
+                                  << ", kp=" << target_kp
+                                  << ", kd=" << target_kd
+                                  << ", tau=" << target_tau << ")";
+            continue;
+        }
+
+        q[hardware_index] = target_q;
+        v[hardware_index] = target_v;
+        kp[hardware_index] = target_kp;
+        kd[hardware_index] = target_kd;
+        tau[hardware_index] = target_tau;
     }
 
-    if (!robot_->set_target_joint_mit(q, v, kp, kd, tau) && motors_sdk_enabled_)
+    if (invalid_mapping_detected)
     {
-        motors_sdk_enabled_ = false;
-        last_sdk_retry_ = std::chrono::steady_clock::now();
-        std::cout << LOGGER::WARNING << "Failed to send MIT command to Titati motors. Retrying SDK handshake." << std::endl;
+        std::cout << LOGGER::ERROR << invalid_mapping_details.str() << std::endl;
+    }
+    if (invalid_value_detected)
+    {
+        std::cout << LOGGER::WARNING << invalid_value_details.str() << std::endl;
+    }
+
+    const bool success = robot_->set_target_joint_mit(q, v, kp, kd, tau);
+    if (!success)
+    {
+        ++mit_send_failures_;
+        if (motors_sdk_enabled_)
+        {
+            motors_sdk_enabled_ = false;
+            last_sdk_retry_ = std::chrono::steady_clock::now();
+        }
+        std::cout << LOGGER::ERROR
+                  << "Failed to send MIT command to Titati motors (failure count: " << mit_send_failures_ << ")."
+                  << std::endl;
+        std::cout << LOGGER::ERROR
+                  << "Last command snapshot: "
+                  << FormatCommandSample(q, v, kp, kd, tau, SampledHardwareIndices())
+                  << std::endl;
+        std::cout << LOGGER::WARNING << "Retrying SDK handshake." << std::endl;
+    }
+    else
+    {
+        ++mit_send_success_;
+        const auto now = std::chrono::steady_clock::now();
+        if (now - last_command_debug_log_ > std::chrono::milliseconds(200))
+        {
+            last_command_debug_log_ = now;
+            std::cout << LOGGER::DEBUG
+                      << "MIT command sent successfully (successes: " << mit_send_success_
+                      << ", failures: " << mit_send_failures_ << "). Snapshot: "
+                      << FormatCommandSample(q, v, kp, kd, tau, SampledHardwareIndices())
+                      << std::endl;
+        }
     }
 }
 
@@ -210,15 +437,23 @@ bool RL_Real::EnsureMotorsSdkMode()
     }
 
     last_sdk_retry_ = now;
+    ++sdk_retry_counter_;
+    std::cout << LOGGER::DEBUG
+              << "Attempting to switch Titati motors to SDK control mode (attempt "
+              << sdk_retry_counter_ << ")." << std::endl;
+
     if (robot_->set_motors_sdk(true))
     {
         motors_sdk_enabled_ = true;
+        sdk_retry_counter_ = 0;
         std::cout << LOGGER::INFO << "Titati motors switched to SDK control mode." << std::endl;
         robot_->set_target_joint_t(std::vector<double>(this->params.num_of_dofs, 0.0));
         return true;
     }
 
-    std::cout << LOGGER::WARNING << "Retrying to switch Titati motors to SDK control mode..." << std::endl;
+    std::cout << LOGGER::WARNING
+              << "Failed to switch Titati motors to SDK control mode on attempt "
+              << sdk_retry_counter_ << "." << std::endl;
     return false;
 }
 
