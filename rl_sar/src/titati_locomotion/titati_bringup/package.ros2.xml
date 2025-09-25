@@ -12,6 +12,8 @@
   <depend>pluginlib</depend>
   <depend>tita_bringup</depend>
   <depend>hardware_bridge</depend>
+  <depend>rclcpp</depend>
+  <depend>tita_robot</depend>
 
   <build_depend>hardware_interface</build_depend>
 

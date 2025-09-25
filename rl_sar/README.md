@@ -349,39 +349,78 @@ This repository now bundles the complete ROS 2 bringup, hardware bridge, and CA
 `titati_control`. All packages were moved under `src/` so they can be built and launched together with the rest of the rl_sar
 workspace.
 
-1. Build the required packages (or run `./build.sh` to build everything):
+#### 1. Build the Titati stack
 
-    ```bash
-    ./build.sh \
-      titati_bringup titati_controller titati_canfd_router \
-      joy_controller teleop_command user_command \
-      tita_bringup tita_robot hardware_bridge battery_device hw_bringup \
-      tita_locomotion_interfaces tita_system_interfaces tita_perception_interfaces
-    ```
+Run the build once on every machine that will command the robot (both Jetsons and any remote operator PC). You can either
+compile the whole workspace or just the Titati-related packages:
 
-2. On the **master** Jetson (one of the two Tita bases), prepare the CAN-FD interface and launch the full bringup. The helper
-   script configures `can0`, sources ROS 2 Humble, and launches the controller stack:
+```bash
+./build.sh \
+  titati_bringup titati_controller titati_canfd_router \
+  joy_controller teleop_command user_command \
+  tita_bringup tita_robot hardware_bridge battery_device hw_bringup \
+  tita_locomotion_interfaces tita_system_interfaces tita_perception_interfaces
+```
 
-    ```bash
-    cd <rl_sar_root>
-    ./can_setup_8m_master.sh
-    ```
+Copy the resulting `install/` directory to the second Jetson if you do the build on only one of them.
 
-3. On the **slave** Jetson, repeat the CAN-FD setup and start the reduced bringup:
+#### 2. Prepare the CAN interfaces on both Jetsons
 
-    ```bash
-    cd <rl_sar_root>
-    ./can_setup_8m_slave.sh
-    ```
+Connect an Ethernet cable between the two Tita bases so the internal CAN router can bridge both sides. On each Jetson run the
+helper script with `--no-launch` to initialise `can0` without starting the ROS nodes yet:
 
-   The slave launch only runs the CAN router and battery monitor while the master launches the controller, ros2_control, and the
-   joystick interface. You can edit the launch arguments inside `titati_bringup/launch/` if you need to switch control modes or
-   adjust namespaces.
+```bash
+cd <rl_sar_root>
+./can_setup_8m_master.sh --no-launch   # on the master Jetson
+./can_setup_8m_slave.sh --no-launch    # on the slave Jetson
+```
 
-4. After both halves are online you can use the rl_sar policy runner (for example `ros2 run rl_sar rl_sim --ros-args -p
-   robot_name:=titati`) or any custom ROS 2 nodes to publish velocity commands to the topics exposed by the Titati controller.
-   The controller listens to `command/manager/cmd_twist` and related interfaces defined in `tita_bringup` so existing teleop
-   nodes keep working.
+At this point `ifconfig can0` should report a running CAN-FD interface on both boards.
+
+#### 3. Sweep all motors before sim2real
+
+Keep the robot lifted or on a stand and run the new diagnostic node from the **master** Jetson. It switches the MCU into SDK
+mode, excites every actuator sequentially, and prints the measured response so you can verify wiring and encoders:
+
+```bash
+source /opt/ros/humble/setup.bash
+source install/setup.bash
+ros2 run titati_bringup titati_motor_test \
+  --ros-args -p test_amplitude_rad:=0.15 -p wheel_test_amplitude_rad:=0.3
+```
+
+The node holds each joint at the sensed neutral pose, sweeps it through a small range, and then restores MCU control. You can
+adjust the amplitude, PD gains, or motor count through ROS parameters if needed. Re-run the command until every actuator responds
+smoothly.
+
+#### 4. Launch the full locomotion stack
+
+Once the hardware test is successful, restart the bringup so the ROS controllers take over:
+
+```bash
+cd <rl_sar_root>
+./can_setup_8m_master.sh   # configures CAN and backgrounds the master launch
+./can_setup_8m_slave.sh    # mirrors the setup on the slave Jetson
+```
+
+The master launch starts `ros2_control`, the Titati controller plugin, the CAN router, the battery monitor, and the joystick
+teleop node. The slave launch only keeps the CAN router and battery monitor online. Inspect `nohup.out` or use `ros2 topic list`
+to confirm that the namespace (default `/titati`) exposes topics such as `command/manager/cmd_twist` and
+`locomotion/motors_status`.
+
+#### 5. Send locomotion commands or policies
+
+Source the workspace on the machine that will stream velocity commands (this can be the master Jetson or an external operator
+PC connected over the network) and run the rl_sar policy wrapper:
+
+```bash
+source install/setup.bash
+ros2 run rl_sar rl_sim --ros-args -p robot_name:=titati
+```
+
+You can also publish geometry messages directly to the controller interfaces defined in `tita_bringup` or use the existing
+`teleop_command` and `joy_controller` nodes for manual driving. Always exit any running ROS nodes before re-running the motor
+test so that only one process commands the actuators at a time.
 
 </details>
 

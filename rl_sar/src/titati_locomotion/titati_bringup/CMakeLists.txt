@@ -7,9 +7,15 @@ endif()
 
 # find dependencies
 find_package(ament_cmake REQUIRED)
-# uncomment the following section in order to fill in
-# further dependencies manually.
-# find_package(<dependency> REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(tita_robot REQUIRED)
+
+add_executable(titati_motor_test src/titati_motor_test.cpp)
+ament_target_dependencies(titati_motor_test rclcpp tita_robot)
+target_link_libraries(titati_motor_test tita_robot)
+
+install(TARGETS titati_motor_test
+  DESTINATION lib/${PROJECT_NAME})
 
 install(DIRECTORY launch DESTINATION share/${PROJECT_NAME})
 install(DIRECTORY config DESTINATION share/${PROJECT_NAME})

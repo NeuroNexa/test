@@ -348,37 +348,74 @@ source ~/.bashrc
 现在仓库已经将原来 `titati_control` 中的 ROS 2 启动、硬件桥接与 CAN 路由程序全部迁移到了 `src/` 目录下，可以和 rl_sar 的其
 他包一起编译与部署。
 
-1. 先编译相关功能包（或者直接执行 `./build.sh` 编译全部包）：
+#### 1. 构建 Titati 相关包
 
-    ```bash
-    ./build.sh \
-      titati_bringup titati_controller titati_canfd_router \
-      joy_controller teleop_command user_command \
-      tita_bringup tita_robot hardware_bridge battery_device hw_bringup \
-      tita_locomotion_interfaces tita_system_interfaces tita_perception_interfaces
-    ```
+需要在所有会下发指令的设备上编译一次（两台 Jetson 以及远程操控 PC）。可以只编译 Titati 相关的功能包，也可以直接执行全量
+编译：
 
-2. 在**主控** Jetson（其中一台 Tita 机身）上配置 CAN-FD 接口并启动完整的 bringup。仓库提供的脚本会自动配置 `can0`，加载
-   ROS 2 Humble 环境并启动控制器：
+```bash
+./build.sh \
+  titati_bringup titati_controller titati_canfd_router \
+  joy_controller teleop_command user_command \
+  tita_bringup tita_robot hardware_bridge battery_device hw_bringup \
+  tita_locomotion_interfaces tita_system_interfaces tita_perception_interfaces
+```
 
-    ```bash
-    cd <rl_sar_root>
-    ./can_setup_8m_master.sh
-    ```
+如果只在其中一台 Jetson 上编译，可将生成的 `install/` 目录拷贝到另一台设备。
 
-3. 在**从控** Jetson 上同样执行 CAN-FD 配置，并启动精简的 bringup：
+#### 2. 在两台 Jetson 上准备 CAN 接口
 
-    ```bash
-    cd <rl_sar_root>
-    ./can_setup_8m_slave.sh
-    ```
+先用网线连接两台 Tita 机身的以太网口，确保 CAN 路由能互通。分别在主控与从控 Jetson 上执行脚本并加上 `--no-launch` 参数，
+只做 `can0` 的初始化，暂时不要启动 ROS 节点：
 
-   从控端只运行 CAN 路由与电池监测节点，主控端会额外启动 ros2_control、Titati 控制器和手柄交互。若需修改控制模式或命名空
-   间，可直接编辑 `titati_bringup/launch/` 下的启动文件。
+```bash
+cd <rl_sar_root>
+./can_setup_8m_master.sh --no-launch   # 主控 Jetson
+./can_setup_8m_slave.sh --no-launch    # 从控 Jetson
+```
 
-4. 两台机身都启动后，即可通过 rl_sar 的策略运行器（例如 `ros2 run rl_sar rl_sim --ros-args -p robot_name:=titati`）或自定义
-   ROS 2 节点向 Titati 控制器开放的话题发布速度指令。控制器订阅 `command/manager/cmd_twist` 等在 `tita_bringup` 中定义的接口，
-   原有的遥控/键盘程序也可以继续使用。
+执行完成后，可用 `ifconfig can0` 检查两端的 CAN-FD 接口是否正常工作。
+
+#### 3. 上机前先做电机扫动测试
+
+将机器人抬起或放在支架上，在**主控** Jetson 上运行新的诊断节点。该程序会把 MCU 切换到 SDK 模式，依次扫动每个执行器，并
+打印传感反馈用于确认布线和编码器：
+
+```bash
+source /opt/ros/humble/setup.bash
+source install/setup.bash
+ros2 run titati_bringup titati_motor_test \
+  --ros-args -p test_amplitude_rad:=0.15 -p wheel_test_amplitude_rad:=0.3
+```
+
+节点会保持当前关节位置，给每个关节施加小幅度的 MIT 控制，再把权限交还 MCU。如需调整幅度、PD 参数或电机数量，可以通过 ROS
+参数修改。建议确认所有执行器都运动平顺后再进行下一步。
+
+#### 4. 启动完整控制栈
+
+电机测试通过后，重新启动 bringup 让 ROS 控制器接管：
+
+```bash
+cd <rl_sar_root>
+./can_setup_8m_master.sh   # 配置 CAN 并在后台启动主控端
+./can_setup_8m_slave.sh    # 同步启动从控端
+```
+
+主控端会启动 `ros2_control`、Titati 控制器、CAN 路由、电池监测与手柄交互节点；从控端只保留 CAN 路由与电池监测。可以通过
+查看 `nohup.out` 或 `ros2 topic list` 确认命名空间（默认 `/titati`）是否发布了 `command/manager/cmd_twist`、
+`locomotion/motors_status` 等话题。
+
+#### 5. 发送策略或速度指令
+
+在负责下发速度或策略的设备上加载工作空间，然后运行 rl_sar 的策略封装：
+
+```bash
+source install/setup.bash
+ros2 run rl_sar rl_sim --ros-args -p robot_name:=titati
+```
+
+也可以直接向 `tita_bringup` 中定义的接口发布 `geometry_msgs`，或继续使用已有的 `teleop_command`、`joy_controller` 等遥控程序。
+再次运行电机测试前，请先退出所有控制节点，确保同一时间只有一个程序向执行器发指令。
 
 </details>
 
