@@ -133,6 +133,8 @@ If simulation is not needed and you only want to run on the robot, you can compi
 ./build.sh -m  # or ./build.sh --cmake
 ```
 
+By default the CMake build (`./build.sh -m`) only compiles the Titati related hardware targets. Set `BUILD_TITATI_ONLY=OFF` when invoking CMake if you also need executables for other robots.
+
 For detailed usage instructions, you can check them via `./build.sh -h`:
 
 ```bash
@@ -338,6 +340,55 @@ source ~/.bashrc
 ```
 
 Pull the code and compile it. The process is the same as above.
+
+</details>
+
+<details>
+
+<summary>DDTRobot Titati (Click to expand)</summary>
+
+#### Master/Slave Preparation
+
+* The Titati platform consists of a master and a slave Jetson Orin NX. Make sure both sides are powered on and connected through the CAN/bridge cable.
+* On **both** Jetsons stop the legacy ROS bringup service and configure `can0` for FD mode:
+
+```bash
+sudo systemctl stop tita-bringup.service
+sudo ip link set can0 down
+sudo ip link set can0 up type can bitrate 1000000 sample-point 0.80 dbitrate 8000000 dsample-point 0.80 fd on restart-ms 100
+sudo ifconfig can0 txqueuelen 1000
+```
+
+Only the master Jetson needs to run the rl_sar binaries. The slave can remain idle after the CAN interface is configured.
+
+#### Build on the Master Jetson
+
+```bash
+cd rl_sar
+./build.sh -m
+```
+
+The CMake build produces the binaries in `cmake_build/bin`. Copy your Titati policy file to `src/rl_sar/policy/titati/robot_lab/policy.pt` (or update the `model_name` entry in the YAML if you use a different filename).
+
+#### Motor Bring-up Test
+
+Before loading an RL policy, verify CAN communication:
+
+```bash
+./cmake_build/bin/titati_motor_test
+```
+
+* The program prints all joint and IMU states every 0.5 s (toggle with `print off`).
+* Use `torque <id> <tau>` to drive an individual joint with a torque command, and `mit <id> <q> <dq> <kp> <kd> <tau>` for a single-joint MIT command. All other joints are zeroed automatically.
+* `zero` clears every command, `hold` keeps the previous command, and `quit` exits. The utility switches the robot to SDK direct mode on start and releases it on exit.
+
+#### Running the RL Controller
+
+```bash
+./cmake_build/bin/rl_real_titati
+```
+
+Keyboard bindings match the other rl_sar controllers: `W/S` adjust forward velocity, `A/D` lateral velocity, `Q/E` yaw rate, `Space` resets the command, and `N` toggles navigation mode. The executable enables direct motor control automatically and falls back to MCU control when it exits.
 
 </details>
 

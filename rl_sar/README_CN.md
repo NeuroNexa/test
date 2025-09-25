@@ -133,6 +133,8 @@ sudo ldconfig
 ./build.sh -m  # or ./build.sh --cmake
 ```
 
+默认情况下，使用 `./build.sh -m` 的 CMake 构建只会生成 Titati 相关的硬件目标。如需同时编译其他机器人，请在调用 CMake 时将 `BUILD_TITATI_ONLY` 设置为 `OFF`。
+
 详细的使用说明可以通过`./build.sh -h`查看
 
 ```bash
@@ -338,6 +340,53 @@ source ~/.bashrc
 ```
 
 拉取代码并编译，流程与上文相同。
+
+</details>
+
+<details>
+
+<summary>DDTRobot Titati（点击展开）</summary>
+
+#### 主从准备
+
+* Titati 由主、从两台 Jetson Orin NX 组合而成，确保两台设备上电并通过 CAN/桥接线连接。
+* 在**两台** Jetson 上停止原有的 ROS 启动服务并配置 `can0` 进入 FD 模式：
+
+```bash
+sudo systemctl stop tita-bringup.service
+sudo ip link set can0 down
+sudo ip link set can0 up type can bitrate 1000000 sample-point 0.80 dbitrate 8000000 dsample-point 0.80 fd on restart-ms 100
+sudo ifconfig can0 txqueuelen 1000
+```
+
+配置完成后仅需要在主机上运行 rl_sar，可让从机保持空闲。
+
+#### 主机编译
+
+```bash
+cd rl_sar
+./build.sh -m
+```
+
+CMake 构建会在 `cmake_build/bin` 目录下生成可执行文件。请将训练好的策略文件拷贝到 `src/rl_sar/policy/titati/robot_lab/policy.pt`（或修改 YAML 中的 `model_name` 指向自定义文件）。
+
+#### 电机连通性测试
+
+```bash
+./cmake_build/bin/titati_motor_test
+```
+
+* 程序每 0.5 秒输出一次关节与 IMU 状态（可用 `print off` 关闭）。
+* 使用 `torque <id> <tau>` 对单个关节输出力矩，或使用 `mit <id> <q> <dq> <kp> <kd> <tau>` 对单个关节发送 MIT 控制指令，其余关节会自动清零。
+* `zero` 清空所有指令，`hold` 保留当前指令，`quit` 退出程序。工具会在启动时切换到 SDK 直驱模式，在退出时恢复 MCU 控制。
+
+#### 运行 RL 控制器
+
+```bash
+./cmake_build/bin/rl_real_titati
+```
+
+键盘操作与其它 rl_sar 控制器一致：`W/S` 调整前向速度，`A/D` 调整侧向速度，`Q/E` 控制转向角速度，`Space` 清零指令，`N` 切换导航模式。程序会自动进入直驱模式并在退出时释放。
 
 </details>
 
