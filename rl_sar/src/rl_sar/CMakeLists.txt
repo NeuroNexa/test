@@ -333,6 +333,9 @@ target_link_libraries(rl_real_titati
     observation_buffer
     yaml-cpp
 )
+target_include_directories(rl_real_titati PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/policy
+)
 if(NOT USE_CMAKE)
     if($ENV{ROS_DISTRO} MATCHES "noetic")
         target_link_libraries(rl_real_titati ${catkin_LIBRARIES})
