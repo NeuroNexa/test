@@ -158,6 +158,73 @@ Examples:
 
 In the following text, **\<ROBOT\>/\<CONFIG\>** is used to represent different environments, such as `go2/himloco` and `go2w/robot_lab`.
 
+## Titati Real Robot (No ROS)
+
+The Titati platform consists of two Tita bases connected through a master hub. A single host Jetson must control all 16 motors across the unified CAN-FD bus—no ROS nodes are required.
+
+### 1. Prepare both Jetsons
+
+1. Configure the CAN interface on **each** Jetson (master and slave) after every reboot:
+
+   ```bash
+   sudo ip link set can0 down
+   sudo ip link set can0 up type can bitrate 1000000 sample-point 0.80 dbitrate 8000000 dsample-point 0.80 fd on restart-ms 100
+   sudo ifconfig can0 txqueuelen 1000
+   ```
+
+2. Ensure the CAN cable between master and slave is connected. No ROS processes need to run on either Jetson when using the RL controller.
+
+### 2. Build only the Titati executables (host Jetson)
+
+```bash
+./build.sh -m rl_real_titati titati_motor_test
+```
+
+This configures the project for CMake (C++17) and builds only the real-robot controller together with the standalone motor test utility.
+
+### 3. Motor sanity test (host Jetson)
+
+Before running the policy, verify that all joints respond and that communication with the slave side works:
+
+```bash
+./cmake_build/bin/titati_motor_test        # optional argument: number_of_motors (default 16)
+```
+
+Useful tester commands:
+
+| Command | Description |
+| ------- | ----------- |
+| `status` | Print the current position/velocity/torque for all motors |
+| `torque <id> <tau>` | Apply a pure torque command (Nm) to one motor (0-based index) |
+| `mit <id> <q> <dq> <kp> <kd> <tau>` | Send a single-motor MIT command (radians, rad/s, gains, feed-forward torque) |
+| `watch <seconds>` | Continuously print motor states (default 5 s) |
+| `zero` | Remove all torques |
+| `exit` / `quit` | Leave the tester (motors are zeroed and MCU control is restored) |
+
+The tester automatically switches the MCU into SDK/force-direct mode when it starts and releases it on exit.
+
+### 4. Run the reinforcement-learning controller (host Jetson)
+
+```bash
+./cmake_build/bin/rl_real_titati
+```
+
+Keyboard shortcuts:
+
+| Key | Action |
+| --- | ------ |
+| `Num0` | Stand up / enter ready state |
+| `Num1` | Start RL locomotion |
+| `Num9` | Sit down |
+| `P`    | Passive mode |
+| `W/S`  | Increase / decrease forward velocity command |
+| `A/D`  | Lateral command |
+| `Q/E`  | Yaw command |
+| `Space`| Clear commanded velocities |
+| `N`    | Toggle navigation mode (hold external command at zero) |
+
+The RL controller automatically pushes Titati into SDK control mode and enforces torque limits from `policy/titati/base.yaml`. Ensure the environment is clear before enabling motion.
+
 Before running, copy the trained pt model file to `rl_sar/src/rl_sar/policy/<ROBOT>/<CONFIG>`, and configure the parameters in `<ROBOT>/<CONFIG>/config.yaml` and `<ROBOT>/base.yaml`.
 
 ### Simulation

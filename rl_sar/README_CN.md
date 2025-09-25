@@ -160,6 +160,73 @@ Examples:
 
 运行前请将训练好的pt模型文件拷贝到`rl_sar/src/rl_sar/policy/<ROBOT>/<CONFIG>`中，并配置`<ROBOT>/<CONFIG>/config.yaml`和`<ROBOT>/base.yaml`中的参数。
 
+## Titati 真机部署（不依赖 ROS）
+
+Titati 由两台 Tita 机器人通过主控盒和线束拼接而成，主 Jetson 需要通过同一条 CAN-FD 总线直接控制全部 16 个电机，无需启动任何 ROS 节点。
+
+### 1. 主从机准备
+
+1. 每次开机后都需要在 **主、从两台 Jetson** 上重新初始化 CAN 接口：
+
+   ```bash
+   sudo ip link set can0 down
+   sudo ip link set can0 up type can bitrate 1000000 sample-point 0.80 dbitrate 8000000 dsample-point 0.80 fd on restart-ms 100
+   sudo ifconfig can0 txqueuelen 1000
+   ```
+
+2. 确认主从之间的 CAN 线缆连接完好。使用本方案时两台 Jetson 上均无需启动 ROS。
+
+### 2. 在主机上仅编译 Titati 相关程序
+
+```bash
+./build.sh -m rl_real_titati titati_motor_test
+```
+
+脚本会以 CMake（C++17）方式配置项目，只构建真机控制器和电机测试工具。
+
+### 3. 电机连通性测试（主机）
+
+在加载策略前，先确认 16 个电机状态可读、命令可下发：
+
+```bash
+./cmake_build/bin/titati_motor_test        # 可选参数：电机数量（默认 16）
+```
+
+测试工具常用指令：
+
+| 指令 | 说明 |
+| ---- | ---- |
+| `status` | 打印所有电机的角度/速度/力矩 |
+| `torque <id> <tau>` | 给指定电机施加纯力矩指令（单位 Nm，电机编号从 0 开始） |
+| `mit <id> <q> <dq> <kp> <kd> <tau>` | 给单个电机发送 MIT 控制（单位分别为 rad、rad/s、增益、力矩） |
+| `watch <seconds>` | 连续输出电机状态（默认 5 秒） |
+| `zero` | 清除全部电机力矩 |
+| `exit` / `quit` | 退出测试程序（自动清零并恢复 MCU 控制） |
+
+程序启动时会自动将底层切换到 SDK 直控模式，退出时自动恢复 MCU 控制。
+
+### 4. 运行强化学习控制器（主机）
+
+```bash
+./cmake_build/bin/rl_real_titati
+```
+
+键盘控制：
+
+| 按键 | 功能 |
+| ---- | ---- |
+| `Num0` | 机器人起身并进入准备状态 |
+| `Num1` | 进入 RL 行走模式 |
+| `Num9` | 机器人下蹲 |
+| `P`    | 被动模式 |
+| `W/S`  | 增减前进速度指令 |
+| `A/D`  | 侧向速度指令 |
+| `Q/E`  | 角速度指令 |
+| `Space`| 清空速度指令 |
+| `N`    | 切换导航模式（保持零指令） |
+
+控制器会自动将 Titati 切换到 SDK 直控模式，并按照 `policy/titati/base.yaml` 中的力矩限制运行，启用前务必确认周围环境安全。
+
 ### 仿真
 
 打开一个终端，启动gazebo仿真环境

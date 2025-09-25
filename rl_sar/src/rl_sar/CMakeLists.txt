@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.5)
 project(rl_sar VERSION 3.0.0 LANGUAGES CXX)
 
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 set(USE_CMAKE OFF CACHE BOOL "Use Cmake build system")
 message(STATUS "USE_CMAKE: ${USE_CMAKE}")
 if(USE_CMAKE)
@@ -134,6 +137,17 @@ if($ENV{ROS_DISTRO} MATCHES "foxy|humble")
     )
 endif()
 
+# titati sdk
+add_library(titati_sdk
+    library/thirdparty/titati_sdk/src/can_receiver.cpp
+    library/thirdparty/titati_sdk/src/can_sender.cpp
+    library/thirdparty/titati_sdk/src/tita_robot.cpp
+)
+target_include_directories(titati_sdk PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/titati_sdk/include
+)
+target_link_libraries(titati_sdk PUBLIC Threads::Threads)
+
 # Retroid Gamepad
 set(GAMEPAD_SRC
     ${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/gamepad/src/gamepad.cpp
@@ -158,10 +172,6 @@ include_directories(
 )
 
 add_library(rl_sdk library/core/rl_sdk/rl_sdk.cpp)
-set_target_properties(rl_sdk PROPERTIES
-    CXX_STANDARD 14
-    CXX_STANDARD_REQUIRED ON
-)
 target_link_libraries(rl_sdk PUBLIC
     "${TORCH_LIBRARIES}"
     Python3::Python
@@ -182,10 +192,6 @@ endif()
 
 add_library(observation_buffer library/core/observation_buffer/observation_buffer.cpp)
 target_link_libraries(observation_buffer PUBLIC "${TORCH_LIBRARIES}")
-set_target_properties(observation_buffer PROPERTIES
-    CXX_STANDARD 14
-    CXX_STANDARD_REQUIRED ON
-)
 if(NOT USE_CMAKE)
     if($ENV{ROS_DISTRO} MATCHES "foxy|humble")
         install(TARGETS observation_buffer DESTINATION lib/${PROJECT_NAME})
@@ -320,6 +326,22 @@ if(NOT USE_CMAKE)
         install(TARGETS rl_real_l4w4 DESTINATION lib/${PROJECT_NAME})
     endif()
 endif()
+
+add_executable(rl_real_titati src/rl_real_titati.cpp)
+target_link_libraries(rl_real_titati
+    titati_sdk
+    rl_sdk
+    observation_buffer
+    yaml-cpp
+)
+target_include_directories(rl_real_titati PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/titati_sdk/include
+)
+
+add_executable(titati_motor_test src/titati_motor_test.cpp)
+target_link_libraries(titati_motor_test
+    titati_sdk
+)
 
 if(NOT USE_CMAKE)
     if($ENV{ROS_DISTRO} MATCHES "noetic")
