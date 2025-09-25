@@ -6,7 +6,8 @@ std::vector<double> tita_robot::get_joint_q() const
 {
   auto infos = can_receiver_->get_motors_in();
   std::vector<double> joint;
-  for (const auto & info : *infos) {
+  joint.reserve(infos.size());
+  for (const auto & info : infos) {
     joint.push_back(info.position);
   }
   return joint;
@@ -16,7 +17,8 @@ std::vector<double> tita_robot::get_joint_v() const
 {
   auto infos = can_receiver_->get_motors_in();
   std::vector<double> joint;
-  for (const auto & info : *infos) {
+  joint.reserve(infos.size());
+  for (const auto & info : infos) {
     joint.push_back(info.velocity);
   }
   return joint;
@@ -26,7 +28,8 @@ std::vector<double> tita_robot::get_joint_t() const
 {
   auto infos = can_receiver_->get_motors_in();
   std::vector<double> joint;
-  for (const auto & info : *infos) {
+  joint.reserve(infos.size());
+  for (const auto & info : infos) {
     joint.push_back(info.torque);
   }
   return joint;
@@ -36,8 +39,10 @@ std::vector<uint8_t> tita_robot::get_joint_status() const  // TODO: why 8
 {
   auto infos = can_receiver_->get_motors_status();
   std::vector<uint8_t> joint;
-  for (size_t id = 0; id < 8; id++) {
-    joint.push_back(infos->value[id]);
+  constexpr size_t STATUS_COUNT = sizeof(infos.value) / sizeof(infos.value[0]);
+  joint.reserve(STATUS_COUNT);
+  for (size_t id = 0; id < STATUS_COUNT; ++id) {
+    joint.push_back(infos.value[id]);
   }
   return joint;
 }
@@ -47,7 +52,7 @@ std::array<double, 4> tita_robot::get_imu_quaternion() const
   auto infos = can_receiver_->get_imu_data();
   std::array<double, 4> data;
   for (size_t i = 0; i < 4; i++) {
-    data[i] = infos->quaternion[i];
+    data[i] = infos.quaternion[i];
   }
   return data;
 }
@@ -57,7 +62,7 @@ std::array<double, 3> tita_robot::get_imu_acceleration() const
   auto infos = can_receiver_->get_imu_data();
   std::array<double, 3> data;
   for (size_t i = 0; i < 3; i++) {
-    data[i] = infos->accl[i];
+    data[i] = infos.accl[i];
   }
   return data;
 }
@@ -67,7 +72,7 @@ std::array<double, 3> tita_robot::get_imu_angular_velocity() const
   auto infos = can_receiver_->get_imu_data();
   std::array<double, 3> data;
   for (size_t i = 0; i < 3; i++) {
-    data[i] = infos->gyro[i];
+    data[i] = infos.gyro[i];
   }
   return data;
 }
@@ -178,7 +183,7 @@ bool tita_robot::wait_for_feedback(std::chrono::milliseconds timeout)
   while (std::chrono::steady_clock::now() < deadline) {
     const auto infos = can_receiver_->get_motors_in();
     bool all_valid = true;
-    for (const auto & motor : *infos) {
+    for (const auto & motor : infos) {
       if (motor.timestamp == 0U) {
         all_valid = false;
         break;

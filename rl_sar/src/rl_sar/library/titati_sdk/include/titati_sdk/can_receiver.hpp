@@ -73,11 +73,24 @@ namespace can_device
       std::memset(&default_motor_in, 0x00U, sizeof(api_motor_in_t));
       motors_in_.resize(size, default_motor_in);
       std::memset(&imu_data_, 0x00U, sizeof(api_imu_data_t));
+      std::memset(&motors_status_, 0x00U, sizeof(api_motor_status_t));
     }
     ~MotorsImuCanReceiveApi() {}
-    const std::vector<api_motor_in_t> *get_motors_in() const { return &motors_in_; }
-    const api_imu_data_t *get_imu_data() const { return &imu_data_; }
-    const api_motor_status_t *get_motors_status() const { return &motors_status_; }
+    std::vector<api_motor_in_t> get_motors_in() const
+    {
+      std::shared_lock<std::shared_mutex> lock(motors_in_mutex_);
+      return motors_in_;
+    }
+    api_imu_data_t get_imu_data() const
+    {
+      std::shared_lock<std::shared_mutex> lock(imu_mutex_);
+      return imu_data_;
+    }
+    api_motor_status_t get_motors_status() const
+    {
+      std::shared_lock<std::shared_mutex> lock(motors_status_mutex_);
+      return motors_status_;
+    }
 
   private:
 #define MIN_TIME_OUT_US 1'000L     // 1ms
@@ -108,7 +121,7 @@ namespace can_device
     api_imu_data_t imu_data_;
     api_motor_status_t motors_status_;
 
-    mutable std::shared_mutex motors_in_mutex_, imu_mutex_;
+    mutable std::shared_mutex motors_in_mutex_, imu_mutex_, motors_status_mutex_;
     size_t leg_dof_{4}, leg_num_{2};
   };
 } // namespace can_device

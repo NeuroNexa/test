@@ -59,6 +59,7 @@ void MotorsImuCanReceiveApi::imu_data_callback(std::shared_ptr<struct canfd_fram
 }
 void MotorsImuCanReceiveApi::motors_status_callback(std::shared_ptr<struct canfd_frame> recv_frame)
 {
+  std::unique_lock<std::shared_mutex> lock(motors_status_mutex_);
   std::memcpy(&motors_status_, recv_frame->data, sizeof(api_motor_status_t));
 }
 
