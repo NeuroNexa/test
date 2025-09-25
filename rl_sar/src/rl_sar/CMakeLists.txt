@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.5)
 project(rl_sar VERSION 3.0.0 LANGUAGES CXX)
 
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
 set(USE_CMAKE OFF CACHE BOOL "Use Cmake build system")
 message(STATUS "USE_CMAKE: ${USE_CMAKE}")
 if(USE_CMAKE)
@@ -133,6 +137,19 @@ if($ENV{ROS_DISTRO} MATCHES "foxy|humble")
         DESTINATION lib/
     )
 endif()
+
+add_library(titati_sdk
+    library/hardware/titati/src/can_receiver.cpp
+    library/hardware/titati/src/can_sender.cpp
+    library/hardware/titati/src/tita_robot.cpp
+    library/hardware/titati/src/canfd_router.cpp
+    library/hardware/titati/src/titati_hardware.cpp
+)
+target_include_directories(titati_sdk PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/hardware/titati/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/hardware/titati/include/titati
+)
+target_link_libraries(titati_sdk PUBLIC Threads::Threads)
 
 # Retroid Gamepad
 set(GAMEPAD_SRC
@@ -321,6 +338,27 @@ if(NOT USE_CMAKE)
     endif()
 endif()
 
+add_executable(rl_real_titati
+    src/rl_real_titati.cpp
+)
+target_link_libraries(rl_real_titati
+    titati_sdk
+    rl_sdk
+    observation_buffer
+    yaml-cpp
+)
+if(NOT USE_CMAKE)
+    if($ENV{ROS_DISTRO} MATCHES "noetic")
+        target_link_libraries(rl_real_titati ${catkin_LIBRARIES})
+    elseif($ENV{ROS_DISTRO} MATCHES "foxy|humble")
+        ament_target_dependencies(rl_real_titati
+            rclcpp
+            geometry_msgs
+        )
+        install(TARGETS rl_real_titati DESTINATION lib/${PROJECT_NAME})
+    endif()
+endif()
+
 if(NOT USE_CMAKE)
     if($ENV{ROS_DISTRO} MATCHES "noetic")
         catkin_install_python(PROGRAMS
@@ -334,6 +372,22 @@ if(NOT USE_CMAKE)
         )
     endif()
 endif()
+
+add_executable(titati_motor_test
+    src/titati_motor_test.cpp
+)
+target_link_libraries(titati_motor_test
+    titati_sdk
+    yaml-cpp
+)
+
+add_executable(titati_canfd_router
+    src/titati_canfd_router.cpp
+)
+target_link_libraries(titati_canfd_router
+    titati_sdk
+    yaml-cpp
+)
 
 if(NOT USE_CMAKE)
     if($ENV{ROS_DISTRO} MATCHES "foxy|humble")

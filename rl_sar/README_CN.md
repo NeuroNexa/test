@@ -231,6 +231,46 @@ git clone https://github.com/osrf/gazebo_models.git ~/.gazebo/models
 
 <details>
 
+<summary>DDTRobot Titati（不依赖 ROS）</summary>
+
+> **提示：** 在编译前请先将 `Torch_DIR` 设置为 libtorch 的安装目录。
+
+1. **在主控 Jetson 上构建可执行程序**（如有需要可同步到从控）
+   ```bash
+   ./build.sh -m
+   ```
+2. **在主控与从控 Jetson 上配置 CAN 接口**
+   ```bash
+   sudo ip link set can0 down
+   sudo ip link set can0 up type can bitrate 1000000 sample-point 0.80 \
+       dbitrate 8000000 dsample-point 0.80 fd on restart-ms 100
+   sudo ifconfig can0 txqueuelen 1000
+   ```
+3. **在从控 Jetson 上启动 CAN-FD 路由**
+   ```bash
+   ./cmake_build/bin/titati_canfd_router
+   ```
+4. **在主控 Jetson 上启动 CAN-FD 路由**
+   ```bash
+   ./cmake_build/bin/titati_canfd_router
+   ```
+   该程序会持续监听并在需要时将 MCU 切换到 Force-Direct 模式，确保主控可以控制全部 16 个电机。
+5. **（可选）在主控 Jetson 上进行硬件自检**
+   ```bash
+   ./cmake_build/bin/titati_motor_test                # 仅打印关节/IMU 状态
+   ./cmake_build/bin/titati_motor_test --mode torque --motor 3 --value 5 --duration 1.0
+   ./cmake_build/bin/titati_motor_test --mode mit --motor 7 --position 0.2 --kp 40 --kd 2 --tau 0.0
+   ```
+6. **在主控 Jetson 上启动强化学习控制器**
+   ```bash
+   ./cmake_build/bin/rl_real_titati
+   ```
+   使用键盘 W/A/S/D/Q/E/Space/N 调整行走指令，`N` 可以切换导航模式。
+
+</details>
+
+<details>
+
 <summary>Unitree A1（点击展开）</summary>
 
 与Unitree A1连接可以使用无线与有线两种方式

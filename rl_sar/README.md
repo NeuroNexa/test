@@ -231,6 +231,46 @@ git clone https://github.com/osrf/gazebo_models.git ~/.gazebo/models
 
 <details>
 
+<summary>DDTRobot Titati (No ROS)</summary>
+
+> **Note:** Ensure `Torch_DIR` points to your libtorch installation before building.
+
+1. **Build binaries** on the master Jetson (and copy to the slave if needed)
+   ```bash
+   ./build.sh -m
+   ```
+2. **Configure the CAN interface** on both master and slave Jetsons
+   ```bash
+   sudo ip link set can0 down
+   sudo ip link set can0 up type can bitrate 1000000 sample-point 0.80 \
+       dbitrate 8000000 dsample-point 0.80 fd on restart-ms 100
+   sudo ifconfig can0 txqueuelen 1000
+   ```
+3. **Run the CAN-FD router on the slave Jetson**
+   ```bash
+   ./cmake_build/bin/titati_canfd_router
+   ```
+4. **Run the CAN-FD router on the master Jetson**
+   ```bash
+   ./cmake_build/bin/titati_canfd_router
+   ```
+   This keeps both MCU boards in Force-Direct mode so the master can drive all 16 motors.
+5. **(Optional) Validate the hardware from the master Jetson**
+   ```bash
+   ./cmake_build/bin/titati_motor_test                # Read joint/IMU state
+   ./cmake_build/bin/titati_motor_test --mode torque --motor 3 --value 5 --duration 1.0
+   ./cmake_build/bin/titati_motor_test --mode mit --motor 7 --position 0.2 --kp 40 --kd 2 --tau 0.0
+   ```
+6. **Start the reinforcement learning controller on the master Jetson**
+   ```bash
+   ./cmake_build/bin/rl_real_titati
+   ```
+   Use the keyboard (W/A/S/D/Q/E/Space/N) to issue velocity commands; navigation mode toggles with `N`.
+
+</details>
+
+<details>
+
 <summary>Unitree A1 (Click to expand)</summary>
 
 Unitree A1 can be connected using both wireless and wired methods:
