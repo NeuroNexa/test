@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.5)
 project(rl_sar VERSION 3.0.0 LANGUAGES CXX)
 
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 set(USE_CMAKE OFF CACHE BOOL "Use Cmake build system")
 message(STATUS "USE_CMAKE: ${USE_CMAKE}")
 if(USE_CMAKE)
@@ -158,10 +161,6 @@ include_directories(
 )
 
 add_library(rl_sdk library/core/rl_sdk/rl_sdk.cpp)
-set_target_properties(rl_sdk PROPERTIES
-    CXX_STANDARD 14
-    CXX_STANDARD_REQUIRED ON
-)
 target_link_libraries(rl_sdk PUBLIC
     "${TORCH_LIBRARIES}"
     Python3::Python
@@ -182,15 +181,21 @@ endif()
 
 add_library(observation_buffer library/core/observation_buffer/observation_buffer.cpp)
 target_link_libraries(observation_buffer PUBLIC "${TORCH_LIBRARIES}")
-set_target_properties(observation_buffer PROPERTIES
-    CXX_STANDARD 14
-    CXX_STANDARD_REQUIRED ON
-)
 if(NOT USE_CMAKE)
     if($ENV{ROS_DISTRO} MATCHES "foxy|humble")
         install(TARGETS observation_buffer DESTINATION lib/${PROJECT_NAME})
     endif()
 endif()
+
+add_library(titati_hw
+    library/hardware/titati/src/can_receiver.cpp
+    library/hardware/titati/src/can_sender.cpp
+    library/hardware/titati/src/tita_robot.cpp
+)
+target_include_directories(titati_hw PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/hardware/titati/include
+)
+target_link_libraries(titati_hw PUBLIC Threads::Threads)
 
 if(NOT USE_CMAKE)
     add_executable(rl_sim src/rl_sim.cpp)
@@ -320,6 +325,31 @@ if(NOT USE_CMAKE)
         install(TARGETS rl_real_l4w4 DESTINATION lib/${PROJECT_NAME})
     endif()
 endif()
+
+add_executable(rl_real_titati src/rl_real_titati.cpp)
+target_link_libraries(rl_real_titati
+    titati_hw
+    rl_sdk
+    observation_buffer
+    yaml-cpp
+)
+if(NOT USE_CMAKE)
+    if($ENV{ROS_DISTRO} MATCHES "noetic")
+        target_link_libraries(rl_real_titati ${catkin_LIBRARIES})
+    elseif($ENV{ROS_DISTRO} MATCHES "foxy|humble")
+        ament_target_dependencies(rl_real_titati
+            rclcpp
+            geometry_msgs
+        )
+        install(TARGETS rl_real_titati DESTINATION lib/${PROJECT_NAME})
+    endif()
+endif()
+
+add_executable(titati_motor_test src/titati_motor_test.cpp)
+target_link_libraries(titati_motor_test
+    titati_hw
+    yaml-cpp
+)
 
 if(NOT USE_CMAKE)
     if($ENV{ROS_DISTRO} MATCHES "noetic")

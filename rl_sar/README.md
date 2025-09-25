@@ -343,6 +343,67 @@ Pull the code and compile it. The process is the same as above.
 
 <details>
 
+<summary>DDTRobot Titati (Click to expand)</summary>
+
+This configuration targets the Titati quadruped assembled from two Tita wheel-legged bases. No ROS runtime is required when
+building with `./build.sh -m`.
+
+#### Build
+
+```bash
+# Compile only the binaries needed for Titati hardware deployment
+./build.sh -m rl_real_titati titati_motor_test
+```
+
+The resulting executables are located in `cmake_build/bin/`.
+
+#### Preparation on each Jetson (master and slave)
+
+1. Bring up the CAN FD interface (adjust parameters to match your wiring):
+   ```bash
+   sudo ip link set can0 down
+   sudo ip link set can0 up type can bitrate 1000000 sample-point 0.80 dbitrate 8000000 dsample-point 0.80 fd on
+   sudo ifconfig can0 txqueuelen 1000
+   ```
+2. Switch the MCU to direct SDK mode using the helper tool:
+   ```bash
+   # On the master (controls 16 motors)
+   ./cmake_build/bin/titati_motor_test --mode direct --motors 16
+
+   # On the slave (controls 8 motors)
+   ./cmake_build/bin/titati_motor_test --mode direct --motors 8
+   ```
+   Running the command once is sufficient; it sends the required CAN RPC to change control mode. Use `--disable-sdk` to revert to
+   MCU control if needed.
+
+#### Optional motor sanity check
+
+Before deploying RL control, you can verify the drive chain:
+
+```bash
+# Apply 2 Nm sequential torque pulses to each joint
+./cmake_build/bin/titati_motor_test --mode torque --motors 16 --amplitude 2.0 --duration 0.6
+
+# Command small MIT position offsets (0.1 rad) sequentially
+./cmake_build/bin/titati_motor_test --mode mit --motors 16 --amplitude 0.1 --duration 0.6
+```
+
+Adjust `--motors` to `8` when checking an individual Tita base.
+
+#### Running the RL controller (master Jetson only)
+
+```bash
+./cmake_build/bin/rl_real_titati
+```
+
+Keyboard commands follow the standard mapping documented above. The slave Jetson only needs the `titati_motor_test --mode direct` step
+to keep its MCU in SDK mode; no additional process is required there. Ensure both machines remain connected through the Titati
+communication box during operation.
+
+</details>
+
+<details>
+
 <summary>Deeprobotics Lite3 (Click to expand)</summary>
 
 Deeprobotics Lite3 can be connected using wireless method.
