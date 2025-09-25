@@ -1,9 +1,18 @@
-#include "can_receiver.hpp"
-#include "can_sender.hpp"
-#include "canfd_router_bridge.hpp"
+#ifndef TITA_ROBOT__TITA_ROBOT_HPP_
+#define TITA_ROBOT__TITA_ROBOT_HPP_
 
+#include <array>
 #include <functional>
+#include <memory>
 #include <string>
+#include <vector>
+
+namespace can_device
+{
+class MotorsImuCanReceiveApi;
+class MotorsCanSendApi;
+class CanfdRouterBridge;
+}
 
 class tita_robot
 {
@@ -34,6 +43,7 @@ public:
     tita_robot(size_t num_motors,
                const std::string &can_interface = "can0",
                bool enable_canfd_router = false);
+    ~tita_robot();
 
     /**
      * @brief Get the current joint positions in joint space.
@@ -167,4 +177,4 @@ private:
     size_t motor_num_;
 };
 
-// class tita_robot
+#endif  // TITA_ROBOT__TITA_ROBOT_HPP_

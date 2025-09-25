@@ -1,4 +1,7 @@
 #include "tita_robot/tita_robot.hpp"
+
+#include "tita_robot/can_receiver.hpp"
+#include "tita_robot/can_sender.hpp"
 #include "tita_robot/canfd_router_bridge.hpp"
 
 #include <iostream>
@@ -24,6 +27,8 @@ tita_robot::tita_robot(size_t num_motors,
   }
   motor_num_ = num_motors;
 }
+
+tita_robot::~tita_robot() = default;
 
 std::vector<double> tita_robot::get_joint_q() const
 {
