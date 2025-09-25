@@ -350,6 +350,11 @@ target_link_libraries(titati_motor_test
     titati_hw
     yaml-cpp
 )
+if(TARGET Torch::Torch)
+    target_link_libraries(titati_motor_test PRIVATE Torch::Torch)
+elseif(DEFINED TORCH_INCLUDE_DIRS)
+    target_include_directories(titati_motor_test PRIVATE ${TORCH_INCLUDE_DIRS})
+endif()
 
 if(NOT USE_CMAKE)
     if($ENV{ROS_DISTRO} MATCHES "noetic")
