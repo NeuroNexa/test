@@ -107,52 +107,13 @@ sudo ldconfig
 
 ## Compilation
 
-Since this project supports multiple versions of ROS, some symbolic links need to be created for different versions. A build script is provided in the project root directory for one-click compilation.
-
-Execute the following script in the project root directory to compile the entire project:
+The hardware targets are built with a single CMake script located at the repository root:
 
 ```bash
 ./build.sh
 ```
 
-To compile specific packages individually, you can append the package names:
-
-```bash
-./build.sh package1 package2
-```
-
-To clean the build, use the following command. This will remove all compiled outputs and created symbolic links:
-
-```bash
-./build.sh -c  # or ./build.sh --clean
-```
-
-If simulation is not needed and you only want to run on the robot, you can compile using CMake while disabling ROS (the compiled executables will be in `cmake_build/bin` and libraries in `cmake_build/lib`):
-
-```bash
-./build.sh -m  # or ./build.sh --cmake
-```
-
-For detailed usage instructions, you can check them via `./build.sh -h`:
-
-```bash
-Usage: ./build.sh [OPTIONS] [PACKAGE_NAMES...]
-
-Options:
-  -c, --clean    Clean workspace (remove symlinks and build artifacts)
-  -m, --cmake    Build using CMake (for hardware deployment only)
-  -h, --help     Show this help message
-
-Examples:
-  ./build.sh                    # Build all ROS packages
-  ./build.sh package1 package2  # Build specific ROS packages
-  ./build.sh -c                 # Clean all symlinks and build artifacts
-  ./build.sh --clean package1   # Clean specific package and build artifacts
-  ./build.sh -m                 # Build with CMake for hardware deployment
-```
-
-> [!TIP]
-> If catkin build report errors: `Unable to find either executable 'empy' or Python module 'em'`, run `catkin config -DPYTHON_EXECUTABLE=/usr/bin/python3` before `catkin build`
+The script configures `cmake_build/` and compiles all required libraries and executables for the Titati robot.  Use `./build.sh -c` to remove the build directory and force a clean reconfigure.  Run `./build.sh -h` to see the available maintenance options.
 
 ## Running
 
@@ -197,78 +158,43 @@ git clone https://github.com/osrf/gazebo_models.git ~/.gazebo/models
 
 ### Titati real-robot deployment
 
-The Titati platform is composed of a **master Jetson** (the front Tita) and a **slave Jetson** (the rear Tita).  The master runs the RL policy and motor diagnostics while the slave keeps the CAN-FD router locked in forced-direct mode so that both halves accept SDK commands.  The following steps assume you are inside the `rl_sar` workspace on each Jetson.
+The Titati platform is composed of a **master Jetson** (front Tita) and a **slave Jetson** (rear Tita).  The master runs the RL policy and diagnostics, while the slave keeps the MCU locked in forced-direct SDK mode.  All steps below assume you are inside the `rl_sar` workspace on each Jetson.
 
-1. **Build the ROS 2 helper packages on the slave Jetson (once after cloning or updating)**
+1. **Build the hardware binaries on both Jetsons**
    ```bash
-   cd rl_sar
-   source /opt/ros/humble/setup.bash
-   ./build.sh tita_system_interfaces titati_canfd_router
+   ./build.sh
    ```
-   This wraps `colcon build --packages-select tita_system_interfaces titati_canfd_router` and creates `install/local_setup.bash` for the CAN router node.
+   This generates `cmake_build/bin/rl_real_titati`, `cmake_build/bin/titati_motor_test`, and `cmake_build/bin/titati_can_router`.
 
-#### 1. Build the binaries on both Jetsons (master & slave)
+2. **Bring up the CAN interface on both Jetsons**
+   ```bash
+   sudo systemctl stop tita-bringup.service
+   sudo ip link set can0 down
+   sudo ip link set can0 up type can bitrate 1000000 sample-point 0.80 \
+        dbitrate 8000000 dsample-point 0.80 fd on restart-ms 100
+   sudo ifconfig can0 txqueuelen 1000
+   ```
 
-```bash
-# inside ~/wjl_slave/test/rl_sar or the workspace you cloned to
-./build.sh -m
-```
+3. **Start the CAN router daemon on the slave Jetson**
+   ```bash
+   ./cmake_build/bin/titati_can_router
+   ```
+   Leave this process running; it listens for the CAN-FD heartbeat and automatically transmits the forced-direct handshake so the MCU accepts SDK commands from the master.
 
-This produces the hardware executables in `cmake_build/bin` (`rl_real_titati` and `titati_motor_test`) and the SDK libraries in `cmake_build/lib`.
+4. **Verify the motors on the master Jetson**
+   ```bash
+   ./cmake_build/bin/titati_motor_test --read
+   ./cmake_build/bin/titati_motor_test --monitor
+   ./cmake_build/bin/titati_motor_test --mode torque --id 3 --tau 0.6 --duration 3.0
+   ./cmake_build/bin/titati_motor_test --mode mit --id 7 --pos 0.0 --vel 0.0 --kp 20.0 --kd 1.0 --tau 0.2 --duration 2.0
+   ```
+   Repeat the torque/MIT commands for each actuator until all 16 motors respond correctly.
 
-#### 2. Source the ROS2 CAN router workspace on the **slave Jetson**
-
-After building the helper packages once, you only need to source the generated workspace before launching ROS nodes:
-
-```bash
-source /opt/ros/humble/setup.bash
-source install/local_setup.bash
-```
-
-#### 3. Start the CAN-FD router on the **slave Jetson**
-
-```bash
-cd rl_sar
-ros2 pkg executables titati_canfd_router   # optional sanity check
-ros2 run titati_canfd_router titati_canfd_router_node
-```
-
-Keep this terminal running; it performs the forced-direct handshake with the CAN router box.
-
-#### 4. Perform motor bring-up on the **master Jetson**
-
-Before loading the RL policy, exercise every motor from the master Jetson with the diagnostic CLI located in `cmake_build/bin`:
-
-```bash
-# Inspect a single snapshot of all 16 actuators
-./cmake_build/bin/titati_motor_test --read
-
-# Continuously monitor telemetry until interrupted (Ctrl+C)
-./cmake_build/bin/titati_motor_test --monitor
-
-# Command motor 3 in torque mode with 0.6 Nm for 3 seconds
-./cmake_build/bin/titati_motor_test --mode torque --id 3 --tau 0.6 --duration 3.0
-
-# Command motor 7 in MIT mode
-./cmake_build/bin/titati_motor_test --mode mit --id 7 --pos 0.0 --vel 0.0 --kp 20.0 --kd 1.0 --tau 0.2 --duration 2.0
-```
-
-Verify that each of the 16 motors responds correctly before moving on to the RL controller.
-
-#### 5. Launch the Titati RL controller on the **master Jetson**
-
-1. Copy the trained policy checkpoint to `src/rl_sar/policy/titati/robot_lab/policy.pt` (replace the placeholder if necessary).
-2. Review `src/rl_sar/policy/titati/base.yaml` and `src/rl_sar/policy/titati/robot_lab/config.yaml` for gains and joint mappings.
-3. Run the controller:
-
+5. **Launch the Titati RL controller on the master Jetson**
    ```bash
    ./cmake_build/bin/rl_real_titati
    ```
-
-   The process automatically loads the Titati configuration, switches the hardware into SDK mode, and starts streaming commands.  Use Ctrl+C to terminate safely.
-
-> [!TIP]
-> If you need ROS2 teleoperation on the master, rebuild without the `-m` flag (or pass `USE_ROS=ON` via CMake), then source `install/setup.bash` and remap `/cmd_vel` as required.
+   Ensure `policy/titati/robot_lab/policy.pt`, `policy/titati/robot_lab/config.yaml`, and `policy/titati/base.yaml` contain the desired parameters before starting.  Use `Ctrl+C` to stop the program; it will send zero torque and release SDK mode on exit.
 
 ### Gamepad and Keyboard Controls
 

@@ -107,52 +107,13 @@ sudo ldconfig
 
 ## 编译
 
-由于本项目支持多版本的ROS，需要针对不同版本创建一些软链接，项目根目录中提供了编译脚本供一键编译。
-
-在项目根目录中执行下面的脚本编译整个项目
+项目现完全使用 CMake 构建。进入仓库根目录后执行：
 
 ```bash
 ./build.sh
 ```
 
-若想单独编译某几个包，可以在后面加上包名
-
-```bash
-./build.sh package1 package2
-```
-
-若想删除构建，可以使用下列命令，此命令会删除所有编译产物和创建的软链接
-
-```bash
-./build.sh -c  # or ./build.sh --clean
-```
-
-如果不需要仿真，只在机器人上运行，可以使用CMake进行编译，同时禁用ROS（编译生成的可执行文件在`cmake_build/bin`中，库在`cmake_build/lib`中）
-
-```bash
-./build.sh -m  # or ./build.sh --cmake
-```
-
-详细的使用说明可以通过`./build.sh -h`查看
-
-```bash
-Usage: ./build.sh [OPTIONS] [PACKAGE_NAMES...]
-
-Options:
-  -c, --clean    Clean workspace (remove symlinks and build artifacts)
-  -m, --cmake    Build using CMake (for hardware deployment only)
-  -h, --help     Show this help message
-
-Examples:
-  ./build.sh                    # Build all ROS packages
-  ./build.sh package1 package2  # Build specific ROS packages
-  ./build.sh -c                 # Clean all symlinks and build artifacts
-  ./build.sh --clean package1   # Clean specific package and build artifacts
-  ./build.sh -m                 # Build with CMake for hardware deployment
-```
-
-> [!TIP]
-> 如果 catkin build 报错: `Unable to find either executable 'empy' or Python module 'em'`, 在`catkin build` 之前执行 `catkin config -DPYTHON_EXECUTABLE=/usr/bin/python3`
+脚本会在 `cmake_build/` 目录下生成 Titati 所需的全部库和可执行文件。若需要重新配置，可执行 `./build.sh -c` 清理构建目录。使用 `./build.sh -h` 可查看所有维护选项。
 
 ## 运行
 
@@ -231,44 +192,42 @@ git clone https://github.com/osrf/gazebo_models.git ~/.gazebo/models
 
 #### Titati 机器人部署流程
 
-- **从机 Jetson（后半身）首次构建 ROS2 帮助包**
+- **主、从机均执行一次编译**
   ```bash
-  cd rl_sar
-  source /opt/ros/humble/setup.bash
-  ./build.sh tita_system_interfaces titati_canfd_router
+  ./build.sh
   ```
-  上述命令会调用 `colcon build --packages-select tita_system_interfaces titati_canfd_router`，生成 `install/local_setup.bash` 以便后续启动 ROS2 节点。
+  生成的可执行文件位于 `cmake_build/bin/`（`rl_real_titati`、`titati_motor_test`、`titati_can_router`）。
 
-- **主从机均需编译硬件可执行文件**
+- **主从机均需开启 CAN 接口**
   ```bash
-  ./build.sh -m
+  sudo systemctl stop tita-bringup.service
+  sudo ip link set can0 down
+  sudo ip link set can0 up type can bitrate 1000000 sample-point 0.80 \
+       dbitrate 8000000 dsample-point 0.80 fd on restart-ms 100
+  sudo ifconfig can0 txqueuelen 1000
   ```
-  生成的程序位于 `cmake_build/bin/`（`rl_real_titati` 与 `titati_motor_test`）。
 
-- **从机 Jetson 启动 CAN-FD 路由器**
+- **从机 Jetson 启动 CAN 路由守护程序**
   ```bash
-  cd rl_sar
-  source /opt/ros/humble/setup.bash
-  source install/local_setup.bash
-  ros2 pkg executables titati_canfd_router   # 可选自检
-  ros2 run titati_canfd_router titati_canfd_router_node
+  ./cmake_build/bin/titati_can_router
   ```
-  保持该终端运行，用于将 CAN 路由盒持续置于强制直驱（FORCE_DIRECT）模式。
+  请保持该终端运行，用于监听 CAN-FD 心跳并自动发送强制直驱握手，使 MCU 持续处于 SDK 模式。
 
 - **主机 Jetson 进行电机联调与 RL 控制**
-  1. 通过 `cmake_build/bin/titati_motor_test` 读取 16 个电机的状态或单独下发力矩 / MIT 指令，确保每个电机均可正常响应：
+  1. 使用 `titati_motor_test` 检查 16 个电机：
      ```bash
      ./cmake_build/bin/titati_motor_test --read
      ./cmake_build/bin/titati_motor_test --monitor
      ./cmake_build/bin/titati_motor_test --mode torque --id 3 --tau 0.6 --duration 3.0
      ./cmake_build/bin/titati_motor_test --mode mit --id 7 --pos 0.0 --vel 0.0 --kp 20.0 --kd 1.0 --tau 0.2 --duration 2.0
      ```
-  2. 拷贝策略文件到 `src/rl_sar/policy/titati/robot_lab/policy.pt`，检查 `base.yaml` 与 `config.yaml`。
+     按需逐个电机验证，确保 16 个执行器均响应正常。
+  2. 将策略文件放置到 `src/rl_sar/policy/titati/robot_lab/policy.pt`，并核对 `base.yaml`、`config.yaml`。
   3. 启动 RL 控制：
      ```bash
      ./cmake_build/bin/rl_real_titati
      ```
-     按 `Ctrl+C` 退出时程序会自动将电机力矩归零。
+     程序结束时按 `Ctrl+C`，会自动归零力矩并退出 SDK 模式。
 
 <details>
 
