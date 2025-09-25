@@ -34,6 +34,10 @@ bool TitatiHardware::DisableDirectControl()
     return true;
   }
   direct_control_enabled_ = !robot_->set_motors_sdk(false);
+  if (router_)
+  {
+    router_->CancelForceDirectMode();
+  }
   return !direct_control_enabled_;
 }
 

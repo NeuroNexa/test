@@ -17,6 +17,7 @@
 
 #include <chrono>
 #include <cstring>
+#include <mutex>
 #include <sys/time.h>
 #include <thread>
 
@@ -30,6 +31,9 @@ constexpr uint32_t kRpcCommandId = 0x170U;
 constexpr uint16_t kSetReadyNext = 0x200U;
 constexpr uint32_t kForceDirect = 0x03U;
 constexpr uint32_t kResetReady = 0x00U;
+constexpr auto kHeartbeatTimeout = std::chrono::milliseconds(500);
+constexpr auto kMonitorInterval = std::chrono::milliseconds(100);
+constexpr auto kMinCommandInterval = std::chrono::milliseconds(200);
 }  // namespace
 
 CanfdRouter::CanfdRouter()
@@ -44,6 +48,12 @@ CanfdRouter::CanfdRouter()
     command_timeout_us_, command_id_offset_);
 
   RegisterFilter();
+  StartMonitorThread();
+}
+
+CanfdRouter::~CanfdRouter()
+{
+  StopMonitorThread();
 }
 
 void CanfdRouter::RegisterFilter()
@@ -56,7 +66,18 @@ void CanfdRouter::RegisterFilter()
 
 void CanfdRouter::RequestForceDirectMode()
 {
+  direct_control_requested_.store(true);
   request_force_direct_.store(true);
+}
+
+void CanfdRouter::CancelForceDirectMode()
+{
+  direct_control_requested_.store(false);
+  direct_mode_active_.store(false);
+  request_force_direct_.store(false);
+  last_heart_cnt_.store(0U);
+  last_heartbeat_time_us_.store(0);
+  last_command_time_us_.store(0);
 }
 
 void CanfdRouter::HandleBoardFrame(std::shared_ptr<struct canfd_frame> recv_frame)
@@ -68,6 +89,10 @@ void CanfdRouter::HandleBoardFrame(std::shared_ptr<struct canfd_frame> recv_fram
 
   std::memcpy(&mode_, recv_frame->data + 4, sizeof(mode_));
   std::memcpy(&heart_cnt_, recv_frame->data + 8, sizeof(heart_cnt_));
+  last_heart_cnt_.store(heart_cnt_);
+  const auto now = std::chrono::steady_clock::now();
+  const auto now_us = std::chrono::duration_cast<std::chrono::microseconds>(now.time_since_epoch()).count();
+  last_heartbeat_time_us_.store(now_us);
 
   if (!request_force_direct_.load())
   {
@@ -76,10 +101,12 @@ void CanfdRouter::HandleBoardFrame(std::shared_ptr<struct canfd_frame> recv_fram
 
   if (mode_ == 1U || mode_ == 2U)
   {
-    SendForceDirectCommand(kResetReady);
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    SendForceDirectCommand(kForceDirect);
+    {
+      std::lock_guard<std::mutex> lock(command_mutex_);
+      SendHandshakeSequence();
+    }
     request_force_direct_.store(false);
+    direct_mode_active_.store(true);
   }
 }
 
@@ -110,6 +137,96 @@ uint32_t CanfdRouter::GetCurrentTime() const
   struct timeval tv;
   gettimeofday(&tv, NULL);
   return static_cast<uint32_t>(tv.tv_sec * 1000000 + tv.tv_usec);
+}
+
+void CanfdRouter::SendHandshakeSequence()
+{
+  const auto now_us = std::chrono::duration_cast<std::chrono::microseconds>(
+    std::chrono::steady_clock::now().time_since_epoch()).count();
+  const auto last_sent_us = last_command_time_us_.load();
+  const auto min_interval_us = std::chrono::duration_cast<std::chrono::microseconds>(kMinCommandInterval).count();
+
+  if (last_sent_us != 0 && (now_us - last_sent_us) < min_interval_us)
+  {
+    return;
+  }
+
+  last_command_time_us_.store(now_us);
+  SendForceDirectCommand(kResetReady);
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  SendForceDirectCommand(kForceDirect);
+}
+
+void CanfdRouter::StartMonitorThread()
+{
+  running_.store(true);
+  monitor_thread_ = std::thread(&CanfdRouter::MonitorLoop, this);
+}
+
+void CanfdRouter::StopMonitorThread()
+{
+  running_.store(false);
+  if (monitor_thread_.joinable())
+  {
+    monitor_thread_.join();
+  }
+}
+
+void CanfdRouter::MonitorLoop()
+{
+  uint32_t previous_heart_cnt = 0U;
+  std::size_t stale_cycles = 0U;
+
+  while (running_.load())
+  {
+    std::this_thread::sleep_for(kMonitorInterval);
+
+    if (!direct_control_requested_.load())
+    {
+      direct_mode_active_.store(false);
+      stale_cycles = 0U;
+      previous_heart_cnt = last_heart_cnt_.load();
+      continue;
+    }
+
+    const auto now_us = std::chrono::duration_cast<std::chrono::microseconds>(
+      std::chrono::steady_clock::now().time_since_epoch()).count();
+    const auto last_us = last_heartbeat_time_us_.load();
+    const auto elapsed = now_us - last_us;
+
+    uint32_t current_heart_cnt = last_heart_cnt_.load();
+    if (current_heart_cnt == previous_heart_cnt)
+    {
+      ++stale_cycles;
+    }
+    else
+    {
+      stale_cycles = 0U;
+      previous_heart_cnt = current_heart_cnt;
+    }
+
+    const bool heartbeat_timed_out =
+      (last_us == 0) ? false : (elapsed > std::chrono::duration_cast<std::chrono::microseconds>(kHeartbeatTimeout).count());
+    const bool stale_heartbeat = stale_cycles >= 5U;
+
+    if (!direct_mode_active_.load())
+    {
+      if (heartbeat_timed_out || request_force_direct_.load())
+      {
+        std::lock_guard<std::mutex> lock(command_mutex_);
+        SendHandshakeSequence();
+      }
+      continue;
+    }
+
+    if (heartbeat_timed_out || stale_heartbeat)
+    {
+      direct_mode_active_.store(false);
+      request_force_direct_.store(true);
+      std::lock_guard<std::mutex> lock(command_mutex_);
+      SendHandshakeSequence();
+    }
+  }
 }
 
 }  // namespace titati

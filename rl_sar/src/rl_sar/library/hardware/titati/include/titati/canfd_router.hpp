@@ -20,7 +20,9 @@
 #include <atomic>
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <string>
+#include <thread>
 
 #include "protocol/can_utils.hpp"
 
@@ -31,18 +33,31 @@ class CanfdRouter
 {
 public:
   CanfdRouter();
-  ~CanfdRouter() = default;
+  ~CanfdRouter();
 
   /// @brief Request the MCU to switch into ForceDirect (SDK) mode.
   void RequestForceDirectMode();
+
+  /// @brief Cancel previously requested direct control mode.
+  void CancelForceDirectMode();
 
 private:
   void RegisterFilter();
   void HandleBoardFrame(std::shared_ptr<struct canfd_frame> recv_frame);
   void SendForceDirectCommand(uint32_t value);
+  void SendHandshakeSequence();
   uint32_t GetCurrentTime() const;
+  void StartMonitorThread();
+  void StopMonitorThread();
+  void MonitorLoop();
 
   std::atomic<bool> request_force_direct_{false};
+  std::atomic<bool> direct_control_requested_{false};
+  std::atomic<bool> direct_mode_active_{false};
+  std::atomic<uint32_t> last_heart_cnt_{0};
+  std::atomic<int64_t> last_heartbeat_time_us_{0};
+  std::atomic<int64_t> last_command_time_us_{0};
+  std::atomic<bool> running_{true};
 
   std::string router_interface_{"can0"};
   std::string router_name_{"titati_canfd"};
@@ -57,6 +72,8 @@ private:
   uint8_t command_id_offset_{0x00U};
   bool command_extended_frame_{false};
   bool command_fd_mode_{true};
+  std::mutex command_mutex_;
+  std::thread monitor_thread_;
 
   std::shared_ptr<can_device::socket_can::CanDev> router_dev_;
   std::shared_ptr<can_device::socket_can::CanDev> command_dev_;
