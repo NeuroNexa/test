@@ -407,15 +407,18 @@ cd <rl_sar_root>
 
 #### 5. 发送策略或速度指令
 
-在负责下发速度或策略的设备上加载工作空间，然后运行 rl_sar 的策略封装：
+在负责下发速度或策略的设备上加载工作空间，然后运行新的实机控制节点：
 
 ```bash
 source install/setup.bash
-ros2 run rl_sar rl_sim --ros-args -p robot_name:=titati
+ros2 run rl_sar rl_real_titati \
+  --ros-args -r /cmd_vel:=/titati/command/manager/cmd_twist
 ```
 
-也可以直接向 `tita_bringup` 中定义的接口发布 `geometry_msgs`，或继续使用已有的 `teleop_command`、`joy_controller` 等遥控程序。
-再次运行电机测试前，请先退出所有控制节点，确保同一时间只有一个程序向执行器发指令。
+该节点会通过 CAN-FD 与两台 Titati 基座通信，将 MCU 切换到 SDK 模式，并保持 rl_sar 策略闭环控制。若需要从其它话题发送速度
+指令，可将 `cmd_vel` 重映射到对应名称。也可以直接向 `tita_bringup` 中定义的接口发布 `geometry_msgs`，或继续使用已有的
+`teleop_command`、`joy_controller` 等遥控程序。再次运行电机测试前，请先退出所有控制节点，确保同一时间只有一个程序向执行器
+发指令。
 
 </details>
 

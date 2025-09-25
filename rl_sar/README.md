@@ -411,16 +411,19 @@ to confirm that the namespace (default `/titati`) exposes topics such as `comman
 #### 5. Send locomotion commands or policies
 
 Source the workspace on the machine that will stream velocity commands (this can be the master Jetson or an external operator
-PC connected over the network) and run the rl_sar policy wrapper:
+PC connected over the network) and launch the dedicated real-robot runner:
 
 ```bash
 source install/setup.bash
-ros2 run rl_sar rl_sim --ros-args -p robot_name:=titati
+ros2 run rl_sar rl_real_titati \
+  --ros-args -r /cmd_vel:=/titati/command/manager/cmd_twist
 ```
 
-You can also publish geometry messages directly to the controller interfaces defined in `tita_bringup` or use the existing
-`teleop_command` and `joy_controller` nodes for manual driving. Always exit any running ROS nodes before re-running the motor
-test so that only one process commands the actuators at a time.
+The node connects to both Titati bases over CAN-FD, switches them into SDK mode, and keeps the rl_sar policy in the loop. If
+you prefer to send velocity commands from another topic, remap `cmd_vel` accordingly. You can also publish geometry messages
+directly to the controller interfaces defined in `tita_bringup` or use the existing `teleop_command` and `joy_controller`
+nodes for manual driving. Always exit any running ROS nodes before re-running the motor test so that only one process commands
+the actuators at a time.
 
 </details>
 

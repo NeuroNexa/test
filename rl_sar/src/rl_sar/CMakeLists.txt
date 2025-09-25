@@ -67,6 +67,7 @@ if(NOT USE_CMAKE)
         find_package(gazebo_msgs REQUIRED)
         find_package(std_srvs REQUIRED)
         find_package(geometry_msgs REQUIRED)
+        find_package(tita_robot REQUIRED)
         ament_package()
     endif()
     add_compile_options(${GAZEBO_CXX_FLAGS})
@@ -159,7 +160,7 @@ include_directories(
 
 add_library(rl_sdk library/core/rl_sdk/rl_sdk.cpp)
 set_target_properties(rl_sdk PROPERTIES
-    CXX_STANDARD 14
+    CXX_STANDARD 17
     CXX_STANDARD_REQUIRED ON
 )
 target_link_libraries(rl_sdk PUBLIC
@@ -183,7 +184,7 @@ endif()
 add_library(observation_buffer library/core/observation_buffer/observation_buffer.cpp)
 target_link_libraries(observation_buffer PUBLIC "${TORCH_LIBRARIES}")
 set_target_properties(observation_buffer PROPERTIES
-    CXX_STANDARD 14
+    CXX_STANDARD 17
     CXX_STANDARD_REQUIRED ON
 )
 if(NOT USE_CMAKE)
@@ -318,6 +319,24 @@ if(NOT USE_CMAKE)
             geometry_msgs
         )
         install(TARGETS rl_real_l4w4 DESTINATION lib/${PROJECT_NAME})
+    endif()
+endif()
+
+if(NOT USE_CMAKE)
+    if($ENV{ROS_DISTRO} MATCHES "foxy|humble")
+        add_executable(rl_real_titati src/rl_real_titati.cpp)
+        target_link_libraries(rl_real_titati
+            tita_robot
+            rl_sdk
+            observation_buffer
+            yaml-cpp
+        )
+        add_dependencies(rl_real_titati tita_robot)
+        ament_target_dependencies(rl_real_titati
+            rclcpp
+            geometry_msgs
+        )
+        install(TARGETS rl_real_titati DESTINATION lib/${PROJECT_NAME})
     endif()
 endif()
 
