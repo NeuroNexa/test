@@ -78,6 +78,11 @@ public:
 class CanId
 {
 public:
+  CanId() noexcept
+  : m_canid{0U}, m_length{0U}
+  {
+  }
+
   explicit CanId(const SocketCanId & id)
   : CanId(id.get())
   {
@@ -152,6 +157,4 @@ protected:
 
 }  // namespace socket_can
 }  // namespace can_device
-
-#endif
 

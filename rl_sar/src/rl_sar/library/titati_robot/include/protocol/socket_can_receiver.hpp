@@ -19,6 +19,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <cerrno>
 #include <chrono>
 #include <cstring>
 #include <memory>
@@ -75,7 +76,7 @@ public:
     if (receive_id.frame_type() == can_device::socket_can::FrameType::DATA)
     {
       rx_frame->can_id = receive_id.standard().get();
-      rx_frame->can_id = receive_id.length();
+      rx_frame->can_dlc = receive_id.length();
       std::memcpy(rx_frame->data, frame.data, sizeof(rx_frame->data));
       return true;
     }
@@ -155,6 +156,4 @@ private:
 };  // class SocketCanReceiver
 }  // namespace socket_can
 }  // namespace can_device
-
-#endif  // POWER_CONTROLLER__UTILS__PROTOCOL__SOCKET_CAN_RECEIVER_HPP_
 

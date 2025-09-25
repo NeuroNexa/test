@@ -19,10 +19,13 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <cerrno>
 #include <chrono>
+#include <cstdio>
 #include <cstring>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 
 #include "socket_can_common.hpp"
 #include "socket_can_id.hpp"
@@ -35,6 +38,8 @@ namespace socket_can
 class SOCKETCAN_PUBLIC SocketCanSender
 {
 public:
+  static constexpr std::size_t MAX_DATA_LENGTH = CANFD_MAX_DLEN;
+
   explicit SocketCanSender(
     const std::string & interface = "can0", bool canfd_on = false,
     const CanId & default_id = CanId{})
@@ -98,6 +103,25 @@ public:
 
   CanId default_id() const noexcept { return m_default_id; }
 
+  SOCKETCAN_LOCAL void wait(const std::chrono::nanoseconds timeout) const
+  {
+    if (decltype(timeout)::zero() < timeout)
+    {
+      auto c_timeout = to_timeval(timeout);
+      auto write_set = single_set(fd_);
+
+      if (0 == select(fd_ + 1, NULL, &write_set, NULL, &c_timeout))
+      {
+        throw SocketCanTimeout{"$CAN Send Timeout [1]"};
+      }
+
+      if (!FD_ISSET(fd_, &write_set))
+      {
+        throw SocketCanTimeout{"$CAN Send Timeout [2]"};
+      }
+    }
+  }
+
 private:
   void send_impl(
     const void * const data, const std::size_t length, const CanId id,
@@ -136,30 +160,9 @@ private:
     }
   }
 
-  SOCKETCAN_LOCAL void wait(const std::chrono::nanoseconds timeout) const
-  {
-    if (decltype(timeout)::zero() < timeout)
-    {
-      auto c_timeout = to_timeval(timeout);
-      auto write_set = single_set(fd_);
-
-      if (0 == select(fd_ + 1, NULL, &write_set, NULL, &c_timeout))
-      {
-        throw SocketCanTimeout{"$CAN Send Timeout [1]"};
-      }
-
-      if (!FD_ISSET(fd_, &write_set))
-      {
-        throw SocketCanTimeout{"$CAN Send Timeout [2]"};
-      }
-    }
-  }
-
   int32_t fd_;
   CanId m_default_id;
 };
 }  // namespace socket_can
 }  // namespace can_device
-
-#endif  // POWER_CONTROLLER__UTILS__PROTOCOL__SOCKET_CAN_SENDER_HPP_
 

@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cstring>
+#include <functional>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -89,7 +90,6 @@ private:
 #define CAN_MASK_AS_MOTORS_INFO (0x7E0U)
   std::string motors_can_interface = "can0";
   std::string motors_can_name = "motors_can";
-  bool motors_can_extended_frame = false;
   bool motors_can_rx_is_block = false;
   int64_t motors_timeout_us = MAX_TIME_OUT_US;
   uint8_t motors_can_id_offset = 0x00U;
@@ -98,10 +98,10 @@ private:
   can_device::socket_can::can_fd_callback motors_can_receive_callback =
     std::bind(&MotorsImuCanReceiveApi::board_can_data_callback, this, std::placeholders::_1);
 
-  std::shared_ptr<can_device::socket_can::CanDev> motors_can_receive_api =
-    std::make_shared<can_device::socket_can::CanDev>(
-      motors_can_interface, motors_can_name, motors_can_extended_frame, motors_can_receive_callback,
-      motors_can_rx_is_block, motors_timeout_us, motors_can_id_offset);
+  std::shared_ptr<can_device::socket_can::CanRxDev> motors_can_receive_api =
+    std::make_shared<can_device::socket_can::CanRxDev>(
+      motors_can_interface, motors_can_name, motors_can_receive_callback, motors_can_rx_is_block,
+      motors_timeout_us, motors_can_id_offset);
 
   void board_can_data_callback(std::shared_ptr<struct canfd_frame> recv_frame);
   void motors_data_callback(std::shared_ptr<struct canfd_frame> recv_frame);

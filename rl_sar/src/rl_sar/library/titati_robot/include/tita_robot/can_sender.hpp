@@ -98,18 +98,15 @@ public:
   bool send_command_can_rpc_request(RpcRequest data);
 
 private:
-#define MIN_TIME_OUT_US 1'000L     // 1ms
-#define MAX_TIME_OUT_US 3'000'000L // 3s
   std::string can_interface = "can0";
   std::string can_name = "motors_can_send";
-  int64_t timeout_us = MAX_TIME_OUT_US;
   uint8_t can_id_offset = 0x00U;
   bool can_extended_frame = false;
   bool can_fd_mode = true;
 
-  std::shared_ptr<can_device::socket_can::CanDev> can_send_api_ =
-    std::make_shared<can_device::socket_can::CanDev>(
-      can_interface, can_name, can_extended_frame, can_fd_mode, timeout_us, can_id_offset);
+  std::shared_ptr<can_device::socket_can::CanTxDev> can_send_api_ =
+    std::make_shared<can_device::socket_can::CanTxDev>(
+      can_interface, can_name, can_fd_mode, can_extended_frame, true, false, can_id_offset);
 
   inline uint32_t get_current_time()
   {
