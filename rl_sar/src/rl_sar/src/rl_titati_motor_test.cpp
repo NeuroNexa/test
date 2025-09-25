@@ -10,9 +10,10 @@
 #include <cstddef>
 #include <cctype>
 #include <exception>
-#include <stdexcept>
 #include <iomanip>
 #include <iostream>
+#include <sstream>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
@@ -237,7 +238,8 @@ MotorTestConfig load_motor_config(const std::string &path)
 bool enable_sdk_with_retry(tita_robot &robot,
                            int motor_count,
                            const std::vector<double> &kp,
-                           const std::vector<double> &kd)
+                           const std::vector<double> &kd,
+                           bool use_router)
 {
     std::vector<double> dq(motor_count, 0.0);
     std::vector<double> tau(motor_count, 0.0);
@@ -247,6 +249,12 @@ bool enable_sdk_with_retry(tita_robot &robot,
     {
         if (robot.set_motors_sdk(true))
         {
+            if (use_router)
+            {
+                std::cout << LOG_INFO
+                          << "Requesting CAN-FD router FORCE_DIRECT handshake after enabling SDK control." << std::endl;
+                robot.request_router_force_direct();
+            }
             auto q = robot.get_joint_q();
             if (static_cast<int>(q.size()) != motor_count)
             {
@@ -322,6 +330,43 @@ struct MotorScope
 };
 
 } // namespace
+
+void print_all_motor_feedback(const MotorTestConfig &config,
+                              const std::vector<double> &q,
+                              const std::vector<double> &dq,
+                              const std::vector<double> &tau,
+                              const std::vector<uint8_t> &status,
+                              int active_motor)
+{
+    std::cout << std::setfill(' ');
+    std::cout << LOG_INFO
+              << "  * idx | joint_name       |     q(rad) |   dq(rad/s) |    tau(Nm) | status" << std::endl;
+
+    for (int idx = 0; idx < config.num_dofs; ++idx)
+    {
+        const auto hw_index = static_cast<std::size_t>(idx);
+        const double q_val = hw_index < q.size() ? q[hw_index] : 0.0;
+        const double dq_val = hw_index < dq.size() ? dq[hw_index] : 0.0;
+        const double tau_val = hw_index < tau.size() ? tau[hw_index] : 0.0;
+
+        std::string status_str = "-";
+        if (hw_index < status.size())
+        {
+            std::ostringstream status_stream;
+            status_stream << "0x" << std::uppercase << std::hex << std::setw(2) << std::setfill('0')
+                          << static_cast<int>(status[hw_index]);
+            status_str = status_stream.str();
+        }
+
+        std::cout << LOG_INFO << "  " << (idx == active_motor ? '*' : ' ') << ' '
+                  << std::setw(2) << idx << " | ";
+        std::cout << std::left << std::setw(18) << config.joint_names_hw[hw_index] << std::right;
+        std::cout << " | " << std::setw(11) << q_val
+                  << " | " << std::setw(12) << dq_val
+                  << " | " << std::setw(11) << tau_val
+                  << " | " << std::setw(6) << status_str << std::setfill(' ') << std::endl;
+    }
+}
 
 int main(int argc, char **argv)
 {
@@ -407,7 +452,20 @@ int main(int argc, char **argv)
     tita_robot robot(static_cast<std::size_t>(config.num_dofs), options.interface, use_router);
     MotorScope guard{&robot, config.num_dofs, &config.fixed_kp_hw, &config.fixed_kd_hw};
 
-    if (!enable_sdk_with_retry(robot, config.num_dofs, config.fixed_kp_hw, config.fixed_kd_hw))
+    if (use_router && !robot.has_canfd_router())
+    {
+        std::cout << LOG_WARNING
+                  << "CAN-FD router handshake requested but the bridge is unavailable; proceeding without router support." << std::endl;
+    }
+
+    if (robot.has_canfd_router())
+    {
+        robot.set_router_status_callback([](const std::string &message) {
+            std::cout << LOG_INFO << message << std::endl;
+        });
+    }
+
+    if (!enable_sdk_with_retry(robot, config.num_dofs, config.fixed_kp_hw, config.fixed_kd_hw, use_router))
     {
         std::cerr << LOG_ERROR << "Cannot continue without SDK control." << std::endl;
         return 1;
@@ -492,6 +550,7 @@ int main(int argc, char **argv)
                 auto q_feedback = robot.get_joint_q();
                 auto dq_feedback = robot.get_joint_v();
                 auto tau_feedback = robot.get_joint_t();
+                auto status_feedback = robot.get_joint_status();
                 if (static_cast<int>(q_feedback.size()) != config.num_dofs)
                 {
                     q_feedback.resize(static_cast<std::size_t>(config.num_dofs), 0.0);
@@ -504,10 +563,7 @@ int main(int argc, char **argv)
                 {
                     tau_feedback.resize(static_cast<std::size_t>(config.num_dofs), 0.0);
                 }
-
-                std::cout << LOG_INFO << "  feedback q=" << q_feedback[static_cast<std::size_t>(hw_index)]
-                          << " rad, dq=" << dq_feedback[static_cast<std::size_t>(hw_index)]
-                          << " rad/s, tau=" << tau_feedback[static_cast<std::size_t>(hw_index)] << " Nm" << std::endl;
+                print_all_motor_feedback(config, q_feedback, dq_feedback, tau_feedback, status_feedback, hw_index);
                 next_log = now + log_interval;
             }
 

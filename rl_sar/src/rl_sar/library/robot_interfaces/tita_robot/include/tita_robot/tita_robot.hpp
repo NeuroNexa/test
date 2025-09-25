@@ -1,6 +1,9 @@
 #include "can_receiver.hpp"
 #include "can_sender.hpp"
 
+#include <functional>
+#include <string>
+
 namespace can_device
 {
     class CanfdRouterBridge;
@@ -146,6 +149,21 @@ public:
      * @return return true if the target is set successfully
      */
     bool set_robot_stop();
+
+    /**
+     * @brief Query whether a CAN-FD router bridge is active for this robot.
+     */
+    bool has_canfd_router() const;
+
+    /**
+     * @brief Request the CAN-FD router to enter FORCE_DIRECT mode.
+     */
+    void request_router_force_direct();
+
+    /**
+     * @brief Register a callback to receive CAN-FD router status updates.
+     */
+    void set_router_status_callback(std::function<void(const std::string &)> callback);
 private:
     std::unique_ptr<can_device::MotorsImuCanReceiveApi> can_receiver_;
     std::unique_ptr<can_device::MotorsCanSendApi> can_sender_;

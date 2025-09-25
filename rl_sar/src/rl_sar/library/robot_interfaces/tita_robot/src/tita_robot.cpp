@@ -2,6 +2,7 @@
 #include "tita_robot/canfd_router_bridge.hpp"
 
 #include <iostream>
+#include <utility>
 
 tita_robot::tita_robot(size_t num_motors,
                        const std::string &can_interface,
@@ -196,4 +197,25 @@ bool tita_robot::set_robot_stop()
   rpc_request.key = can_device::SET_JUMP;
   return_ok &= can_sender_->send_command_can_rpc_request(rpc_request);
   return true;
+}
+
+bool tita_robot::has_canfd_router() const
+{
+  return static_cast<bool>(can_router_);
+}
+
+void tita_robot::request_router_force_direct()
+{
+  if (can_router_)
+  {
+    can_router_->request_force_direct();
+  }
+}
+
+void tita_robot::set_router_status_callback(std::function<void(const std::string &)> callback)
+{
+  if (can_router_)
+  {
+    can_router_->set_status_callback(std::move(callback));
+  }
 }
