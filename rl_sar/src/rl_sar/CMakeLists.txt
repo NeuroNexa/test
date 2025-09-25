@@ -356,6 +356,16 @@ if(NOT USE_CMAKE)
     endif()
 endif()
 
+add_executable(rl_titati_router src/rl_titati_router.cpp)
+target_link_libraries(rl_titati_router
+    tita_robot_sdk
+)
+if(NOT USE_CMAKE)
+    if($ENV{ROS_DISTRO} MATCHES "foxy|humble")
+        install(TARGETS rl_titati_router DESTINATION lib/${PROJECT_NAME})
+    endif()
+endif()
+
 if(NOT USE_CMAKE)
     if($ENV{ROS_DISTRO} MATCHES "noetic")
         catkin_install_python(PROGRAMS

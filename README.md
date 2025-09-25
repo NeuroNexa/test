@@ -20,7 +20,16 @@
    sudo ifconfig can0 txqueuelen 1000
    ```
    或执行 `titati_control/src/can_setup_8m_master.sh` 一键设置（脚本仅负责网络参数，`rl_sar` 不再依赖其它 `titati_control` 组件）。
-   `tita_robot_sdk` 内置的 CAN-FD 路由桥会在切换到 SDK 模式时自动向主从机下发 `FORCE_DIRECT`，无需再启动 ROS 节点维持主从通信。
+   对于运行 `rl_real_titati` 的主控 Jetson，`tita_robot_sdk` 内置的 CAN-FD 路由桥会在切换到 SDK 模式时自动监听路由心跳并下发
+   `READY_WAITING/ FORCE_DIRECT` 序列，保证主控端直接接管全部 16 个电机。
+   串联结构仍需要从机 Jetson 保持与路由器的握手，此时可使用新的守护程序 `rl_titati_router` 取代原来的 ROS 节点：
+
+   ```bash
+   cd rl_sar
+   ./cmake_build/bin/rl_titati_router --interface can0
+   ```
+
+   该工具会自动在检测到主从模式变化或路由复位时重发握手指令，确保主从机之间的 CAN 通道持续打通。
 3. **第三方依赖**：
    - [libtorch 2.0.1 cxx11 ABI](https://download.pytorch.org/libtorch/cpu/libtorch-cxx11-abi-shared-with-deps-2.0.1%2Bcpu.zip)，并通过 `export Torch_DIR=<PATH>/libtorch` 指向其根目录。
    - `yaml-cpp` 与 `lcm`：`sudo apt install libyaml-cpp-dev liblcm-dev`。
@@ -99,5 +108,7 @@ ros2 run rl_sar rl_real_titati
 - 若 `rl_real_titati` 启动报错 `TORCH` 未找到，请检查 `Torch_DIR` 环境变量是否指向正确目录。
 - 若 CAN 报错 `Interface does not support CAN FD`，请确认网卡驱动支持 CAN FD，并按脚本重新设置。
 - 可通过定义 `PLOT` 或 `CSV_LOGGER`（`rl_real_titati.hpp` 顶部）开启实时曲线或数据记录，便于排查策略输出与硬件反馈的差异。
+- 若怀疑主从机握手异常，可观察主控上的 `rl_real_titati` 与从控上的 `rl_titati_router` 日志：程序会在检测到路由模式变化或重发
+  `FORCE_DIRECT` 时打印提示，便于确认 CAN-FD 路由是否保持连通。
 
 按照以上流程完成准备后，即可使用 `rl_sar` 中的强化学习策略对 Titati 四轮足进行实时控制，实现从 `titati_control` 向 RL 框架的平滑迁移。

@@ -3,6 +3,8 @@
 #include <chrono>
 #include <cstring>
 #include <iostream>
+#include <limits>
+#include <sstream>
 #include <thread>
 #include <utility>
 
@@ -21,14 +23,20 @@ constexpr int64_t MAX_TIME_OUT_US = 3'000'000L;
 }  // namespace
 
 CanfdRouterBridge::CanfdRouterBridge(const std::string &can_interface,
-                                     uint8_t can_id_offset)
+                                     uint8_t can_id_offset,
+                                     bool auto_retry)
   : can_interface_(can_interface),
     can_name_("canfd_router"),
     can_extended_frame_(false),
     can_rx_block_(false),
     timeout_us_(MAX_TIME_OUT_US),
     can_id_offset_(can_id_offset),
-    pending_force_direct_(false)
+    pending_force_direct_(true),
+    force_direct_latched_(false),
+    last_router_mode_(std::numeric_limits<uint32_t>::max()),
+    auto_retry_(auto_retry),
+    last_force_direct_request_(std::chrono::steady_clock::time_point::min()),
+    min_retry_interval_(std::chrono::milliseconds(200))
 {
   using namespace std::placeholders;
   router_can_ = std::make_shared<can_device::socket_can::CanDev>(
@@ -45,6 +53,21 @@ CanfdRouterBridge::CanfdRouterBridge(const std::string &can_interface,
 void CanfdRouterBridge::request_force_direct()
 {
   pending_force_direct_.store(true);
+  force_direct_latched_.store(false);
+}
+
+void CanfdRouterBridge::set_auto_retry(bool enable)
+{
+  auto_retry_ = enable;
+  if (auto_retry_ && !force_direct_latched_.load())
+  {
+    pending_force_direct_.store(true);
+  }
+}
+
+void CanfdRouterBridge::set_status_callback(std::function<void(const std::string &)> callback)
+{
+  status_callback_ = std::move(callback);
 }
 
 void CanfdRouterBridge::register_canfd_router_device_can_filter()
@@ -65,20 +88,69 @@ void CanfdRouterBridge::handle_router_frame(std::shared_ptr<struct canfd_frame> 
     return;
   }
 
-  if (!pending_force_direct_.load())
-  {
-    return;
-  }
-
   uint32_t mode = 0U;
   std::memcpy(&mode, recv_frame->data + 4, sizeof(mode));
-  if (mode != 1U && mode != 2U)
+
+  uint32_t heartbeat = 0U;
+  std::memcpy(&heartbeat, recv_frame->data + 8, sizeof(heartbeat));
+
+  const uint32_t previous_mode = last_router_mode_.exchange(mode);
+  if (previous_mode != mode)
+  {
+    std::ostringstream oss;
+    oss << "[CanfdRouterBridge] Router mode changed from 0x"
+        << std::hex << previous_mode << " to 0x" << mode
+        << std::dec << ", heartbeat=" << heartbeat;
+    emit_status(oss.str());
+  }
+
+  if (mode == RPC_VALUE_FORCE_DIRECT)
+  {
+    if (!force_direct_latched_.exchange(true))
+    {
+      emit_status("[CanfdRouterBridge] Router entered FORCE_DIRECT mode.");
+    }
+    pending_force_direct_.store(false);
+    return;
+  }
+
+  force_direct_latched_.store(false);
+
+  const bool handshake_window = (mode == 1U || mode == 2U || mode == RPC_VALUE_READY_WAITING);
+  if (!handshake_window)
+  {
+    if (auto_retry_ && mode != previous_mode)
+    {
+      pending_force_direct_.store(true);
+    }
+    return;
+  }
+
+  bool should_request = pending_force_direct_.exchange(false);
+  if (!should_request && auto_retry_)
+  {
+    if (mode != previous_mode || mode == RPC_VALUE_READY_WAITING)
+    {
+      should_request = true;
+    }
+    else
+    {
+      const auto now = std::chrono::steady_clock::now();
+      if (now - last_force_direct_request_ >= min_retry_interval_)
+      {
+        should_request = true;
+      }
+    }
+  }
+
+  if (!should_request)
   {
     return;
   }
 
+  last_force_direct_request_ = std::chrono::steady_clock::now();
+  emit_status("[CanfdRouterBridge] Requesting FORCE_DIRECT handshake...");
   send_force_direct_sequence();
-  pending_force_direct_.store(false);
 }
 
 void CanfdRouterBridge::send_force_direct_sequence()
@@ -109,7 +181,7 @@ void CanfdRouterBridge::send_force_direct_sequence()
   }
   catch (const std::exception &ex)
   {
-    std::cerr << "[CanfdRouterBridge] Failed to request READY_WAITING: " << ex.what() << std::endl;
+    emit_status(std::string("[CanfdRouterBridge] Failed to request READY_WAITING: ") + ex.what());
     return;
   }
 
@@ -127,7 +199,7 @@ void CanfdRouterBridge::send_force_direct_sequence()
   }
   catch (const std::exception &ex)
   {
-    std::cerr << "[CanfdRouterBridge] Failed to request FORCE_DIRECT: " << ex.what() << std::endl;
+    emit_status(std::string("[CanfdRouterBridge] Failed to request FORCE_DIRECT: ") + ex.what());
   }
 }
 
@@ -136,6 +208,18 @@ uint32_t CanfdRouterBridge::get_current_time() const
   struct timeval tv;
   gettimeofday(&tv, NULL);
   return static_cast<uint32_t>(tv.tv_sec * 1000000 + tv.tv_usec);
+}
+
+void CanfdRouterBridge::emit_status(const std::string &message)
+{
+  if (status_callback_)
+  {
+    status_callback_(message);
+  }
+  else
+  {
+    std::cout << message << std::endl;
+  }
 }
 
 }  // namespace can_device
