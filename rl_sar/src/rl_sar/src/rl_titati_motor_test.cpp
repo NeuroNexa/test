@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <cctype>
 #include <exception>
+#include <filesystem>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
@@ -17,6 +18,7 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <cstdlib>
 
 namespace
 {
@@ -196,12 +198,56 @@ struct MotorTestConfig
     std::string can_interface = "can0";
 };
 
+std::string resolve_config_path(const std::string &input)
+{
+    namespace fs = std::filesystem;
+
+    const fs::path requested(input);
+    if (requested.is_absolute())
+    {
+        if (fs::exists(requested))
+        {
+            return requested.lexically_normal().string();
+        }
+        throw std::runtime_error("bad file: " + requested.string());
+    }
+
+    std::vector<fs::path> candidates;
+    candidates.emplace_back(fs::current_path() / requested);
+
+    if (const char *config_dir = std::getenv("RL_SAR_CONFIG_DIR"))
+    {
+        candidates.emplace_back(fs::path(config_dir) / requested);
+    }
+
+    candidates.emplace_back(fs::path(CMAKE_CURRENT_SOURCE_DIR) / requested);
+
+    for (const auto &candidate : candidates)
+    {
+        std::error_code ec;
+        if (fs::exists(candidate, ec) && !fs::is_directory(candidate, ec))
+        {
+            return candidate.lexically_normal().string();
+        }
+    }
+
+    std::ostringstream oss;
+    oss << "bad file: " << input << " (searched:";
+    for (const auto &candidate : candidates)
+    {
+        oss << " " << candidate.string();
+    }
+    oss << ")";
+    throw std::runtime_error(oss.str());
+}
+
 MotorTestConfig load_motor_config(const std::string &path)
 {
-    YAML::Node root = YAML::LoadFile(path);
+    const std::string resolved = resolve_config_path(path);
+    YAML::Node root = YAML::LoadFile(resolved);
     if (!root["titati"])
     {
-        throw std::runtime_error("Missing 'titati' namespace in config: " + path);
+        throw std::runtime_error("Missing 'titati' namespace in config: " + resolved);
     }
 
     YAML::Node node = root["titati"];

@@ -79,6 +79,7 @@ sudo ifconfig can0 txqueuelen 1000
    生成的 `cmake_build/` 将包含 `rl_real_titati`、`rl_titati_router`、`rl_titati_motor_test` 等可执行文件。
    - CMake 会在未发现 Unitree/Lite3 依赖时自动启用 `BUILD_TITATI_ONLY=ON`，仅编译 Titati 所需目标。
    - 若未来需要同时构建其它机器人的可执行文件，可手动传入 `-DBUILD_TITATI_ONLY=OFF` 并确保相关 SDK 就绪。
+   - 可执行文件会在运行时自动解析 `rl_sar/src/rl_sar/policy`，无需切换工作目录；如需自定义配置路径，可使用 `--config` 或设置 `RL_SAR_CONFIG_DIR`。
 3. **ROS 工作区（可选）**：如需 `ros2 run rl_sar rl_real_titati`，执行：
    ```bash
    ./build.sh --ros rl_sar
@@ -111,7 +112,7 @@ sudo ifconfig can0 txqueuelen 1000
    ./cmake_build/bin/rl_titati_router --interface can0
    ```
    - 该守护程序会持续监听路由心跳，一旦检测到模式回落会立即重发 `READY_WAITING/ FORCE_DIRECT` 序列。
-   - 程序输出会记录当前路由模式及是否成功切换到 FORCE_DIRECT，方便排查链路状态。
+   - 程序输出会记录当前路由模式及是否成功切换到 FORCE_DIRECT，稍后主控上线时应看到 `Router entered FORCE_DIRECT mode.` 的提示；若迟迟未出现，请核对 CAN 线束与速率设置。
 
 2. **主控 Jetson**（确保从控已在运行）：
    ```bash
@@ -151,7 +152,7 @@ cd rl_sar
 ./cmake_build/bin/rl_titati_motor_test --mode torque --amplitude 2.0 --hold 0.3
 ```
 
-程序会按 `joint_mapping` 顺序依次测试每个电机，并打印实时的位置、速度、力矩与电机状态。当检测不到 CAN-FD 路由时会提示警告；退出或测试完成后自动切回 MCU 控制。
+程序会按 `joint_mapping` 顺序依次测试每个电机，并打印实时的位置、速度、力矩与电机状态。当检测不到 CAN-FD 路由时会提示警告；退出或测试完成后自动切回 MCU 控制。默认配置会自动从源码目录读取 `policy/titati/base.yaml`，无需修改当前工作目录；如需调试其它参数，可显式传入 `--config` 或设置 `RL_SAR_CONFIG_DIR=/path/to/policy`。
 
 ---
 
