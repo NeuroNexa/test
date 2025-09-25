@@ -4,7 +4,7 @@
 
 #include "rl_real_titati.hpp"
 
-#include "policy/titati/fsm.hpp"
+#include "titati/fsm.hpp"
 
 #include <algorithm>
 #include <cmath>
