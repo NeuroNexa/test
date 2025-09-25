@@ -21,6 +21,7 @@
 #include <memory>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include "linux/can.h"
 #include "linux/can/error.h"
@@ -66,7 +67,7 @@ public:
   {
     ready_ = false;
     isthreadrunning_ = false;
-    if (main_T_ != nullptr) {
+    if (main_T_ != nullptr && main_T_->joinable()) {
       main_T_->join();
     }
     main_T_ = nullptr;
@@ -77,9 +78,12 @@ public:
   bool is_timeout() { return is_timeout_; }
   void set_filter(const struct can_filter filter[], size_t s)
   {
-    if (receiver_ != nullptr) {
-      receiver_->set_filter(filter, s);
+    filters_.clear();
+    if (filter != nullptr && s >= sizeof(struct can_filter)) {
+      auto count = s / sizeof(struct can_filter);
+      filters_.assign(filter, filter + count);
     }
+    reapply_filters();
   }
 
   std::shared_ptr<canfd_frame> wait_for_can_data_block()
@@ -92,6 +96,9 @@ public:
     } else {
       can_type = "STD";
       rx_std_frame_ = std::make_shared<struct can_frame>();
+    }
+    if (!ensure_receiver_ready()) {
+      return nullptr;
     }
     if (receiver_ != nullptr) {
       try {
@@ -109,6 +116,8 @@ public:
           is_timeout_ = true;
           return nullptr;
         }
+        ready_ = false;
+        receiver_ = nullptr;
       }
     } else {
       isthreadrunning_ = false;
@@ -155,6 +164,9 @@ private:
   std::shared_ptr<struct can_frame> rx_std_frame_;
   std::shared_ptr<struct canfd_frame> rx_fd_frame_;
   std::unique_ptr<can_device::socket_can::SocketCanReceiver> receiver_;
+  std::vector<struct can_filter> filters_;
+  std::chrono::steady_clock::time_point last_reconnect_attempt_{};
+  const std::chrono::milliseconds reconnect_backoff_{200};
   uint8_t can_id_offset_ = 0;
   void init(
     const std::string & interface, const std::string & name, bool canfd_on,
@@ -168,19 +180,78 @@ private:
     interface_ = interface;
     can_std_callback_ = std_callback;
     can_fd_callback_ = fd_callback;
+    ready_ = false;
+    isthreadrunning_ = false;
+    last_reconnect_attempt_ = std::chrono::steady_clock::now() - reconnect_backoff_;
     try {
       receiver_ = std::make_unique<can_device::socket_can::SocketCanReceiver>(interface_, canfd_);
-      if (!is_block) {
-        isthreadrunning_ = true;
-        ready_ = true;
-        main_T_ = std::make_unique<std::thread>(std::bind(&CanRxDev::main_recv_func, this));
-      }
+      ready_ = (receiver_ != nullptr);
     } catch (const std::exception & ex) {
       printf(
         C_RED "[CAN_RX][ERROR][%s] %s receiver creat error! %s\r\n" C_END, name_.c_str(),
         interface_.c_str(), ex.what());
+      receiver_ = nullptr;
+      ready_ = false;
+    }
+    if (!is_block) {
+      isthreadrunning_ = true;
+      main_T_ = std::make_unique<std::thread>(std::bind(&CanRxDev::main_recv_func, this));
+    }
+  }
+
+  void reapply_filters()
+  {
+    if (receiver_ == nullptr) {
       return;
     }
+    if (!filters_.empty()) {
+      receiver_->set_filter(filters_.data(), filters_.size() * sizeof(struct can_filter));
+    } else {
+      receiver_->set_filter(nullptr, 0);
+    }
+  }
+
+  bool ensure_receiver_ready()
+  {
+    if (receiver_ != nullptr) {
+      return true;
+    }
+    auto now = std::chrono::steady_clock::now();
+    if (now - last_reconnect_attempt_ < reconnect_backoff_) {
+      return false;
+    }
+    last_reconnect_attempt_ = now;
+    return recreate_receiver();
+  }
+
+  bool recreate_receiver()
+  {
+    try {
+      receiver_ = std::make_unique<can_device::socket_can::SocketCanReceiver>(interface_, canfd_);
+    } catch (const std::exception & ex) {
+      receiver_ = nullptr;
+      ready_ = false;
+      printf(
+        C_RED "[CAN_RX][ERROR][%s] Failed to recreate CAN receiver on %s: %s\r\n" C_END,
+        name_.c_str(), interface_.c_str(), ex.what());
+      return false;
+    }
+
+    if (receiver_ == nullptr) {
+      ready_ = false;
+      printf(
+        C_RED "[CAN_RX][ERROR][%s] Failed to recreate CAN receiver on %s\r\n" C_END, name_.c_str(),
+        interface_.c_str());
+      return false;
+    }
+
+    ready_ = true;
+    is_timeout_ = false;
+    reapply_filters();
+    printf(
+      C_YELLOW "[CAN_RX][WARN][%s] CAN receiver on %s reinitialized\r\n" C_END, name_.c_str(),
+      interface_.c_str());
+    return true;
   }
 
   bool wait_for_can_data()
@@ -195,6 +266,9 @@ private:
       rx_std_frame_ = std::make_shared<struct can_frame>();
     }
 
+    if (!ensure_receiver_ready()) {
+      return false;
+    }
     if (receiver_ != nullptr) {
       try {
         bool result =
@@ -209,6 +283,8 @@ private:
           is_timeout_ = true;
           return false;
         }
+        ready_ = false;
+        receiver_ = nullptr;
         printf(
           C_RED "[CAN_RX %s][ERROR][%s] Error receiving CAN %s message: %s - %s\n" C_END,
           can_type.c_str(), name_.c_str(), can_type.c_str(), interface_.c_str(), ex.what());
@@ -229,7 +305,11 @@ private:
 #ifdef DEBUG_LOG
     printf("[CAN_RX][INFO][%s] Start recv thread: %s\r\n", interface_.c_str(), name_.c_str());
 #endif  // DEBUG_LOG
-    while (isthreadrunning_ && ready_) {
+    while (isthreadrunning_) {
+      if (!ensure_receiver_ready()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        continue;
+      }
       if (wait_for_can_data()) {
         if (!canfd_ && can_std_callback_ != nullptr) {
           can_std_callback_(rx_std_frame_);
@@ -260,6 +340,7 @@ public:
     canfd_on_ = canfd_on;
     interface_ = interface;
     extended_frame_ = extended_frame;
+    last_sender_reconnect_attempt_ = std::chrono::steady_clock::now() - sender_reconnect_backoff_;
     try {
       sender_ = std::make_unique<can_device::socket_can::SocketCanSender>(interface_, canfd_on_);
     } catch (const std::exception & ex) {
@@ -298,6 +379,8 @@ private:
   std::string name_;
   std::string interface_;
   std::unique_ptr<can_device::socket_can::SocketCanSender> sender_;
+  std::chrono::steady_clock::time_point last_sender_reconnect_attempt_{};
+  const std::chrono::milliseconds sender_reconnect_backoff_{200};
   uint8_t can_id_offset_;
 
   bool send_can_message(struct can_frame * std_frame, struct canfd_frame * fd_frame)
@@ -314,6 +397,13 @@ private:
     }
     canid_t * canid = self_fd ? &fd_frame->can_id : &std_frame->can_id;
 
+    if (!ensure_sender_ready()) {
+      printf(
+        C_RED "[CAN_TX %s][ERROR][%s] Error sending CAN message: %s - No device\r\n" C_END,
+        can_type.c_str(), name_.c_str(), interface_.c_str());
+      return false;
+    }
+
     bool result = true;
     can_device::socket_can::CanId send_id =
       extended_frame_
@@ -321,36 +411,73 @@ private:
             *canid, can_device::socket_can::FrameType::DATA, can_device::socket_can::ExtendedFrame)
         : can_device::socket_can::CanId(
             *canid, can_device::socket_can::FrameType::DATA, can_device::socket_can::StandardFrame);
-    if (sender_ != nullptr) {
-      try {
-        if (self_fd) {
-          sender_->send_fd(
-            fd_frame->data, (fd_frame->len == 0) ? 64 : fd_frame->len, send_id,
-            std::chrono::nanoseconds(nano_timeout_));
-          is_timeout_ = false;
-        } else {
-          sender_->send(
-            std_frame->data, (std_frame->can_dlc == 0) ? 8 : std_frame->can_dlc, send_id,
-            std::chrono::nanoseconds(nano_timeout_));
-          is_timeout_ = false;
-        }
-      } catch (const std::exception & ex) {
-        if (ex.what()[0] == '$') {
-          is_timeout_ = true;
-          return false;
-        }
-        result = false;
-        printf(
-          C_RED "[CAN_TX %s][ERROR][%s] Error sending CAN message: %s - %s\r\n" C_END,
-          can_type.c_str(), name_.c_str(), interface_.c_str(), ex.what());
+
+    try {
+      if (self_fd) {
+        sender_->send_fd(
+          fd_frame->data, (fd_frame->len == 0) ? 64 : fd_frame->len, send_id,
+          std::chrono::nanoseconds(nano_timeout_));
+        is_timeout_ = false;
+      } else {
+        sender_->send(
+          std_frame->data, (std_frame->can_dlc == 0) ? 8 : std_frame->can_dlc, send_id,
+          std::chrono::nanoseconds(nano_timeout_));
+        is_timeout_ = false;
       }
-    } else {
+    } catch (const std::exception & ex) {
+      if (ex.what()[0] == '$') {
+        is_timeout_ = true;
+        return false;
+      }
       result = false;
+      ready_ = false;
+      sender_ = nullptr;
+      last_sender_reconnect_attempt_ = std::chrono::steady_clock::now() - sender_reconnect_backoff_;
       printf(
-        C_RED "[CAN_TX %s][ERROR][%s] Error sending CAN message: %s - No device\r\n" C_END,
-        can_type.c_str(), name_.c_str(), interface_.c_str());
+        C_RED "[CAN_TX %s][ERROR][%s] Error sending CAN message: %s - %s\r\n" C_END,
+        can_type.c_str(), name_.c_str(), interface_.c_str(), ex.what());
     }
+
     return result;
+  }
+
+  bool ensure_sender_ready()
+  {
+    if (sender_ != nullptr) {
+      return true;
+    }
+
+    auto now = std::chrono::steady_clock::now();
+    if (now - last_sender_reconnect_attempt_ < sender_reconnect_backoff_) {
+      return false;
+    }
+    last_sender_reconnect_attempt_ = now;
+
+    try {
+      sender_ = std::make_unique<can_device::socket_can::SocketCanSender>(interface_, canfd_on_);
+    } catch (const std::exception & ex) {
+      sender_ = nullptr;
+      ready_ = false;
+      printf(
+        C_RED "[CAN_TX][ERROR][%s] Failed to recreate CAN sender on %s: %s\r\n" C_END, name_.c_str(),
+        interface_.c_str(), ex.what());
+      return false;
+    }
+
+    if (sender_ == nullptr) {
+      ready_ = false;
+      printf(
+        C_RED "[CAN_TX][ERROR][%s] Failed to recreate CAN sender on %s\r\n" C_END, name_.c_str(),
+        interface_.c_str());
+      return false;
+    }
+
+    ready_ = true;
+    is_timeout_ = false;
+    printf(
+      C_YELLOW "[CAN_TX][WARN][%s] CAN sender on %s reinitialized\r\n" C_END, name_.c_str(),
+      interface_.c_str());
+    return true;
   }
 };
 

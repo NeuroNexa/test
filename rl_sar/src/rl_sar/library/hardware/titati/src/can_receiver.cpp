@@ -25,11 +25,17 @@ void MotorsImuCanReceiveApi::register_motors_device_can_filter()
   struct can_filter motors_device_rx_filter;
   motors_device_rx_filter.can_id = CAN_ID_MOTOR_IN;
   motors_device_rx_filter.can_mask = CAN_MASK_AS_MOTORS_INFO;
-  this->motors_can_receive_api->set_filter(&motors_device_rx_filter, sizeof(struct can_filter));
+  if (motors_can_receive_api_ != nullptr) {
+    motors_can_receive_api_->set_filter(&motors_device_rx_filter, sizeof(struct can_filter));
+  }
 }
 
 void MotorsImuCanReceiveApi::board_can_data_callback(std::shared_ptr<struct canfd_frame> recv_frame)
 {
+  if (recv_frame == nullptr) {
+    return;
+  }
+
   if (recv_frame->can_id >= CAN_ID_MOTOR_IN && recv_frame->can_id < CAN_ID_MOTOR_IN + leg_num_) {
     motors_data_callback(recv_frame);
   } else if (recv_frame->can_id == CAN_ID_IMU1) {
@@ -40,12 +46,23 @@ void MotorsImuCanReceiveApi::board_can_data_callback(std::shared_ptr<struct canf
 }
 void MotorsImuCanReceiveApi::motors_data_callback(std::shared_ptr<struct canfd_frame> recv_frame)
 {
+  if (recv_frame == nullptr || motors_in_.empty() || leg_dof_ == 0) {
+    return;
+  }
+
+  const auto motor_group_index = recv_frame->can_id - CAN_ID_MOTOR_IN;
+  if (motor_group_index >= leg_num_) {
+    return;
+  }
+
   std::unique_lock<std::shared_mutex> lock(motors_in_mutex_);
   for (size_t i = 0; i < leg_dof_; i++) {
     api_motor_in_t motor;
     std::memcpy(&motor, recv_frame->data + 16 * i, sizeof(api_motor_in_t));
-    auto it = recv_frame->can_id - CAN_ID_MOTOR_IN;
-    motors_in_[i + leg_dof_ * it] = motor;
+    const size_t target_index = i + leg_dof_ * motor_group_index;
+    if (target_index < motors_in_.size()) {
+      motors_in_[target_index] = motor;
+    }
   }
 }
 void MotorsImuCanReceiveApi::imu_data_callback(std::shared_ptr<struct canfd_frame> recv_frame)

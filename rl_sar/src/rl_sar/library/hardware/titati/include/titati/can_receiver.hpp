@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstring>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -65,14 +66,24 @@ namespace can_device
   public:
     MotorsImuCanReceiveApi(size_t size)
     {
-      if(size % 8 == 0) leg_dof_ = 4;
-      else if(size % 6 == 0) leg_dof_ = 3;
-      leg_num_ = size / leg_dof_;
-      register_motors_device_can_filter();
+      if (size % 8 == 0) {
+        leg_dof_ = 4;
+      } else if (size % 6 == 0) {
+        leg_dof_ = 3;
+      }
+      leg_num_ = (leg_dof_ == 0) ? 0 : size / leg_dof_;
+
       api_motor_in_t default_motor_in;
       std::memset(&default_motor_in, 0x00U, sizeof(api_motor_in_t));
-      motors_in_.resize(size, default_motor_in);
+      motors_in_.assign(size, default_motor_in);
       std::memset(&imu_data_, 0x00U, sizeof(api_imu_data_t));
+
+      motors_can_receive_api_ = std::make_shared<can_device::socket_can::CanDev>(
+        motors_can_interface_, motors_can_name_, motors_can_extended_frame_,
+        std::bind(&MotorsImuCanReceiveApi::board_can_data_callback, this, std::placeholders::_1),
+        motors_can_rx_is_block_, motors_timeout_us_, motors_can_id_offset_);
+
+      register_motors_device_can_filter();
     }
     ~MotorsImuCanReceiveApi() {}
     const std::vector<api_motor_in_t> *get_motors_in() const { return &motors_in_; }
@@ -83,21 +94,16 @@ namespace can_device
 #define MIN_TIME_OUT_US 1'000L     // 1ms
 #define MAX_TIME_OUT_US 3'000'000L // 3s
 #define CAN_MASK_AS_MOTORS_INFO (0x7E0U)
-    std::string motors_can_interface = "can0";
-    std::string motors_can_name = "motors_can";
-    bool motors_can_extended_frame = false;
-    bool motors_can_rx_is_block = false;
-    int64_t motors_timeout_us = MAX_TIME_OUT_US;
-    uint8_t motors_can_id_offset = 0x00U;
+    const std::string motors_can_interface_ = "can0";
+    const std::string motors_can_name_ = "motors_can";
+    const bool motors_can_extended_frame_ = false;
+    const bool motors_can_rx_is_block_ = false;
+    const int64_t motors_timeout_us_ = MAX_TIME_OUT_US;
+    const uint8_t motors_can_id_offset_ = 0x00U;
 
     void register_motors_device_can_filter();
-    can_device::socket_can::can_fd_callback motors_can_receive_callback =
-        std::bind(&MotorsImuCanReceiveApi::board_can_data_callback, this, std::placeholders::_1);
 
-    std::shared_ptr<can_device::socket_can::CanDev> motors_can_receive_api =
-        std::make_shared<can_device::socket_can::CanDev>(
-            motors_can_interface, motors_can_name, motors_can_extended_frame, motors_can_receive_callback,
-            motors_can_rx_is_block, motors_timeout_us, motors_can_id_offset);
+    std::shared_ptr<can_device::socket_can::CanDev> motors_can_receive_api_;
 
     void board_can_data_callback(std::shared_ptr<struct canfd_frame> recv_frame);
     void motors_data_callback(std::shared_ptr<struct canfd_frame> recv_frame);
