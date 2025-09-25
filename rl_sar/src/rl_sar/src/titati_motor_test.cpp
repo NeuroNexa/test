@@ -178,6 +178,16 @@ int main(int argc, char **argv)
     if (!robot.wait_for_feedback(std::chrono::milliseconds(500)))
     {
         std::cerr << "Warning: timed out waiting for Titati motor feedback. Check CAN routing and power." << std::endl;
+        auto missing = robot.get_missing_feedback_indices();
+        if (!missing.empty())
+        {
+            std::cerr << "Missing motor indexes:";
+            for (auto idx : missing)
+            {
+                std::cerr << ' ' << idx;
+            }
+            std::cerr << std::endl;
+        }
     }
 
     if (options.read_once)

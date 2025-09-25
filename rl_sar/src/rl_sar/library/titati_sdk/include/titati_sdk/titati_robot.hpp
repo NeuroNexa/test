@@ -63,6 +63,15 @@ public:
     std::vector<uint8_t> get_joint_status() const;
 
     /**
+     * @brief Return the indices of motors that have not published feedback yet.
+     *
+     * Each CAN feedback packet contains a timestamp field which is zero until the
+     * corresponding motor reports for the first time.  This helper exposes the
+     * list so higher-level tools can surface detailed diagnostics.
+     */
+    std::vector<size_t> get_missing_feedback_indices() const;
+
+    /**
      * @brief Get the current imu quaternion of mcu.
      * @note Quaternion sequence is x y z w.
      * @return std::array<double, 4>: current quaternion.

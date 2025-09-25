@@ -64,6 +64,8 @@ Perform the following steps each time the robot boots.  Commands marked **[maste
        --id 5 --pos 0.2 --vel 0.0 --kp 60 --kd 3 --tau 0.0 --duration 1.5
    ```
    Use the torque/MIT commands to validate each of the 16 actuators individually before moving on.
+   If any motors report `0` feedback, the tool prints their indexes and automatically retries the
+   forced-direct handshake; re-run the command after verifying the CAN router heartbeat.
 
 4. **Launch the RL controller on the master Jetson**
    ```bash

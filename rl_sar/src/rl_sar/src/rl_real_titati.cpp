@@ -59,6 +59,16 @@ RL_RealTitati::RL_RealTitati()
     {
         std::cout << LOGGER::WARNING << "Timed out waiting for Titati motor feedback. Check CAN routing and ensure the CAN router"
                   << " daemon is running." << std::endl;
+        auto missing = this->titati_robot_->get_missing_feedback_indices();
+        if (!missing.empty())
+        {
+            std::cout << LOGGER::WARNING << "Motors without feedback:";
+            for (auto idx : missing)
+            {
+                std::cout << ' ' << idx;
+            }
+            std::cout << std::endl;
+        }
     }
 
     this->InitOutputs();

@@ -1,6 +1,7 @@
 #include "titati_sdk/titati_robot.hpp"
 
 #include <chrono>
+#include <iostream>
 
 std::vector<double> tita_robot::get_joint_q() const
 {
@@ -45,6 +46,19 @@ std::vector<uint8_t> tita_robot::get_joint_status() const  // TODO: why 8
     joint.push_back(infos.value[id]);
   }
   return joint;
+}
+
+std::vector<size_t> tita_robot::get_missing_feedback_indices() const
+{
+  std::vector<size_t> missing;
+  const auto infos = can_receiver_->get_motors_in();
+  missing.reserve(infos.size());
+  for (size_t idx = 0; idx < infos.size(); ++idx) {
+    if (infos[idx].timestamp == 0U) {
+      missing.push_back(idx);
+    }
+  }
+  return missing;
 }
 
 std::array<double, 4> tita_robot::get_imu_quaternion() const
@@ -180,19 +194,32 @@ bool tita_robot::set_robot_stop()
 bool tita_robot::wait_for_feedback(std::chrono::milliseconds timeout)
 {
   const auto deadline = std::chrono::steady_clock::now() + timeout;
+  auto last_retry = std::chrono::steady_clock::time_point::min();
+  std::vector<size_t> missing;
   while (std::chrono::steady_clock::now() < deadline) {
-    const auto infos = can_receiver_->get_motors_in();
-    bool all_valid = true;
-    for (const auto & motor : infos) {
-      if (motor.timestamp == 0U) {
-        all_valid = false;
-        break;
-      }
-    }
-    if (all_valid) {
+    missing = get_missing_feedback_indices();
+    if (missing.empty()) {
       return true;
     }
-    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+
+    const auto now = std::chrono::steady_clock::now();
+    if (last_retry == std::chrono::steady_clock::time_point::min() ||
+        now - last_retry >= std::chrono::milliseconds(200)) {
+      if (!set_motors_sdk(true)) {
+        std::cerr << "[titati_sdk] Warning: failed to re-issue SDK mode request while waiting for motor feedback." << std::endl;
+      }
+      last_retry = now;
+    }
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+
+  if (!missing.empty()) {
+    std::cerr << "[titati_sdk] Missing feedback from motors:";
+    for (auto idx : missing) {
+      std::cerr << ' ' << idx;
+    }
+    std::cerr << std::endl;
   }
   return false;
 }

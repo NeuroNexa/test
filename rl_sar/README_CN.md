@@ -241,9 +241,9 @@ git clone https://github.com/osrf/gazebo_models.git ~/.gazebo/models
      ./cmake_build/bin/titati_motor_test --mode torque --id 3 --tau 0.6 --duration 3.0
      ./cmake_build/bin/titati_motor_test --mode mit --id 7 --pos 0.0 --vel 0.0 --kp 20.0 --kd 1.0 --tau 0.2 --duration 2.0
      ```
-     按需逐个电机验证，确保 16 个执行器均响应正常。
-     若工具提示“等待 Titati 电机反馈超时”，请确认从机 CAN 路由程序仍在运行且线束连接良好，
-     待心跳模式值变为 3（Force Direct）后重新执行命令。
+    按需逐个电机验证，确保 16 个执行器均响应正常。
+    当工具检测到缺失反馈时会列出电机编号并自动重新发送 Force Direct RPC；
+    请确认从机路由节点输出 `mode:3` 心跳后再次执行命令，直到所有关节均上报时间戳。
   2. 将策略文件放置到 `src/rl_sar/policy/titati/robot_lab/policy.pt`，并核对 `base.yaml`、`config.yaml`。
   3. 启动 RL 控制：
      ```bash

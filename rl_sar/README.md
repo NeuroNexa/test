@@ -204,8 +204,9 @@ The Titati platform is composed of a **master Jetson** (front Tita) and a **slav
    ./cmake_build/bin/titati_motor_test --mode mit --id 7 --pos 0.0 --vel 0.0 --kp 20.0 --kd 1.0 --tau 0.2 --duration 2.0
    ```
    Repeat the torque/MIT commands for each actuator until all 16 motors respond correctly.
-   If the tool prints a timeout warning, double-check that the slave CAN router is running and the CAN wiring is secure, then
-   retry the command once the heartbeat reports mode 3 (forced-direct).
+   When the diagnostic tool encounters missing feedback it will list the motor indexes and automatically
+   resend the forced-direct RPC; confirm the slave router is emitting a `mode:3` heartbeat and rerun the
+   command until all joints report timestamps.
 
 5. **Launch the Titati RL controller on the master Jetson**
    ```bash
