@@ -77,6 +77,7 @@ cd rl_sar
 ```
 
 程序启动后会自动尝试将电机切换至 SDK 直驱模式；退出（或 `Ctrl+C`）时会回落到 MCU 控制，以避免无人值守状态下电机保持使能。
+再次启动 `rl_real_titati` 时会自动重发 `READY_WAITING/ FORCE_DIRECT` 握手，并在握手成功后发送当前位置保持指令，确保每次运行都能顺利接管 16 个电机。
 
 ### ROS2 启动（可选）
 
@@ -86,6 +87,21 @@ ros2 run rl_sar rl_real_titati
 ```
 
 在定义了 `USE_ROS` 的编译配置下，节点会订阅 `/cmd_vel` 并根据导航模式决定使用 ROS 命令或键盘命令。
+
+### 电机连通性测试（MIT / 力矩）
+
+在接入真实机器人之前，可以先使用新的 `rl_titati_motor_test` 工具确认 16 个电机都能正常读取反馈并响应指令：
+
+```bash
+cd rl_sar
+# MIT 模式：依次对每个关节施加 0.05rad 的小幅度 MIT 位移
+./cmake_build/bin/rl_titati_motor_test --mode mit --amplitude 0.05
+
+# 力矩模式：依次对每个关节输出 2Nm 力矩脉冲
+./cmake_build/bin/rl_titati_motor_test --mode torque --amplitude 2.0
+```
+
+该程序会按照 `policy/titati/base.yaml` 中的关节映射顺序逐个测试电机，持续打印当前位置、速度与力矩反馈，便于快速定位通讯或布线问题。测试结束或按下 `Ctrl+C` 后，程序会自动发送零力矩并切回 MCU 控制，避免电机长时间保持在 SDK 模式。
 
 ### 键盘 / 手柄指令速查
 

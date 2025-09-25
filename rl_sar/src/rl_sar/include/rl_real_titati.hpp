@@ -52,6 +52,10 @@ private:
     std::shared_ptr<LoopFunc> loop_rl;
     std::shared_ptr<LoopFunc> loop_plot;
 
+    bool EnableSdkControl();
+    std::vector<double> TensorToHardwareVector(const torch::Tensor &tensor) const;
+    void SendHoldPositionCommand();
+
     // plot
     const int plot_size = 100;
     std::vector<int> plot_t;
@@ -60,6 +64,8 @@ private:
 
     // titati interface
     std::unique_ptr<tita_robot> titati_hw;
+    std::vector<double> hardware_fixed_kp_;
+    std::vector<double> hardware_fixed_kd_;
 
     // others
     int motiontime = 0;

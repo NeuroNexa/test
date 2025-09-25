@@ -5,6 +5,10 @@
 
 #include "rl_real_titati.hpp"
 
+#include <algorithm>
+#include <chrono>
+#include <thread>
+
 RL_Real::RL_Real()
 #if defined(USE_ROS2) && defined(USE_ROS)
     : rclcpp::Node("rl_real_node")
@@ -24,6 +28,8 @@ RL_Real::RL_Real()
     this->ang_vel_type = "ang_vel_body";
     this->robot_name = "titati";
     this->ReadYamlBase(this->robot_name);
+    this->hardware_fixed_kp_ = this->TensorToHardwareVector(this->params.fixed_kp);
+    this->hardware_fixed_kd_ = this->TensorToHardwareVector(this->params.fixed_kd);
 
     // auto load FSM by robot_name
     if (FSMManager::GetInstance().IsTypeSupported(this->robot_name))
@@ -50,14 +56,7 @@ RL_Real::RL_Real()
         this->params.use_canfd_router);
     if (this->titati_hw)
     {
-        if (this->titati_hw->set_motors_sdk(true))
-        {
-            std::cout << LOGGER::INFO << "Motors switched to SDK control mode." << std::endl;
-        }
-        else
-        {
-            std::cout << LOGGER::WARNING << "Failed to switch motors to SDK control mode." << std::endl;
-        }
+        this->EnableSdkControl();
     }
 
     this->InitOutputs();
@@ -95,6 +94,7 @@ RL_Real::~RL_Real()
 #endif
     if (this->titati_hw)
     {
+        this->SendHoldPositionCommand();
         this->titati_hw->set_motors_sdk(false);
     }
     std::cout << LOGGER::INFO << "RL_Real exit" << std::endl;
@@ -321,6 +321,146 @@ torch::Tensor RL_Real::Forward()
     {
         return actions;
     }
+}
+
+bool RL_Real::EnableSdkControl()
+{
+    if (!this->titati_hw)
+    {
+        return false;
+    }
+
+    const int motor_count = this->params.num_of_dofs;
+    if (motor_count <= 0)
+    {
+        std::cout << LOGGER::ERROR << "Invalid motor count configured for Titati hardware." << std::endl;
+        return false;
+    }
+
+    if (static_cast<int>(this->hardware_fixed_kp_.size()) != motor_count)
+    {
+        this->hardware_fixed_kp_.assign(motor_count, 0.0);
+    }
+    if (static_cast<int>(this->hardware_fixed_kd_.size()) != motor_count)
+    {
+        this->hardware_fixed_kd_.assign(motor_count, 0.0);
+    }
+
+    std::vector<double> dq(motor_count, 0.0);
+    std::vector<double> tau(motor_count, 0.0);
+
+    constexpr int max_attempts = 5;
+    for (int attempt = 1; attempt <= max_attempts; ++attempt)
+    {
+        if (this->titati_hw->set_motors_sdk(true))
+        {
+            auto q = this->titati_hw->get_joint_q();
+            if (static_cast<int>(q.size()) != motor_count)
+            {
+                q.resize(motor_count, 0.0);
+            }
+
+            if (!this->titati_hw->set_target_joint_mit(q, dq, this->hardware_fixed_kp_, this->hardware_fixed_kd_, tau))
+            {
+                std::cout << LOGGER::WARNING << "Failed to send hold command after enabling SDK control." << std::endl;
+            }
+            else
+            {
+                std::cout << LOGGER::INFO << "Applied hold command after enabling SDK control." << std::endl;
+            }
+
+            std::cout << LOGGER::INFO << "Motors switched to SDK control mode." << std::endl;
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            return true;
+        }
+
+        std::cout << LOGGER::WARNING
+                  << "Failed to switch motors to SDK control mode (attempt " << attempt
+                  << "/" << max_attempts << ")." << std::endl;
+        this->titati_hw->set_motors_sdk(false);
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    }
+
+    std::cout << LOGGER::ERROR
+              << "Unable to switch motors to SDK control after " << max_attempts
+              << " attempts. Please verify CAN routing and power." << std::endl;
+    return false;
+}
+
+std::vector<double> RL_Real::TensorToHardwareVector(const torch::Tensor &tensor) const
+{
+    const int motor_count = this->params.num_of_dofs;
+    std::vector<double> result(motor_count, 0.0);
+    if (!tensor.defined() || tensor.numel() == 0 || motor_count <= 0)
+    {
+        return result;
+    }
+
+    const auto mapping_size = static_cast<int>(this->params.joint_mapping.size());
+    if (mapping_size == 0)
+    {
+        return result;
+    }
+
+    torch::Tensor flattened = tensor.view({-1}).to(torch::kCPU).to(torch::kDouble);
+    const auto available = std::min<int>(flattened.size(0), mapping_size);
+    const double *data = flattened.data_ptr<double>();
+
+    for (int idx = 0; idx < available; ++idx)
+    {
+        const int hw_index = this->params.joint_mapping[idx];
+        if (hw_index >= 0 && hw_index < motor_count)
+        {
+            result[hw_index] = data[idx];
+        }
+    }
+
+    return result;
+}
+
+void RL_Real::SendHoldPositionCommand()
+{
+    if (!this->titati_hw)
+    {
+        return;
+    }
+
+    const int motor_count = this->params.num_of_dofs;
+    if (motor_count <= 0)
+    {
+        return;
+    }
+
+    auto q = this->titati_hw->get_joint_q();
+    if (static_cast<int>(q.size()) != motor_count)
+    {
+        q.resize(motor_count, 0.0);
+    }
+
+    if (static_cast<int>(this->hardware_fixed_kp_.size()) != motor_count)
+    {
+        this->hardware_fixed_kp_.assign(motor_count, 0.0);
+    }
+    if (static_cast<int>(this->hardware_fixed_kd_.size()) != motor_count)
+    {
+        this->hardware_fixed_kd_.assign(motor_count, 0.0);
+    }
+
+    std::vector<double> dq(motor_count, 0.0);
+    std::vector<double> tau(motor_count, 0.0);
+
+    if (!this->titati_hw->set_target_joint_mit(q, dq, this->hardware_fixed_kp_, this->hardware_fixed_kd_, tau))
+    {
+        std::cout << LOGGER::WARNING << "Failed to send hold command before disabling SDK control." << std::endl;
+    }
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    if (!this->titati_hw->set_target_joint_t(tau))
+    {
+        std::cout << LOGGER::WARNING << "Failed to send zero torque command before disabling SDK control." << std::endl;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
 }
 
 void RL_Real::Plot()
