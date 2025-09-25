@@ -134,6 +134,21 @@ if($ENV{ROS_DISTRO} MATCHES "foxy|humble")
     )
 endif()
 
+# titati robot interface
+add_library(tita_robot_sdk
+    library/robot_interfaces/tita_robot/src/tita_robot.cpp
+    library/robot_interfaces/tita_robot/src/can_receiver.cpp
+    library/robot_interfaces/tita_robot/src/can_sender.cpp
+)
+target_include_directories(tita_robot_sdk PUBLIC
+    library/robot_interfaces/tita_robot/include
+)
+set_target_properties(tita_robot_sdk PROPERTIES
+    CXX_STANDARD 14
+    CXX_STANDARD_REQUIRED ON
+)
+target_link_libraries(tita_robot_sdk PUBLIC Threads::Threads)
+
 # Retroid Gamepad
 set(GAMEPAD_SRC
     ${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/gamepad/src/gamepad.cpp
@@ -318,6 +333,25 @@ if(NOT USE_CMAKE)
             geometry_msgs
         )
         install(TARGETS rl_real_l4w4 DESTINATION lib/${PROJECT_NAME})
+    endif()
+endif()
+
+add_executable(rl_real_titati src/rl_real_titati.cpp)
+target_link_libraries(rl_real_titati
+    tita_robot_sdk
+    rl_sdk
+    observation_buffer
+    yaml-cpp
+)
+if(NOT USE_CMAKE)
+    if($ENV{ROS_DISTRO} MATCHES "noetic")
+        target_link_libraries(rl_real_titati ${catkin_LIBRARIES})
+    elseif($ENV{ROS_DISTRO} MATCHES "foxy|humble")
+        ament_target_dependencies(rl_real_titati
+            rclcpp
+            geometry_msgs
+        )
+        install(TARGETS rl_real_titati DESTINATION lib/${PROJECT_NAME})
     endif()
 endif()
 
