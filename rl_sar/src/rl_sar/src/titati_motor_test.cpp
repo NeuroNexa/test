@@ -175,6 +175,11 @@ int main(int argc, char **argv)
     tita_robot robot(16);
     robot.set_motors_sdk(true);
 
+    if (!robot.wait_for_feedback(std::chrono::milliseconds(500)))
+    {
+        std::cerr << "Warning: timed out waiting for Titati motor feedback. Check CAN routing and power." << std::endl;
+    }
+
     if (options.read_once)
     {
         PrintState(robot);
@@ -193,6 +198,8 @@ int main(int argc, char **argv)
     {
         return 0;
     }
+
+    robot.wait_for_feedback(std::chrono::milliseconds(200));
 
     std::vector<double> q(16, 0.0);
     std::vector<double> dq(16, 0.0);

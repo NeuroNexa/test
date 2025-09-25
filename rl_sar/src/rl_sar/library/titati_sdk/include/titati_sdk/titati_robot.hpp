@@ -1,6 +1,8 @@
 #include "can_receiver.hpp"
 #include "can_sender.hpp"
 
+#include <chrono>
+
 class tita_robot
 {
 public:
@@ -145,6 +147,19 @@ public:
      * @return return true if the target is set successfully
      */
     bool set_robot_stop();
+
+    /**
+     * @brief Wait until all motor feedback frames have been received or a timeout occurs.
+     *
+     * The Titati CAN bus streams joint states asynchronously.  After switching the MCU
+     * into SDK (forced-direct) mode it may take a short amount of time before a complete
+     * set of feedback packets arrives.  Calling this helper allows higher level tools to
+     * block until every motor has reported at least once.
+     *
+     * @param timeout maximum duration to wait before giving up.
+     * @return true if feedback was observed for every motor, false if the timeout expired.
+     */
+    bool wait_for_feedback(std::chrono::milliseconds timeout);
 private:
     std::unique_ptr<can_device::MotorsImuCanReceiveApi> can_receiver_;
     std::unique_ptr<can_device::MotorsCanSendApi> can_sender_;

@@ -1,5 +1,7 @@
 #include "titati_sdk/titati_robot.hpp"
 
+#include <chrono>
+
 std::vector<double> tita_robot::get_joint_q() const
 {
   auto infos = can_receiver_->get_motors_in();
@@ -168,4 +170,24 @@ bool tita_robot::set_robot_stop()
   rpc_request.key = can_device::SET_JUMP;
   return_ok &= can_sender_->send_command_can_rpc_request(rpc_request);
   return true;
+}
+
+bool tita_robot::wait_for_feedback(std::chrono::milliseconds timeout)
+{
+  const auto deadline = std::chrono::steady_clock::now() + timeout;
+  while (std::chrono::steady_clock::now() < deadline) {
+    const auto infos = can_receiver_->get_motors_in();
+    bool all_valid = true;
+    for (const auto & motor : *infos) {
+      if (motor.timestamp == 0U) {
+        all_valid = false;
+        break;
+      }
+    }
+    if (all_valid) {
+      return true;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  }
+  return false;
 }

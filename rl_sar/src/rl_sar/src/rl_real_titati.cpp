@@ -55,6 +55,12 @@ RL_RealTitati::RL_RealTitati()
         std::cout << LOGGER::WARNING << "Failed to switch Titati to SDK control mode." << std::endl;
     }
 
+    if (!this->titati_robot_->wait_for_feedback(std::chrono::milliseconds(500)))
+    {
+        std::cout << LOGGER::WARNING << "Timed out waiting for Titati motor feedback. Check CAN routing and ensure the CAN router"
+                  << " daemon is running." << std::endl;
+    }
+
     this->InitOutputs();
     this->InitControl();
 
