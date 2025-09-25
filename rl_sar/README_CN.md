@@ -123,6 +123,11 @@ source /opt/ros/humble/setup.bash
 ```
 
 如需重新编译其他 ROS 包，可在命令行追加包名。
+构建完成后，请在运行 ROS 节点前执行：
+
+```bash
+source install/local_setup.bash
+```
 
 ## 运行
 
@@ -222,10 +227,10 @@ git clone https://github.com/osrf/gazebo_models.git ~/.gazebo/models
   ```
 
   - **从机 Jetson 启动 CAN 路由守护程序**
-    ```bash
-    source install/setup.bash
-    ros2 run titati_canfd_router titati_canfd_router_node
-    ```
+   ```bash
+   source install/local_setup.bash
+   ros2 run titati_canfd_router titati_canfd_router_node
+   ```
     请保持该终端运行，用于监听 CAN-FD 心跳并自动发送强制直驱握手，使 MCU 持续处于 SDK 模式。如需在无 ROS 环境下运行，可使用备用的 `./cmake_build/bin/titati_can_router`。
 
 - **主机 Jetson 进行电机联调与 RL 控制**

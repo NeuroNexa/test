@@ -33,7 +33,7 @@
 #pragma GCC optimize("O0")
 #endif
 
-namespace tita
+namespace can_device
 {
 namespace socket_can
 {
@@ -117,6 +117,6 @@ inline fd_set single_set(int32_t file_descriptor) noexcept
   return descriptor_set;
 }
 }  // namespace socket_can
-}  // namespace tita
+}  // namespace can_device
 
 #endif  // POWER_CONTROLLER__UTILS__PROTOCOL__SOCKET_CAN_COMMON_HPP_

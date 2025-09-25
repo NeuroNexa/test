@@ -38,7 +38,7 @@
 #else
 #pragma GCC optimize("O0")
 #endif
-namespace tita
+namespace can_device
 {
 namespace socket_can
 {
@@ -84,7 +84,7 @@ public:
 
   std::shared_ptr<canfd_frame> wait_for_can_data_block()
   {
-    tita::socket_can::CanId receive_id{};
+    can_device::socket_can::CanId receive_id{};
     std::string can_type;
     if (canfd_) {
       can_type = "FD";
@@ -154,7 +154,7 @@ private:
   std::unique_ptr<std::thread> main_T_;
   std::shared_ptr<struct can_frame> rx_std_frame_;
   std::shared_ptr<struct canfd_frame> rx_fd_frame_;
-  std::unique_ptr<tita::socket_can::SocketCanReceiver> receiver_;
+  std::unique_ptr<can_device::socket_can::SocketCanReceiver> receiver_;
   uint8_t can_id_offset_ = 0;
   void init(
     const std::string & interface, const std::string & name, bool canfd_on,
@@ -169,7 +169,7 @@ private:
     can_std_callback_ = std_callback;
     can_fd_callback_ = fd_callback;
     try {
-      receiver_ = std::make_unique<tita::socket_can::SocketCanReceiver>(interface_, canfd_);
+      receiver_ = std::make_unique<can_device::socket_can::SocketCanReceiver>(interface_, canfd_);
       if (!is_block) {
         isthreadrunning_ = true;
         ready_ = true;
@@ -185,7 +185,7 @@ private:
 
   bool wait_for_can_data()
   {
-    tita::socket_can::CanId receive_id{};
+    can_device::socket_can::CanId receive_id{};
     std::string can_type;
     if (canfd_) {
       can_type = "FD";
@@ -261,7 +261,7 @@ public:
     interface_ = interface;
     extended_frame_ = extended_frame;
     try {
-      sender_ = std::make_unique<tita::socket_can::SocketCanSender>(interface_, canfd_on_);
+      sender_ = std::make_unique<can_device::socket_can::SocketCanSender>(interface_, canfd_on_);
     } catch (const std::exception & ex) {
       printf(
         C_RED "[CAN_TX][ERROR][%s] %s sender creat error! %s\r\n" C_END, name_.c_str(),
@@ -297,7 +297,7 @@ private:
   int64_t nano_timeout_;
   std::string name_;
   std::string interface_;
-  std::unique_ptr<tita::socket_can::SocketCanSender> sender_;
+  std::unique_ptr<can_device::socket_can::SocketCanSender> sender_;
   uint8_t can_id_offset_;
 
   bool send_can_message(struct can_frame * std_frame, struct canfd_frame * fd_frame)
@@ -315,12 +315,12 @@ private:
     canid_t * canid = self_fd ? &fd_frame->can_id : &std_frame->can_id;
 
     bool result = true;
-    tita::socket_can::CanId send_id =
+    can_device::socket_can::CanId send_id =
       extended_frame_
-        ? tita::socket_can::CanId(
-            *canid, tita::socket_can::FrameType::DATA, tita::socket_can::ExtendedFrame)
-        : tita::socket_can::CanId(
-            *canid, tita::socket_can::FrameType::DATA, tita::socket_can::StandardFrame);
+        ? can_device::socket_can::CanId(
+            *canid, can_device::socket_can::FrameType::DATA, can_device::socket_can::ExtendedFrame)
+        : can_device::socket_can::CanId(
+            *canid, can_device::socket_can::FrameType::DATA, can_device::socket_can::StandardFrame);
     if (sender_ != nullptr) {
       try {
         if (self_fd) {
@@ -463,6 +463,6 @@ private:
 };
 
 }  // namespace socket_can
-}  // namespace tita
+}  // namespace can_device
 
 #endif  // POWER_CONTROLLER__UTILS__PROTOCOL__CAN_UTILS_HPP_

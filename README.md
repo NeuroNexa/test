@@ -18,11 +18,17 @@ cd rl_sar
 
 The hardware executables are written to `rl_sar/cmake_build/bin/`.  Use `./build.sh -c` to remove the build directory.
 
-The slave Jetson also needs the ROS 2 packages that expose the CAN-FD router node and the Titati system service interfaces:
+The slave Jetson also needs the ROS 2 packages that expose the CAN-FD router node and the Titati system service interfaces (run once after every clean build):
 
 ```bash
 source /opt/ros/humble/setup.bash
 ./build.sh tita_utils tita_system_interfaces titati_canfd_router
+```
+
+After the colcon build completes, source the workspace before launching any ROS programs:
+
+```bash
+source install/local_setup.bash
 ```
 
 Repeat the ROS build on the master Jetson if you plan to run the router there for debugging.
@@ -43,7 +49,7 @@ Perform the following steps each time the robot boots.  Commands marked **[maste
 2. **Start the CAN router daemon on the slave Jetson**
    ```bash
    cd rl_sar
-   source install/setup.bash
+   source install/local_setup.bash
    ros2 run titati_canfd_router titati_canfd_router_node
    ```
    Leave this node running; it listens for the CAN-FD heartbeat and automatically issues the forced-direct handshake so the MCU accepts SDK commands from the master.  If ROS 2 is not available you can fall back to the CLI daemon `./cmake_build/bin/titati_can_router`, but the ROS node mirrors the original `titati_control` behaviour and is recommended.

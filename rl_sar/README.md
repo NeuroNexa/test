@@ -123,6 +123,11 @@ source /opt/ros/humble/setup.bash
 ```
 
 The command can be repeated with additional package names to rebuild specific ROS components.
+After a successful colcon build, source the workspace before launching ROS nodes:
+
+```bash
+source install/local_setup.bash
+```
 
 ## Running
 
@@ -186,7 +191,7 @@ The Titati platform is composed of a **master Jetson** (front Tita) and a **slav
 
 3. **Start the CAN router daemon on the slave Jetson**
    ```bash
-   source install/setup.bash
+   source install/local_setup.bash
    ros2 run titati_canfd_router titati_canfd_router_node
    ```
    Leave this node running; it listens for the CAN-FD heartbeat and automatically transmits the forced-direct handshake so the MCU accepts SDK commands from the master.  A ROS-free fallback CLI is available as `./cmake_build/bin/titati_can_router` when required.

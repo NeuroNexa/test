@@ -28,7 +28,7 @@
 #include "socket_can_id.hpp"
 #include "visibility_control.hpp"
 
-namespace tita
+namespace can_device
 {
 namespace socket_can
 {
@@ -163,6 +163,6 @@ private:
   CanId m_default_id;
 };
 }  // namespace socket_can
-}  // namespace tita
+}  // namespace can_device
 
 #endif  // POWER_CONTROLLER__UTILS__PROTOCOL__SOCKET_CAN_SENDER_HPP_
