@@ -35,6 +35,8 @@ public:
 
   /// @brief Request the MCU to switch into ForceDirect (SDK) mode.
   void RequestForceDirectMode();
+  /// @brief Stop requesting ForceDirect mode and disable monitoring.
+  void CancelForceDirectMode();
 
 private:
   void RegisterFilter();
@@ -42,6 +44,7 @@ private:
   void SendForceDirectCommand(uint32_t value);
   uint32_t GetCurrentTime() const;
 
+  std::atomic<bool> monitor_force_direct_{false};
   std::atomic<bool> request_force_direct_{false};
 
   std::string router_interface_{"can0"};
@@ -63,6 +66,7 @@ private:
 
   uint32_t mode_{0U};
   uint32_t heart_cnt_{0U};
+  uint32_t last_mode_{0U};
 };
 
 }  // namespace titati

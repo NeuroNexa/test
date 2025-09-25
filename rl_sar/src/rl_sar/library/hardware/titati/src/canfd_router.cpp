@@ -56,7 +56,14 @@ void CanfdRouter::RegisterFilter()
 
 void CanfdRouter::RequestForceDirectMode()
 {
+  monitor_force_direct_.store(true);
   request_force_direct_.store(true);
+}
+
+void CanfdRouter::CancelForceDirectMode()
+{
+  monitor_force_direct_.store(false);
+  request_force_direct_.store(false);
 }
 
 void CanfdRouter::HandleBoardFrame(std::shared_ptr<struct canfd_frame> recv_frame)
@@ -69,8 +76,24 @@ void CanfdRouter::HandleBoardFrame(std::shared_ptr<struct canfd_frame> recv_fram
   std::memcpy(&mode_, recv_frame->data + 4, sizeof(mode_));
   std::memcpy(&heart_cnt_, recv_frame->data + 8, sizeof(heart_cnt_));
 
+  if (!monitor_force_direct_.load())
+  {
+    last_mode_ = mode_;
+    return;
+  }
+
+  if (mode_ == kForceDirect)
+  {
+    request_force_direct_.store(false);
+  }
+  else if (last_mode_ == kForceDirect)
+  {
+    request_force_direct_.store(true);
+  }
+
   if (!request_force_direct_.load())
   {
+    last_mode_ = mode_;
     return;
   }
 
@@ -81,6 +104,8 @@ void CanfdRouter::HandleBoardFrame(std::shared_ptr<struct canfd_frame> recv_fram
     SendForceDirectCommand(kForceDirect);
     request_force_direct_.store(false);
   }
+
+  last_mode_ = mode_;
 }
 
 void CanfdRouter::SendForceDirectCommand(uint32_t value)

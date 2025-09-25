@@ -24,6 +24,10 @@ bool TitatiHardware::EnableDirectControl()
     router_->RequestForceDirectMode();
   }
   direct_control_enabled_ = robot_->set_motors_sdk(true);
+  if (!direct_control_enabled_ && router_)
+  {
+    router_->CancelForceDirectMode();
+  }
   return direct_control_enabled_;
 }
 
@@ -32,6 +36,10 @@ bool TitatiHardware::DisableDirectControl()
   if (!direct_control_enabled_)
   {
     return true;
+  }
+  if (router_)
+  {
+    router_->CancelForceDirectMode();
   }
   direct_control_enabled_ = !robot_->set_motors_sdk(false);
   return !direct_control_enabled_;
