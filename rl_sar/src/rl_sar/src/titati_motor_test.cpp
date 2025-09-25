@@ -3,10 +3,12 @@
  */
 
 #include "titati_sdk/titati_robot.hpp"
+#include "titati_canfd_router/canfd_router_can_receive_api.hpp"
 
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include <exception>
 #include <iomanip>
 #include <iostream>
 #include <string>
@@ -170,6 +172,18 @@ int main(int argc, char **argv)
     if (!ParseArguments(argc, argv, options))
     {
         return 0;
+    }
+
+    std::shared_ptr<can_device::CanfdRouterCanReceiveApi> router;
+    try
+    {
+        router = std::make_shared<can_device::CanfdRouterCanReceiveApi>();
+        router->set_forcedirect_mode(true);
+    }
+    catch (const std::exception &ex)
+    {
+        std::cerr << "[titati_motor_test] Warning: failed to start CAN-FD router helper (" << ex.what()
+                  << "). Continuing without the local handshake." << std::endl;
     }
 
     tita_robot robot(16);

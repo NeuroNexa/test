@@ -18,7 +18,7 @@ cd rl_sar
 
 The hardware executables are written to `rl_sar/cmake_build/bin/`.  Use `./build.sh -c` to remove the build directory.
 
-The slave Jetson also needs the ROS 2 packages that expose the CAN-FD router node and the Titati system service interfaces (run once after every clean build):
+Both Jetsons need the ROS 2 packages that expose the CAN-FD router node and the Titati system service interfaces (run once after every clean build when ROS 2 is available on the machine):
 
 ```bash
 source /opt/ros/humble/setup.bash
@@ -31,7 +31,7 @@ After the colcon build completes, source the workspace before launching any ROS 
 source install/local_setup.bash
 ```
 
-Repeat the ROS build on the master Jetson if you plan to run the router there for debugging.
+If ROS 2 is not available on a Jetson (for example, on the master when only the CLI fallback will be used), you may skip this step and rely on `titati_can_router`, but the ROS node provides parity with the original bring-up scripts.
 
 ## 2. Deployment Sequence
 
@@ -54,7 +54,18 @@ Perform the following steps each time the robot boots.  Commands marked **[maste
    ```
    Leave this node running; it listens for the CAN-FD heartbeat and automatically issues the forced-direct handshake so the MCU accepts SDK commands from the master.  If ROS 2 is not available you can fall back to the CLI daemon `./cmake_build/bin/titati_can_router`, but the ROS node mirrors the original `titati_control` behaviour and is recommended.
 
-3. **Run motor diagnostics on the master Jetson** (recommended before every RL session)
+3. **Start the CAN router helper on the master Jetson**
+   ```bash
+   cd rl_sar
+   source install/local_setup.bash
+   ros2 run titati_canfd_router titati_canfd_router_node
+   ```
+   Running the router on both Jetsons mirrors the original `titati_control` bring-up scripts and guarantees that all 16 motors accept SDK commands.  When ROS 2 is unavailable on the master Jetson, use the bundled CLI fallback instead:
+   ```bash
+   ./cmake_build/bin/titati_can_router
+   ```
+
+4. **Run motor diagnostics on the master Jetson** (recommended before every RL session)
    ```bash
    cd rl_sar
    ./cmake_build/bin/titati_motor_test --read        # one-shot snapshot of all joints
@@ -64,10 +75,10 @@ Perform the following steps each time the robot boots.  Commands marked **[maste
        --id 5 --pos 0.2 --vel 0.0 --kp 60 --kd 3 --tau 0.0 --duration 1.5
    ```
    Use the torque/MIT commands to validate each of the 16 actuators individually before moving on.
-   If any motors report `0` feedback, the tool prints their indexes and automatically retries the
-   forced-direct handshake; re-run the command after verifying the CAN router heartbeat.
+    If any motors report `0` feedback, the tool prints their indexes and automatically retries the
+    forced-direct handshake; re-run the command after verifying the CAN router heartbeats on both Jetsons.
 
-4. **Launch the RL controller on the master Jetson**
+5. **Launch the RL controller on the master Jetson**
    ```bash
    ./cmake_build/bin/rl_real_titati
    ```

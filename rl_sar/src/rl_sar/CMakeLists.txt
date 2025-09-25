@@ -112,6 +112,14 @@ add_library(titati_sdk
 target_link_libraries(titati_sdk PUBLIC Threads::Threads)
 target_include_directories(titati_sdk PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/library/titati_sdk/include)
 
+add_library(titati_can_router_lib STATIC
+  ../titati_canfd_router/src/canfd_router_can_receive_api.cpp
+)
+target_include_directories(titati_can_router_lib PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}/../titati_canfd_router/include
+)
+target_link_libraries(titati_can_router_lib PUBLIC Threads::Threads)
+
 add_executable(rl_real_titati src/rl_real_titati.cpp)
 target_link_libraries(rl_real_titati
   titati_sdk
@@ -119,6 +127,7 @@ target_link_libraries(rl_real_titati
   observation_buffer
   yaml-cpp
   Threads::Threads
+  titati_can_router_lib
 )
 
 add_executable(titati_motor_test src/titati_motor_test.cpp)
@@ -126,10 +135,10 @@ target_link_libraries(titati_motor_test
   titati_sdk
   yaml-cpp
   Threads::Threads
+  titati_can_router_lib
 )
 
 add_executable(titati_can_router
-  ../titati_canfd_router/src/canfd_router_can_receive_api.cpp
   ../titati_canfd_router/src/main_cli.cpp
 )
 target_include_directories(titati_can_router PRIVATE
@@ -137,6 +146,7 @@ target_include_directories(titati_can_router PRIVATE
 )
 target_link_libraries(titati_can_router
   Threads::Threads
+  titati_can_router_lib
 )
 
 # only for test

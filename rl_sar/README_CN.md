@@ -211,7 +211,7 @@ git clone https://github.com/osrf/gazebo_models.git ~/.gazebo/models
   ./build.sh
   ```
   生成的可执行文件位于 `cmake_build/bin/`（`rl_real_titati`、`titati_motor_test`、`titati_can_router`）。
-- **在从机（必要时主机）编译 ROS 2 包**
+- **在需要运行 ROS 路由节点的 Jetson 上编译 ROS 2 包（通常主、从机各执行一次）**
   ```bash
   source /opt/ros/humble/setup.bash
   ./build.sh tita_utils tita_system_interfaces titati_canfd_router
@@ -231,7 +231,16 @@ git clone https://github.com/osrf/gazebo_models.git ~/.gazebo/models
    source install/local_setup.bash
    ros2 run titati_canfd_router titati_canfd_router_node
    ```
-    请保持该终端运行，用于监听 CAN-FD 心跳并自动发送强制直驱握手，使 MCU 持续处于 SDK 模式。如需在无 ROS 环境下运行，可使用备用的 `./cmake_build/bin/titati_can_router`。
+    请保持该终端运行，用于监听 CAN-FD 心跳并自动发送强制直驱握手，使 MCU 持续处于 SDK 模式。
+  - **主机 Jetson 启动 CAN 路由辅助程序**
+    ```bash
+    source install/local_setup.bash
+    ros2 run titati_canfd_router titati_canfd_router_node
+    ```
+    这样即可与 `titati_control` 的原始启动脚本保持一致，确保前、后两台 Tita 均进入强制直驱模式；若主机上没有 ROS 环境，可改用备用 CLI：
+    ```bash
+    ./cmake_build/bin/titati_can_router
+    ```
 
 - **主机 Jetson 进行电机联调与 RL 控制**
   1. 使用 `titati_motor_test` 检查 16 个电机：
@@ -243,7 +252,7 @@ git clone https://github.com/osrf/gazebo_models.git ~/.gazebo/models
      ```
     按需逐个电机验证，确保 16 个执行器均响应正常。
     当工具检测到缺失反馈时会列出电机编号并自动重新发送 Force Direct RPC；
-    请确认从机路由节点输出 `mode:3` 心跳后再次执行命令，直到所有关节均上报时间戳。
+    请确认主、从机路由节点均在运行并输出 `mode:3` 心跳后再次执行命令，直到所有关节均上报时间戳。
   2. 将策略文件放置到 `src/rl_sar/policy/titati/robot_lab/policy.pt`，并核对 `base.yaml`、`config.yaml`。
   3. 启动 RL 控制：
      ```bash

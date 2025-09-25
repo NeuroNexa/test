@@ -115,7 +115,7 @@ The hardware targets are built with a single CMake script located at the reposit
 
 The script configures `cmake_build/` and compiles all required libraries and executables for the Titati robot.  Use `./build.sh -c` to remove the build directory and force a clean reconfigure.  Run `./build.sh -h` to see the available maintenance options.
 
-When ROS 2 is available (Titati ships with Humble on both Jetsons), build the auxiliary packages that provide the system interfaces and CAN router node:
+When ROS 2 is available (Titati ships with Humble on both Jetsons), build the auxiliary packages that provide the system interfaces and CAN router node (run this on every Jetson that will launch the ROS router):
 
 ```bash
 source /opt/ros/humble/setup.bash
@@ -194,9 +194,19 @@ The Titati platform is composed of a **master Jetson** (front Tita) and a **slav
    source install/local_setup.bash
    ros2 run titati_canfd_router titati_canfd_router_node
    ```
-   Leave this node running; it listens for the CAN-FD heartbeat and automatically transmits the forced-direct handshake so the MCU accepts SDK commands from the master.  A ROS-free fallback CLI is available as `./cmake_build/bin/titati_can_router` when required.
+   Leave this node running; it listens for the CAN-FD heartbeat and automatically transmits the forced-direct handshake so the MCU accepts SDK commands from the master.
 
-4. **Verify the motors on the master Jetson**
+4. **Start the CAN router helper on the master Jetson**
+   ```bash
+   source install/local_setup.bash
+   ros2 run titati_canfd_router titati_canfd_router_node
+   ```
+   This mirrors the original `titati_control` scripts and guarantees that the front Tita also transitions to forced-direct mode.  When ROS 2 is unavailable on the master, use the CLI fallback instead:
+   ```bash
+   ./cmake_build/bin/titati_can_router
+   ```
+
+5. **Verify the motors on the master Jetson**
    ```bash
    ./cmake_build/bin/titati_motor_test --read
    ./cmake_build/bin/titati_motor_test --monitor
@@ -205,10 +215,10 @@ The Titati platform is composed of a **master Jetson** (front Tita) and a **slav
    ```
    Repeat the torque/MIT commands for each actuator until all 16 motors respond correctly.
    When the diagnostic tool encounters missing feedback it will list the motor indexes and automatically
-   resend the forced-direct RPC; confirm the slave router is emitting a `mode:3` heartbeat and rerun the
+   resend the forced-direct RPC; confirm both routers are emitting `mode:3` heartbeats and rerun the
    command until all joints report timestamps.
 
-5. **Launch the Titati RL controller on the master Jetson**
+6. **Launch the Titati RL controller on the master Jetson**
    ```bash
    ./cmake_build/bin/rl_real_titati
    ```

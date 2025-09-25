@@ -4,10 +4,12 @@
  */
 
 #include "rl_real_titati.hpp"
+#include "titati_canfd_router/canfd_router_can_receive_api.hpp"
 
 #include <chrono>
 #include <cmath>
 #include <csignal>
+#include <exception>
 #include <iostream>
 #include <thread>
 
@@ -44,6 +46,16 @@ RL_RealTitati::RL_RealTitati()
 
     torch::autograd::GradMode::set_enabled(false);
     torch::set_num_threads(4);
+
+    try
+    {
+        this->can_router_ = std::make_shared<can_device::CanfdRouterCanReceiveApi>();
+        this->can_router_->set_forcedirect_mode(true);
+    }
+    catch (const std::exception &ex)
+    {
+        std::cout << LOGGER::WARNING << "Failed to start local CAN-FD router helper: " << ex.what() << std::endl;
+    }
 
     this->titati_robot_ = std::make_unique<tita_robot>(static_cast<size_t>(this->params.num_of_dofs));
     this->latest_position_.resize(this->params.num_of_dofs, 0.0);

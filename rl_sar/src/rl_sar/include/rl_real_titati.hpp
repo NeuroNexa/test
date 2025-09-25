@@ -22,6 +22,11 @@
 #include <mutex>
 #include <csignal>
 
+namespace can_device
+{
+class CanfdRouterCanReceiveApi;
+}
+
 #if defined(USE_ROS1) && defined(USE_ROS)
 #include <ros/ros.h>
 #include <geometry_msgs/Twist.h>
@@ -72,6 +77,7 @@ private:
     std::array<double, 3> latest_gyro_{};
     std::array<double, 3> latest_accel_{};
     std::atomic<bool> state_ready_{false};
+    std::shared_ptr<can_device::CanfdRouterCanReceiveApi> can_router_;
 
     // others
     int motiontime = 0;
