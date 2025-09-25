@@ -130,7 +130,7 @@ target_link_libraries(titati_motor_test
 
 add_executable(titati_can_router
   ../titati_canfd_router/src/canfd_router_can_receive_api.cpp
-  ../titati_canfd_router/src/main.cpp
+  ../titati_canfd_router/src/main_cli.cpp
 )
 target_include_directories(titati_can_router PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/../titati_canfd_router/include

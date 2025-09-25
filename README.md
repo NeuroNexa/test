@@ -9,14 +9,23 @@ This repository replaces the original `titati_control` motion controller with th
 
 ## 1. Build Instructions
 
-The project is built purely with CMake.  Run the helper script once on both Jetsons (master and slave) after cloning or pulling updates:
+Run the helper script on both Jetsons (master and slave) to generate the CMake hardware binaries:
 
 ```bash
 cd rl_sar
 ./build.sh
 ```
 
-The hardware binaries are generated under `rl_sar/cmake_build/bin/`.  Use `./build.sh -c` if you need to remove all build artefacts and reconfigure from scratch.
+The hardware executables are written to `rl_sar/cmake_build/bin/`.  Use `./build.sh -c` to remove the build directory.
+
+The slave Jetson also needs the ROS 2 packages that expose the CAN-FD router node and the Titati system service interfaces:
+
+```bash
+source /opt/ros/humble/setup.bash
+./build.sh tita_utils tita_system_interfaces titati_canfd_router
+```
+
+Repeat the ROS build on the master Jetson if you plan to run the router there for debugging.
 
 ## 2. Deployment Sequence
 
@@ -34,9 +43,10 @@ Perform the following steps each time the robot boots.  Commands marked **[maste
 2. **Start the CAN router daemon on the slave Jetson**
    ```bash
    cd rl_sar
-   ./cmake_build/bin/titati_can_router
+   source install/setup.bash
+   ros2 run titati_canfd_router titati_canfd_router_node
    ```
-   Keep this process running; it listens for the CAN-FD heartbeat and automatically sends the forced-direct handshake so the MCU accepts SDK commands from the master.
+   Leave this node running; it listens for the CAN-FD heartbeat and automatically issues the forced-direct handshake so the MCU accepts SDK commands from the master.  If ROS 2 is not available you can fall back to the CLI daemon `./cmake_build/bin/titati_can_router`, but the ROS node mirrors the original `titati_control` behaviour and is recommended.
 
 3. **Run motor diagnostics on the master Jetson** (recommended before every RL session)
    ```bash
@@ -60,6 +70,7 @@ Perform the following steps each time the robot boots.  Commands marked **[maste
 - `rl_sar/src/rl_sar/library/titati_sdk/` – CAN sender/receiver and Titati hardware wrapper derived from `titati_control`.
 - `rl_sar/src/rl_sar/src/rl_real_titati.cpp` – real-robot RL executable.
 - `rl_sar/src/rl_sar/src/titati_motor_test.cpp` – CLI diagnostics tool.
-- `rl_sar/src/titati_canfd_router/src/main.cpp` (built as `titati_can_router`) – forced-direct CAN handshake daemon.
+- `rl_sar/src/titati_canfd_router/src/main.cpp` – ROS 2 CAN router node that mirrors the original `titati_control` bring-up.
+- `rl_sar/src/titati_canfd_router/src/main_cli.cpp` (built as `titati_can_router`) – ROS-free fallback daemon for environments without ROS 2.
 
 Follow the sequence **build → bring up CAN → run the slave CAN router → verify all motors → launch `rl_real_titati`** to ensure the robot is safe and fully verified before the RL policy takes control.

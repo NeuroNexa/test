@@ -115,6 +115,15 @@ The hardware targets are built with a single CMake script located at the reposit
 
 The script configures `cmake_build/` and compiles all required libraries and executables for the Titati robot.  Use `./build.sh -c` to remove the build directory and force a clean reconfigure.  Run `./build.sh -h` to see the available maintenance options.
 
+When ROS 2 is available (Titati ships with Humble on both Jetsons), build the auxiliary packages that provide the system interfaces and CAN router node:
+
+```bash
+source /opt/ros/humble/setup.bash
+./build.sh tita_utils tita_system_interfaces titati_canfd_router
+```
+
+The command can be repeated with additional package names to rebuild specific ROS components.
+
 ## Running
 
 In the following text, **\<ROBOT\>/\<CONFIG\>** is used to represent different environments, such as `go2/himloco` and `go2w/robot_lab`.
@@ -177,9 +186,10 @@ The Titati platform is composed of a **master Jetson** (front Tita) and a **slav
 
 3. **Start the CAN router daemon on the slave Jetson**
    ```bash
-   ./cmake_build/bin/titati_can_router
+   source install/setup.bash
+   ros2 run titati_canfd_router titati_canfd_router_node
    ```
-   Leave this process running; it listens for the CAN-FD heartbeat and automatically transmits the forced-direct handshake so the MCU accepts SDK commands from the master.
+   Leave this node running; it listens for the CAN-FD heartbeat and automatically transmits the forced-direct handshake so the MCU accepts SDK commands from the master.  A ROS-free fallback CLI is available as `./cmake_build/bin/titati_can_router` when required.
 
 4. **Verify the motors on the master Jetson**
    ```bash

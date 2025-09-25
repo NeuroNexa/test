@@ -115,6 +115,15 @@ sudo ldconfig
 
 脚本会在 `cmake_build/` 目录下生成 Titati 所需的全部库和可执行文件。若需要重新配置，可执行 `./build.sh -c` 清理构建目录。使用 `./build.sh -h` 可查看所有维护选项。
 
+在机器人默认的 ROS 2 Humble 环境中，还需要构建 CAN 路由器及系统接口包：
+
+```bash
+source /opt/ros/humble/setup.bash
+./build.sh tita_utils tita_system_interfaces titati_canfd_router
+```
+
+如需重新编译其他 ROS 包，可在命令行追加包名。
+
 ## 运行
 
 下文中使用 **\<ROBOT\>/\<CONFIG\>** 代替表示不同的环境，如 `go2/himloco` 、 `go2w/robot_lab`。
@@ -192,11 +201,16 @@ git clone https://github.com/osrf/gazebo_models.git ~/.gazebo/models
 
 #### Titati 机器人部署流程
 
-- **主、从机均执行一次编译**
+- **主、从机均执行一次 CMake 编译**
   ```bash
   ./build.sh
   ```
   生成的可执行文件位于 `cmake_build/bin/`（`rl_real_titati`、`titati_motor_test`、`titati_can_router`）。
+- **在从机（必要时主机）编译 ROS 2 包**
+  ```bash
+  source /opt/ros/humble/setup.bash
+  ./build.sh tita_utils tita_system_interfaces titati_canfd_router
+  ```
 
 - **主从机均需开启 CAN 接口**
   ```bash
@@ -207,11 +221,12 @@ git clone https://github.com/osrf/gazebo_models.git ~/.gazebo/models
   sudo ifconfig can0 txqueuelen 1000
   ```
 
-- **从机 Jetson 启动 CAN 路由守护程序**
-  ```bash
-  ./cmake_build/bin/titati_can_router
-  ```
-  请保持该终端运行，用于监听 CAN-FD 心跳并自动发送强制直驱握手，使 MCU 持续处于 SDK 模式。
+  - **从机 Jetson 启动 CAN 路由守护程序**
+    ```bash
+    source install/setup.bash
+    ros2 run titati_canfd_router titati_canfd_router_node
+    ```
+    请保持该终端运行，用于监听 CAN-FD 心跳并自动发送强制直驱握手，使 MCU 持续处于 SDK 模式。如需在无 ROS 环境下运行，可使用备用的 `./cmake_build/bin/titati_can_router`。
 
 - **主机 Jetson 进行电机联调与 RL 控制**
   1. 使用 `titati_motor_test` 检查 16 个电机：

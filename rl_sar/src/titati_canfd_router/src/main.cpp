@@ -11,42 +11,85 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+#include <time.h>
 
-#include <atomic>
+#include <algorithm>
 #include <chrono>
-#include <csignal>
 #include <iostream>
+#include <map>
 #include <memory>
+#include <string>
 #include <thread>
 
 #include "titati_canfd_router/canfd_router_can_receive_api.hpp"
+#include "rclcpp/rclcpp.hpp"
+#include "tita_system_interfaces/srv/power_self_test_srv.hpp"
+#include "tita_utils/topic_names.hpp"
 
-namespace
+namespace tita
 {
-std::atomic_bool g_running{true};
 
-void signal_handler(int)
+class CanfdRouterCanNode : public rclcpp::Node
 {
-  g_running.store(false);
+public:
+  explicit CanfdRouterCanNode(const rclcpp::NodeOptions & option) : Node("titati_slave_controller_node", option) {
+    rmw_qos_profile_t client_qos = rmw_qos_profile_services_default;
+    power_self_test_client_ = this->create_client<tita_system_interfaces::srv::PowerSelfTestSrv>(
+      tita_topic::kpower_self_test_service, client_qos);
+    auto request = std::make_shared<tita_system_interfaces::srv::PowerSelfTestSrv::Request>();
+    request->power_self_test.status.resize(1);
+    request->power_self_test.status[0].values.resize(1);
+    request->power_self_test.status[0].values[0].key = "test_string";
+
+    const auto timeout = std::chrono::seconds(1);
+    bool service_ready = false;
+    for (int attempt = 0; attempt < 10; ++attempt) {
+      if (power_self_test_client_->wait_for_service(timeout)) {
+        service_ready = true;
+        break;
+      }
+      RCLCPP_WARN(
+        this->get_logger(), "Waiting for %s service... (%d/10)",
+        tita_topic::kpower_self_test_service.c_str(), attempt + 1);
+    }
+
+    if (service_ready) {
+      auto result = power_self_test_client_->async_send_request(
+        request, std::bind(&CanfdRouterCanNode::service_response_callback, this, std::placeholders::_1));
+      (void)result;
+    } else {
+      RCLCPP_WARN(
+        this->get_logger(), "Power self-test service unavailable, forcing direct mode locally.");
+      reveive_canfd_router_->set_forcedirect_mode(true);
+    }
 }
-}  // namespace
+  ~CanfdRouterCanNode() = default;
 
-int main(int argc, char ** argv)
+private:
+  std::shared_ptr<can_device::CanfdRouterCanReceiveApi> reveive_canfd_router_ =
+    std::make_shared<can_device::CanfdRouterCanReceiveApi>();
+  rclcpp::Client<tita_system_interfaces::srv::PowerSelfTestSrv>::SharedPtr power_self_test_client_ =
+    nullptr;
+  void service_response_callback(rclcpp::Client<tita_system_interfaces::srv::PowerSelfTestSrv>::SharedFuture response) {
+      (void)response;
+      reveive_canfd_router_->set_forcedirect_mode(true);
+      RCLCPP_INFO(this->get_logger(), "set_forcedirect_mode is started");
+  }
+};
+}  // namespace tita
+
+int main(int argc, char * argv[])
 {
   (void)argc;
   (void)argv;
 
-  std::signal(SIGINT, signal_handler);
-  std::signal(SIGTERM, signal_handler);
+  rclcpp::init(argc, argv);
+  auto options = rclcpp::NodeOptions().automatically_declare_parameters_from_overrides(true);
+  auto node = std::make_shared<tita::CanfdRouterCanNode>(options);
+  auto executor = std::make_shared<rclcpp::executors::MultiThreadedExecutor>();
+  executor->add_node(node);
+  executor->spin();
+  rclcpp::shutdown();
 
-  auto router = std::make_shared<can_device::CanfdRouterCanReceiveApi>();
-  router->set_forcedirect_mode(true);
-
-  std::cout << "[titati_can_router] Waiting for CANFD router heartbeat..." << std::endl;
-  while (g_running.load()) {
-    std::this_thread::sleep_for(std::chrono::seconds(1));
-  }
-
-  std::cout << "[titati_can_router] Shutdown requested. Exiting." << std::endl;
   return 0;
 }

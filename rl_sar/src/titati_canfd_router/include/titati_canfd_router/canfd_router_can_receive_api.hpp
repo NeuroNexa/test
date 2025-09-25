@@ -17,7 +17,6 @@
 
 #include <algorithm>
 #include <atomic>
-#include <cstring>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -25,7 +24,6 @@
 #include <string>
 #include <thread>
 #include <vector>
-#include <sys/time.h>
 
 #include "protocol/can_utils.hpp"
 
@@ -57,11 +55,11 @@ private:
   uint8_t canfd_router_can_id_offset = 0x00U;
 
   void register_canfd_router_device_can_filter();
-  socket_can::can_fd_callback canfd_router_can_receive_callback =
+  tita::socket_can::can_fd_callback canfd_router_can_receive_callback =
     std::bind(&CanfdRouterCanReceiveApi::get_board_can_data, this, std::placeholders::_1);
 
-  std::shared_ptr<socket_can::CanDev> canfd_router_can_receive_api =
-    std::make_shared<socket_can::CanDev>(
+  std::shared_ptr<tita::socket_can::CanDev> canfd_router_can_receive_api =
+    std::make_shared<tita::socket_can::CanDev>(
       canfd_router_can_interface, canfd_router_can_name, canfd_router_can_extended_frame, canfd_router_can_receive_callback,
       canfd_router_can_rx_is_block, canfd_router_timeout_us, canfd_router_can_id_offset);
 
@@ -78,8 +76,8 @@ private:
   bool set_forcedirect_can_extended_frame = false;
   bool set_forcedirect_can_fd_mode = true;
 
-  std::shared_ptr<socket_can::CanDev> set_forcedirect_can_send_api =
-    std::make_shared<socket_can::CanDev>(
+  std::shared_ptr<tita::socket_can::CanDev> set_forcedirect_can_send_api =
+    std::make_shared<tita::socket_can::CanDev>(
       set_forcedirect_can_interface, set_forcedirect_can_name, set_forcedirect_can_extended_frame, set_forcedirect_can_fd_mode,
       set_forcedirect_timeout_us, set_forcedirect_can_id_offset);
   inline uint32_t get_current_time()
