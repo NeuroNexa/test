@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://wiki.ros.org/xacro" name="titati_ros2_control">
+  <!-- <webots>
+    <plugin type="webots_ros2_control::Ros2Control" />
+  </webots> -->
+  <xacro:arg name="prefix" default="" />
+
+  <xacro:arg name="ctrl_mode" default="wbc" />
+
+  <xacro:include filename="$(find titati_bringup)/urdf/titati_robot_2.urdf" />
+
+  <xacro:include filename="$(find titati_bringup)/urdf/titati_ros2control.xacro" />
+
+  <!-- <xacro:titati_description prefix="$(arg prefix)"/> -->
+
+  <xacro:titati_ros2control prefix="$(arg prefix)" ctrl_mode="$(arg ctrl_mode)" />
+</robot>

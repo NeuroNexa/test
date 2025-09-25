@@ -343,6 +343,47 @@ source ~/.bashrc
 
 <details>
 
+<summary>DDTRobot Titati（双 Tita 平台）（点击展开）</summary>
+
+现在仓库已经将原来 `titati_control` 中的 ROS 2 启动、硬件桥接与 CAN 路由程序全部迁移到了 `src/` 目录下，可以和 rl_sar 的其
+他包一起编译与部署。
+
+1. 先编译相关功能包（或者直接执行 `./build.sh` 编译全部包）：
+
+    ```bash
+    ./build.sh \
+      titati_bringup titati_controller titati_canfd_router \
+      joy_controller teleop_command user_command \
+      tita_bringup tita_robot hardware_bridge battery_device hw_bringup \
+      tita_locomotion_interfaces tita_system_interfaces tita_perception_interfaces
+    ```
+
+2. 在**主控** Jetson（其中一台 Tita 机身）上配置 CAN-FD 接口并启动完整的 bringup。仓库提供的脚本会自动配置 `can0`，加载
+   ROS 2 Humble 环境并启动控制器：
+
+    ```bash
+    cd <rl_sar_root>
+    ./can_setup_8m_master.sh
+    ```
+
+3. 在**从控** Jetson 上同样执行 CAN-FD 配置，并启动精简的 bringup：
+
+    ```bash
+    cd <rl_sar_root>
+    ./can_setup_8m_slave.sh
+    ```
+
+   从控端只运行 CAN 路由与电池监测节点，主控端会额外启动 ros2_control、Titati 控制器和手柄交互。若需修改控制模式或命名空
+   间，可直接编辑 `titati_bringup/launch/` 下的启动文件。
+
+4. 两台机身都启动后，即可通过 rl_sar 的策略运行器（例如 `ros2 run rl_sar rl_sim --ros-args -p robot_name:=titati`）或自定义
+   ROS 2 节点向 Titati 控制器开放的话题发布速度指令。控制器订阅 `command/manager/cmd_twist` 等在 `tita_bringup` 中定义的接口，
+   原有的遥控/键盘程序也可以继续使用。
+
+</details>
+
+<details>
+
 <summary>云深处科技 Lite3 (Click to expand)</summary>
 
 Lite3通过无线网络进行连接。

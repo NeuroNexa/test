@@ -12,3 +12,5 @@ __pycache__
 cmake_build
 
 package.xml
+src/titati_locomotion/**/*.onnx
+src/TITA-SDK-ROS2/docs/img/

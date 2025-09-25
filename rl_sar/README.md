@@ -343,6 +343,50 @@ Pull the code and compile it. The process is the same as above.
 
 <details>
 
+<summary>DDTRobot Titati (dual Tita platform) (Click to expand)</summary>
+
+This repository now bundles the complete ROS 2 bringup, hardware bridge, and CAN router stack that was previously shipped with
+`titati_control`. All packages were moved under `src/` so they can be built and launched together with the rest of the rl_sar
+workspace.
+
+1. Build the required packages (or run `./build.sh` to build everything):
+
+    ```bash
+    ./build.sh \
+      titati_bringup titati_controller titati_canfd_router \
+      joy_controller teleop_command user_command \
+      tita_bringup tita_robot hardware_bridge battery_device hw_bringup \
+      tita_locomotion_interfaces tita_system_interfaces tita_perception_interfaces
+    ```
+
+2. On the **master** Jetson (one of the two Tita bases), prepare the CAN-FD interface and launch the full bringup. The helper
+   script configures `can0`, sources ROS 2 Humble, and launches the controller stack:
+
+    ```bash
+    cd <rl_sar_root>
+    ./can_setup_8m_master.sh
+    ```
+
+3. On the **slave** Jetson, repeat the CAN-FD setup and start the reduced bringup:
+
+    ```bash
+    cd <rl_sar_root>
+    ./can_setup_8m_slave.sh
+    ```
+
+   The slave launch only runs the CAN router and battery monitor while the master launches the controller, ros2_control, and the
+   joystick interface. You can edit the launch arguments inside `titati_bringup/launch/` if you need to switch control modes or
+   adjust namespaces.
+
+4. After both halves are online you can use the rl_sar policy runner (for example `ros2 run rl_sar rl_sim --ros-args -p
+   robot_name:=titati`) or any custom ROS 2 nodes to publish velocity commands to the topics exposed by the Titati controller.
+   The controller listens to `command/manager/cmd_twist` and related interfaces defined in `tita_bringup` so existing teleop
+   nodes keep working.
+
+</details>
+
+<details>
+
 <summary>Deeprobotics Lite3 (Click to expand)</summary>
 
 Deeprobotics Lite3 can be connected using wireless method.

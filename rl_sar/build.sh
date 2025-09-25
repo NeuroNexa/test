@@ -248,41 +248,67 @@ create_symlinks_for_package() {
     local package_dir="$1"
     local package_name=$(basename "$package_dir")
 
-    if [ -d "$package_dir" ]; then
-        if [ -f "$package_dir/package.ros1.xml" ] && [ -f "$package_dir/package.ros2.xml" ]; then
-            [ -e "$package_dir/package.xml" ] && rm -f "$package_dir/package.xml"
-
-            if [[ "$ROS_DISTRO" == "noetic" ]]; then
-                ln -s package.ros1.xml "$package_dir/package.xml"
-                return 0
-            elif [[ "$ROS_DISTRO" == "foxy" || "$ROS_DISTRO" == "humble" ]]; then
-                ln -s package.ros2.xml "$package_dir/package.xml"
-                return 0
-            else
-                print_error "Unknown ROS version: $ROS_DISTRO"
-                return 1
-            fi
-        fi
+    if [ ! -d "$package_dir" ]; then
+        return 1
     fi
-    return 1
+
+    local ros1_package="$package_dir/package.ros1.xml"
+    local ros2_package="$package_dir/package.ros2.xml"
+
+    local target_package=""
+
+    if [[ "$ROS_DISTRO" == "noetic" ]]; then
+        if [ -f "$ros1_package" ]; then
+            target_package="package.ros1.xml"
+        elif [ -f "$ros2_package" ]; then
+            print_warning "Package '$package_name' has no ROS1 manifest, falling back to ROS2 manifest"
+            target_package="package.ros2.xml"
+        fi
+    elif [[ "$ROS_DISTRO" == "foxy" || "$ROS_DISTRO" == "humble" ]]; then
+        if [ -f "$ros2_package" ]; then
+            target_package="package.ros2.xml"
+        elif [ -f "$ros1_package" ]; then
+            print_warning "Package '$package_name' has no ROS2 manifest, falling back to ROS1 manifest"
+            target_package="package.ros1.xml"
+        fi
+    else
+        print_error "Unknown ROS version: $ROS_DISTRO"
+        return 1
+    fi
+
+    if [ -z "$target_package" ]; then
+        print_warning "Skipping package '$package_name' (no compatible manifest found)"
+        return 1
+    fi
+
+    [ -e "$package_dir/package.xml" ] && rm -f "$package_dir/package.xml"
+    ln -s "$target_package" "$package_dir/package.xml"
+    return 0
 }
 
 create_symlinks_for_all_packages() {
     print_header "[Creating Symlinks for All Packages]"
 
     created_packages=()
-    while IFS= read -r -d '' package_dir; do
-        package_dir=$(dirname "$package_dir")
-        package_name=$(basename "$package_dir")
+    declare -A processed_packages=()
+
+    while IFS= read -r -d '' package_file; do
+        local package_dir=$(dirname "$package_file")
+        if [[ -n "${processed_packages[$package_dir]}" ]]; then
+            continue
+        fi
+        processed_packages[$package_dir]=1
+
+        local package_name=$(basename "$package_dir")
         if create_symlinks_for_package "$package_dir"; then
             created_packages+=("$package_name")
         fi
-    done < <(find src -name "package.ros1.xml" -print0)
+    done < <(find src -name "package.ros1.xml" -o -name "package.ros2.xml" -print0)
 
     if [ ${#created_packages[@]} -gt 0 ]; then
         print_success "Created symlinks for: ${created_packages[*]}"
     else
-        print_warning "No packages with dual ROS support found"
+        print_warning "No packages with compatible manifests found"
     fi
 }
 

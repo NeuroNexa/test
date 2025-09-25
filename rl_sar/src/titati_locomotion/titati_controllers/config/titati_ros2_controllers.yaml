@@ -1,0 +1,198 @@
+# This config file is used by ros2_control
+/**:
+  controller_manager:
+    ros__parameters:
+      update_rate: 500  # Hz
+      # is_async: true
+          
+      joint_state_broadcaster:
+        type: joint_state_broadcaster/JointStateBroadcaster
+      imu_sensor_broadcaster:
+        type: imu_sensor_broadcaster/IMUSensorBroadcaster
+      titati_controller:
+        type: titati_locomotion/TitatiController
+      # cheater_tita_control:
+      #   type: tita_locomotion/CheaterTitaController
+      
+  # TODO: imcomplete
+  imu_sensor_broadcaster:
+    ros__parameters:
+      update_rate: 100  # Hz
+      sensor_name: imu
+      frame_id:  imu
+  joint_state_broadcaster:
+    ros__parameters:
+      update_rate: 100  # Hz
+
+  titati_controller:
+    ros__parameters:
+      update_rate: 500  # Hz
+      joints:
+        - joint_frontleft_leg_1
+        - joint_frontleft_leg_2
+        - joint_frontleft_leg_3
+        - joint_frontleft_leg_4
+        - joint_frontright_leg_1
+        - joint_frontright_leg_2
+        - joint_frontright_leg_3
+        - joint_frontright_leg_4
+        - joint_rearright_leg_1
+        - joint_rearright_leg_2
+        - joint_rearright_leg_3
+        - joint_rearright_leg_4
+        - joint_rearleft_leg_1
+        - joint_rearleft_leg_2
+        - joint_rearleft_leg_3
+        - joint_rearleft_leg_4
+      command_interfaces:
+        # - position
+        # - velocity
+        - effort
+      state_interfaces:
+        - position
+        - velocity
+        - effort
+      # wheel_joint_name:
+      #   - joint_frontleft_leg_4
+      #   - joint_frontright_leg_4
+      #   - joint_rearleft_leg_4
+      #   - joint_rearright_leg_4
+      # base_name: base_link  
+      sensors: 
+        - imu
+      
+      slope_commmand_gain_x: 1.5
+      slope_commmand_bias_x: 0.17
+      stair_commmand_gain_x: 1.0
+      stair_commmand_bias_x: 0.07
+      high_commmand_gain_x: 1.0
+      high_commmand_bias_x: 0.09
+
+      slope_commmand_gain_yaw: 1.0
+      slope_commmand_bias_yaw: 0.0
+      stair_commmand_gain_yaw: 0.5
+      stair_commmand_bias_yaw: 0.0
+      high_commmand_gain_yaw: 0.5
+      high_commmand_bias_yaw: 0.0
+
+      # frame_prefix: tita3037145/
+      # wheel_radius: 0.0925
+      # static_friction_coefficient: 0.8
+      # sliding_friction_coefficient: 0.5
+      # torque_limit: [50.0, 20.0, 40.0, 5.0, 50.0, 20.0, 40.0, 5.0]
+      # # joint pd
+      # joint_pd: 
+      #   p: [600.0, 80.0, 80.0, 5.0, 600.0, 80.0, 80.0, 5.0]
+      #   d: [8.0, 8.0, 8.0, 0.2, 8.0, 8.0, 8.0, 0.2]
+
+      # #
+      # task_angular:
+      #   pitch:
+      #     p: 800.0
+      #     d: 30.0
+      #   roll:
+      #     p: 200.0
+      #     d: 30.0
+      #   yaw:
+      #     p: 150.0
+      #     d: 25.0
+      # task_linear:
+      #   sum_y:
+      #     p: 200.0
+      #     d: 20.0
+      #   sum_z:
+      #     p: 500.0
+      #     d: 20.0
+      #   dif_x:
+      #     p: 1000.0
+      #     d: 20.0
+      #   dif_y:
+      #     p: 200.0
+      #     d: 20.0
+      # task_lqr:
+      #   q0: 60.0
+      #   q1: 800.0
+      #   q2: 20.0
+      #   q3: 100.0
+      #   r0: 1.0
+      # # bias 
+      # bias_sum_y: 0.0
+      # bias_sum_z: 0.0
+      # bias_dif_x: 0.00
+      # bias_dif_y: 0.0
+      
+      # # command limit
+      # max_velocity_x: 2.0
+      # min_velocity_x: -1.0
+      # max_acceleration_x: 3.0
+      # min_acceleration_x: -3.0
+
+      # max_velocity_yaw: 1.0
+      # min_velocity_yaw: -1.0
+      # max_acceleration_yaw: 3.0
+      # min_acceleration_yaw: -3.0
+
+      # max_position_roll: 0.2
+      # max_velocity_roll: 0.8
+      # max_acceleration_roll: 30.0
+
+      # max_position_pitch: 0.2
+      # max_velocity_pitch: 0.8
+      # max_acceleration_pitch: 30.0
+      
+      # max_position_height: 0.4
+      # min_position_height: 0.2
+      # max_velocity_height: 0.2
+      # min_velocity_height: -0.2
+      # max_acceleration_height: 10.0
+      # min_acceleration_height: -10.0
+
+      # max_position_xsplit: 0.02
+      # max_velocity_xsplit: 0.1
+      # max_acceleration_xsplit: 20.0
+
+      # max_position_ybias: 0.02
+      # max_velocity_ybias: 0.1
+      # max_acceleration_ybias: 20.0
+
+      # max_position_ysplit: 0.02
+      # min_position_ysplit: -0.02
+      # max_velocity_ysplit: 0.2
+      # min_velocity_ysplit: -0.2
+      # max_acceleration_ysplit: 30.0
+      # min_acceleration_ysplit: -30.0
+      # # state estimator
+      # imu_process_noise_position: 0.02
+      # imu_process_noise_velocity: 0.02
+      # foot_process_noise_position: 0.002
+      # imu_sensor_noise_position: 0.005
+      # imu_sensor_noise_velocity: 0.1
+      # foot_sensor_noise_position: 0.01
+      # foot_sensor_noise_velocity: 0.3
+
+  # cheater_tita_control:
+  #   ros__parameters:
+  #     update_rate: 500  # Hz
+  #     joints:
+  #       - left_hip_abduction_joint
+  #       - left_hip_flexion_joint
+  #       - left_knee_joint
+  #       - left_ankle_joint
+  #       - right_hip_abduction_joint
+  #       - right_hip_flexion_joint
+  #       - right_knee_joint
+  #       - right_ankle_joint
+  #     command_interfaces:
+  #       # - position
+  #       # - velocity
+  #       - effort
+  #     state_interfaces:
+  #       - position
+  #       - velocity
+  #       # - effort
+  #     wheel_joint_name:
+  #       - left_ankle_joint
+  #       - right_ankle_joint
+  #     base_name: pelvis  
+  #     sensors: 
+  #       - imu

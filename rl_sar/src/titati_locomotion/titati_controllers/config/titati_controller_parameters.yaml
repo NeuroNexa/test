@@ -1,0 +1,322 @@
+titati_controller:
+  joints: {
+    type: string_array,
+    default_value: [],
+    description: "Joint names to control and listen to",
+    read_only: true,
+    validation: {
+      unique<>: null,
+    }
+  }
+
+  # task_names: {
+  #   type: string_array,
+  #   default_value: ["sum_y", "sum_z", "dif_x", "dif_y", "roll", "pitch", "yaw"],
+  #   description: "specifies which task will be used by the controller",
+  # }
+
+  # wheel_radius: {
+  #   type: double,
+  #   default_value: 0.085,
+  #   description: "Radius of a wheel, used for transformation of linear velocity into wheel rotations. If this parameter is wrong the robot will move faster or slower then expected.",
+  # }
+  # static_friction_coefficient: {
+  #   type: double,
+  #   default_value: 0.8,
+  #   description: "Radius of a wheel, used for transformation of linear velocity into wheel rotations. If this parameter is wrong the robot will move faster or slower then expected.",
+  # }
+  # sliding_friction_coefficient: {
+  #   type: double,
+  #   default_value: 0.5,
+  #   description: "Radius of a wheel, used for transformation of linear velocity into wheel rotations. If this parameter is wrong the robot will move faster or slower then expected.",
+  # }
+  # lqr:
+  #   q0: {
+  #     type: double,
+  #     default_value: 10.0,
+  #     description: "Radius of a wheel, used for transformation of linear velocity into wheel rotations. If this parameter is wrong the robot will move faster or slower then expected.",
+  #     validation: {
+  #       bounds<>: [0.01, 100000],
+  #     }    
+  #   }
+  #   q1: {
+  #     type: double,
+  #     default_value: 100.0,
+  #     description: "Radius of a wheel, used for transformation of linear velocity into wheel rotations. If this parameter is wrong the robot will move faster or slower then expected.",
+  #     validation: {
+  #       bounds<>: [0.01, 100000],
+  #     }    
+  #   }
+  #   q2: {
+  #     type: double,
+  #     default_value: 20.0,
+  #     description: "Radius of a wheel, used for transformation of linear velocity into wheel rotations. If this parameter is wrong the robot will move faster or slower then expected.",
+  #     validation: {
+  #       bounds<>: [0.01, 100000],
+  #     }
+  #   }
+  #   q3: {
+  #     type: double,
+  #     default_value: 100.0,
+  #     description: "Radius of a wheel, used for transformation of linear velocity into wheel rotations. If this parameter is wrong the robot will move faster or slower then expected.",
+  #     validation: {
+  #       bounds<>: [0.01, 100000],
+  #     }
+  #   }
+  #   r0: {
+  #     type: double,
+  #     default_value: 1.0,
+  #     description: "Radius of a wheel, used for transformation of linear velocity into wheel rotations. If this parameter is wrong the robot will move faster or slower then expected.",
+  #     validation: {
+  #       bounds<>: [0.01, 100000],
+  #     }
+  #   }
+  #   weight: {
+  #     type: double,
+  #     default_value: 1.0,
+  #     description: "Radius of a wheel, used for transformation of linear velocity into wheel rotations. If this parameter is wrong the robot will move faster or slower then expected.",
+  #     validation: {
+  #       bounds<>: [0.01, 10],
+  #     }
+  #   }
+  
+  # task_linear:
+  #   sum_y:
+  #     p: {
+  #       type: double,
+  #       default_value: 500,
+  #       description: "Proportional gain :math:`k_p` for PID",
+  #       validation: {
+  #         bounds<>: [0.0, 10000],
+  #       }
+  #     }
+  #     d: {
+  #       type: double,
+  #       default_value: 20,
+  #       description: "Integral gain :math:`k_i` for PID",
+  #       validation: {
+  #         bounds<>: [0.0, 1000],
+  #       }
+  #     }
+  #     weight: {
+  #       type: double,
+  #       default_value: 1,
+  #       description: "Derivative gain :math:`k_d` for PID",
+  #       validation: {
+  #         bounds<>: [0.0, 100],
+  #       }
+  #     }
+  #   sum_z:
+  #     p: {
+  #       type: double,
+  #       default_value: 300,
+  #       description: "Proportional gain :math:`k_p` for PID",
+  #       validation: {
+  #         bounds<>: [0.0, 10000],
+  #       }
+  #     }
+  #     d: {
+  #       type: double,
+  #       default_value: 20,
+  #       description: "Integral gain :math:`k_i` for PID",
+  #       validation: {
+  #         bounds<>: [0.0, 1000],
+  #       }
+  #     }
+  #     weight: {
+  #       type: double,
+  #       default_value: 1,
+  #       description: "Derivative gain :math:`k_d` for PID",
+  #       validation: {
+  #         bounds<>: [0.0, 100],
+  #       }
+  #     }
+  #   dif_x:
+  #     p: {
+  #       type: double,
+  #       default_value: 2000,
+  #       description: "Proportional gain :math:`k_p` for PID",
+  #       validation: {
+  #         bounds<>: [0.0, 10000],
+  #       }
+  #     }
+
+  #     d: {
+  #       type: double,
+  #       default_value: 30,
+  #       description: "Integral gain :math:`k_i` for PID",
+  #       validation: {
+  #         bounds<>: [0.0, 1000],
+  #       }
+  #     }
+
+  #     weight: {
+  #       type: double,
+  #       default_value: 1,
+  #       description: "Derivative gain :math:`k_d` for PID",
+  #       validation: {
+  #         bounds<>: [0.0, 100],
+  #       }
+  #     }
+  #   dif_y:
+  #     p: {
+  #       type: double,
+  #       default_value: 1000,
+  #       description: "Proportional gain :math:`k_p` for PID",
+  #       validation: {
+  #         bounds<>: [0.0, 10000],
+  #       }
+  #     }
+
+  #     d: {
+  #       type: double,
+  #       default_value: 30,
+  #       description: "Integral gain :math:`k_i` for PID",
+  #       validation: {
+  #         bounds<>: [0.0, 1000],
+  #       }
+  #     }
+
+  #     weight: {
+  #       type: double,
+  #       default_value: 1,
+  #       description: "Derivative gain :math:`k_d` for PID",
+  #       validation: {
+  #         bounds<>: [0.0, 100],
+  #       }
+  #     }
+  # task_angular:
+  #   roll:
+  #     p: {
+  #       type: double,
+  #       default_value: 150,
+  #       description: "Proportional gain :math:`k_p` for PID",
+  #       validation: {
+  #         bounds<>: [0.0, 10000],
+  #       }
+  #     }
+
+  #     d: {
+  #       type: double,
+  #       default_value: 25,
+  #       description: "Integral gain :math:`k_i` for PID",
+  #       validation: {
+  #         bounds<>: [0.0, 1000],
+  #       }
+  #     }
+
+  #     weight: {
+  #       type: double,
+  #       default_value: 1,
+  #       description: "Derivative gain :math:`k_d` for PID",
+  #       validation: {
+  #         bounds<>: [0.0, 100],
+  #       }
+  #     }
+  #   pitch:
+  #     p: {
+  #       type: double,
+  #       default_value: 150,
+  #       description: "Proportional gain :math:`k_p` for PID",
+  #       validation: {
+  #         bounds<>: [0.0, 10000],
+  #       }
+  #     }
+
+  #     d: {
+  #       type: double,
+  #       default_value: 25,
+  #       description: "Integral gain :math:`k_i` for PID",
+  #       validation: {
+  #         bounds<>: [0.0, 1000],
+  #       }
+  #     }
+
+  #     weight: {
+  #       type: double,
+  #       default_value: 1,
+  #       description: "Derivative gain :math:`k_d` for PID",
+  #       validation: {
+  #         bounds<>: [0.0, 100],
+  #       }
+  #     }
+  #   yaw:
+  #     p: {
+  #       type: double,
+  #       default_value: 150,
+  #       description: "Proportional gain :math:`k_p` for PID",
+  #       validation: {
+  #         bounds<>: [0.0, 10000],
+  #       }
+  #     }
+
+  #     d: {
+  #       type: double,
+  #       default_value: 25,
+  #       description: "Integral gain :math:`k_i` for PID",
+  #       validation: {
+  #         bounds<>: [0.0, 1000],
+  #       }
+  #     }
+
+  #     weight: {
+  #       type: double,
+  #       default_value: 1,
+  #       description: "Derivative gain :math:`k_d` for PID",
+  #       validation: {
+  #         bounds<>: [0.0, 100],
+  #       }
+  #     }
+
+            
+  # torque_limit: {
+  #   type: double_array,
+  #   default_value: [10.0, 10.0, 10.0, 5.0, 10.0, 10.0, 10.0, 5.0],
+  #   description: "Max torque of every joint motor.",
+  #   validation: {
+  #     fixed_size<>: [8],
+  #   }
+  # }
+  # joint_pd:
+  #   p: {
+  #     type: double_array,
+  #     default_value: [10.0, 10.0, 10.0, 5.0, 10.0, 10.0, 10.0, 5.0],
+  #     description: "Max torque of every joint motor.",
+  #     validation: {
+  #       fixed_size<>: [8],
+  #     }
+  #   }
+  #   d: {
+  #     type: double_array,
+  #     default_value: [2.0, 2.0, 2.0, 0.5, 2.0, 2.0, 2.0, 0.5],
+  #     description: "Max torque of every joint motor.",
+  #     validation: {
+  #       fixed_size<>: [8],
+  #     }
+  #   }
+
+  # state estimator
+  # imu_process_noise_position: {
+  #   type: double,
+  #   default_value: 0.001
+  # }
+  # imu_process_noise_velocity: {
+  #   type: double,
+  #   default_value: 0.00001
+  # }
+  # foot_process_noise_position: {
+  #   type: double,
+  #   default_value: 0.001
+  # }
+  # foot_sensor_noise_position: {
+  #   type: double,
+  #   default_value: 0.001
+  # }
+  # foot_sensor_noise_velocity: {
+  #   type: double,
+  #   default_value: 0.001
+  # }
+  # foot_height_sensor_noise: {
+  #   type: double,
+  #   default_value: 0.001
+  # }
