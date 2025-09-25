@@ -64,12 +64,18 @@ ask_confirmation() {
 # ========================
 
 run_cmake_build() {
+    local targets=("$@")
     print_header "[Running CMake Build]"
     print_warning "NOTE: CMake build is for hardware deployment only, not for simulation."
     print_separator
 
     cmake src/rl_sar/ -B cmake_build -DUSE_CMAKE=ON
-    cmake --build cmake_build -j4
+    if [ ${#targets[@]} -gt 0 ]; then
+        print_info "Building CMake targets: ${targets[*]}"
+        cmake --build cmake_build --target "${targets[@]}" -j4
+    else
+        cmake --build cmake_build -j4
+    fi
 
     print_success "CMake build completed!"
 }
@@ -346,7 +352,7 @@ main() {
 
     # Handle CMake build mode
     if [ "$cmake_mode" = true ]; then
-        run_cmake_build
+        run_cmake_build "${packages[@]}"
         exit 0
     fi
 

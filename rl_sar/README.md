@@ -133,6 +133,12 @@ If simulation is not needed and you only want to run on the robot, you can compi
 ./build.sh -m  # or ./build.sh --cmake
 ```
 
+When using the CMake workflow you can optionally pass specific targets after `-m` to avoid building robots you do not use:
+
+```bash
+./build.sh -m rl_real_titati titati_motor_test
+```
+
 For detailed usage instructions, you can check them via `./build.sh -h`:
 
 ```bash
