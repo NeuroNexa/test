@@ -1,6 +1,11 @@
 #include "can_receiver.hpp"
 #include "can_sender.hpp"
 
+namespace can_device
+{
+    class CanfdRouterBridge;
+}
+
 class tita_robot
 {
 public:
@@ -27,13 +32,9 @@ public:
         float forward_accel;
         float yaw_accel;
     };
-    tita_robot(size_t num_motors)
-    {
-        // Initialize the CAN receiver
-        can_receiver_ = std::make_unique<can_device::MotorsImuCanReceiveApi>(num_motors);
-        can_sender_ = std::make_unique<can_device::MotorsCanSendApi>(num_motors);
-        motor_num_ = num_motors;
-    }
+    tita_robot(size_t num_motors,
+               const std::string &can_interface = "can0",
+               bool enable_canfd_router = false);
 
     /**
      * @brief Get the current joint positions in joint space.
@@ -148,6 +149,7 @@ public:
 private:
     std::unique_ptr<can_device::MotorsImuCanReceiveApi> can_receiver_;
     std::unique_ptr<can_device::MotorsCanSendApi> can_sender_;
+    std::unique_ptr<can_device::CanfdRouterBridge> can_router_;
     size_t motor_num_;
 };
 

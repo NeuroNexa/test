@@ -394,6 +394,16 @@ void RL::ReadYamlBase(std::string robot_path)
     this->params.joint_names = ReadVectorFromYaml<std::string>(config["joint_names"]);
     this->params.joint_controller_names = ReadVectorFromYaml<std::string>(config["joint_controller_names"]);
     this->params.joint_mapping = ReadVectorFromYaml<int>(config["joint_mapping"]);
+    if (config["can_interface"]) {
+        this->params.can_interface = config["can_interface"].as<std::string>();
+    } else {
+        this->params.can_interface = "can0";
+    }
+    if (config["use_canfd_router"]) {
+        this->params.use_canfd_router = config["use_canfd_router"].as<bool>();
+    } else {
+        this->params.use_canfd_router = this->params.num_of_dofs > 8;
+    }
 }
 
 void RL::ReadYamlRL(std::string robot_path)

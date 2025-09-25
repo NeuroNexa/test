@@ -11,15 +11,16 @@
 
 ## 硬件与系统先决条件
 
-1. **Jetson Orin NX (16G)**：确保已经刷入 Ubuntu 20.04/22.04，并根据需要安装 ROS Noetic 或 ROS2 Foxy/Humble。
-2. **实时总线**：`tita_robot_sdk` 默认通过 `can0` 接口以 CAN FD 模式访问 16 个电机与 IMU，波特率 1 Mbps / 数据速率 8 Mbps。可以直接复用 `titati_control` 中的脚本初始化 CAN：
+1. **Jetson Orin NX (16G)**：确保已经刷入 Ubuntu 20.04/22.04。若完全在 `rl_sar` 内运行并通过键盘/手柄控制，可跳过 ROS 的安装。
+2. **实时总线**：`tita_robot_sdk` 默认通过 `can0` 接口以 CAN FD 模式访问 16 个电机与 IMU，波特率 1 Mbps / 数据速率 8 Mbps。只需完成接口设置即可；可直接复用 `titati_control` 中的脚本初始化 CAN：
    ```bash
    sudo ip link set can0 down
    sudo ip link set can0 up type can bitrate 1000000 sample-point 0.80 \
        dbitrate 8000000 dsample-point 0.80 fd on restart-ms 100
    sudo ifconfig can0 txqueuelen 1000
    ```
-   或执行 `titati_control/src/can_setup_8m_master.sh` 以一键设置并停止旧的 bringup 服务。
+   或执行 `titati_control/src/can_setup_8m_master.sh` 一键设置（脚本仅负责网络参数，`rl_sar` 不再依赖其它 `titati_control` 组件）。
+   `tita_robot_sdk` 内置的 CAN-FD 路由桥会在切换到 SDK 模式时自动向主从机下发 `FORCE_DIRECT`，无需再启动 ROS 节点维持主从通信。
 3. **第三方依赖**：
    - [libtorch 2.0.1 cxx11 ABI](https://download.pytorch.org/libtorch/cpu/libtorch-cxx11-abi-shared-with-deps-2.0.1%2Bcpu.zip)，并通过 `export Torch_DIR=<PATH>/libtorch` 指向其根目录。
    - `yaml-cpp` 与 `lcm`：`sudo apt install libyaml-cpp-dev liblcm-dev`。
@@ -51,6 +52,7 @@
 Titati 的策略配置集中在 `rl_sar/src/rl_sar/policy/titati/`：
 
 - `base.yaml`：对齐物理硬件的默认关节姿态、力矩上限、轮子索引以及 `joint_mapping`。如硬件布线顺序发生变化，请同步修改 `joint_mapping`，否则状态和命令会错位。
+- `base.yaml` 同时包含 `can_interface` 与 `use_canfd_router` 两个开关：前者指定使用的 Linux CAN 口，后者控制是否监听 CAN-FD 路由器心跳并自动打通主从机通讯（默认对串联的四轮足开启）。
 - `robot_lab/config.yaml`：描述策略输入输出维度、观测项以及增益。可将训练得到的 TorchScript 模型命名为 `policy.pt`（或在 `model_name` 字段中填写自定义文件名），并放置到 `rl_sar/src/rl_sar/policy/titati/robot_lab/` 目录下。
 - `fsm.hpp`：定义 Titati 的有限状态机，包括被动、起身、下蹲与 RL Locomotion 等状态，通常无须修改，但若需要自定义前置动作可在此扩展。
 
@@ -85,6 +87,8 @@ ros2 run rl_sar rl_real_titati
 策略推理线程会将 IMU、关节位置/速度/力矩写入 `RobotState`，经过状态机输出 MIT 力矩命令，并通过 `tita_robot_sdk` 下发到各电机。
 
 ## 与 titati_control 共存的注意事项
+
+> 若已完全迁移到 `rl_sar` 并不再运行旧栈，可忽略本节。
 
 - 两套系统都会占用 `can0` 与电机 SDK 通道，请确保同一时间只启动其中一个，否则会互相抢占导致力矩指令异常。
 - 如需回退到原控制器，可先退出 `rl_real_titati`，执行 `titati_control/src/can_setup_8m_master.sh` 重新拉起原 ROS2 launch。

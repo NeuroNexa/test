@@ -1,4 +1,28 @@
 #include "tita_robot/tita_robot.hpp"
+#include "tita_robot/canfd_router_bridge.hpp"
+
+#include <iostream>
+
+tita_robot::tita_robot(size_t num_motors,
+                       const std::string &can_interface,
+                       bool enable_canfd_router)
+{
+  can_receiver_ = std::make_unique<can_device::MotorsImuCanReceiveApi>(num_motors, can_interface);
+  can_sender_ = std::make_unique<can_device::MotorsCanSendApi>(num_motors, can_interface);
+  if (enable_canfd_router)
+  {
+    try
+    {
+      can_router_ = std::make_unique<can_device::CanfdRouterBridge>(can_interface);
+    }
+    catch (const std::exception &ex)
+    {
+      std::cerr << "[tita_robot] Failed to initialize CAN-FD router bridge on interface '"
+                << can_interface << "': " << ex.what() << std::endl;
+    }
+  }
+  motor_num_ = num_motors;
+}
 
 std::vector<double> tita_robot::get_joint_q() const
 {
@@ -123,6 +147,10 @@ bool tita_robot::set_motors_sdk(bool if_sdk)
     rpc_request.value = AUTO_LOCOMOTION;
   }
   return_ok &= can_sender_->send_command_can_rpc_request(rpc_request);
+  if (if_sdk && can_router_)
+  {
+    can_router_->request_force_direct();
+  }
   return return_ok;
 }
 

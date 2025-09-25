@@ -153,6 +153,8 @@ struct ModelParams
     std::vector<std::string> joint_controller_names;
     std::vector<std::string> joint_names;
     std::vector<int> joint_mapping;
+    std::string can_interface = "can0";
+    bool use_canfd_router = false;
 };
 
 struct Observations

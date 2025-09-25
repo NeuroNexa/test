@@ -16,6 +16,29 @@
 
 namespace can_device
 {
+MotorsCanSendApi::MotorsCanSendApi(size_t size,
+                                   std::string can_interface,
+                                   uint8_t can_id_offset)
+  : can_interface_(std::move(can_interface)),
+    can_name_("motors_can_send"),
+    timeout_us_(MAX_TIME_OUT_US),
+    can_id_offset_(can_id_offset),
+    can_extended_frame_(false),
+    can_fd_mode_(true)
+{
+  if (size % 8 == 0)
+  {
+    leg_dof_ = 4;
+  }
+  else if (size % 6 == 0)
+  {
+    leg_dof_ = 3;
+  }
+  leg_num_ = size / leg_dof_;
+  can_send_api_ = std::make_shared<can_device::socket_can::CanDev>(
+    can_interface_, can_name_, can_extended_frame_, can_fd_mode_, timeout_us_, can_id_offset_);
+}
+
 bool MotorsCanSendApi::send_command_can_channel_input(ChannelInput data)
 {
   data.timestamp = get_current_time();

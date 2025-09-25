@@ -14,8 +14,39 @@
 
 #include "tita_robot/can_receiver.hpp"
 
+#include <utility>
+
 namespace can_device
 {
+
+MotorsImuCanReceiveApi::MotorsImuCanReceiveApi(size_t size,
+                                               std::string can_interface,
+                                               uint8_t can_id_offset)
+  : motors_can_interface_(std::move(can_interface)),
+    motors_can_name_("motors_can"),
+    motors_can_extended_frame_(false),
+    motors_can_rx_is_block_(false),
+    motors_timeout_us_(MAX_TIME_OUT_US),
+    motors_can_id_offset_(can_id_offset)
+{
+  if (size % 8 == 0)
+  {
+    leg_dof_ = 4;
+  }
+  else if (size % 6 == 0)
+  {
+    leg_dof_ = 3;
+  }
+  leg_num_ = size / leg_dof_;
+  motors_can_receive_api = std::make_shared<can_device::socket_can::CanDev>(
+    motors_can_interface_, motors_can_name_, motors_can_extended_frame_, motors_can_receive_callback,
+    motors_can_rx_is_block_, motors_timeout_us_, motors_can_id_offset_);
+  register_motors_device_can_filter();
+  api_motor_in_t default_motor_in;
+  std::memset(&default_motor_in, 0x00U, sizeof(api_motor_in_t));
+  motors_in_.resize(size, default_motor_in);
+  std::memset(&imu_data_, 0x00U, sizeof(api_imu_data_t));
+}
 
 void MotorsImuCanReceiveApi::register_motors_device_can_filter()
 {

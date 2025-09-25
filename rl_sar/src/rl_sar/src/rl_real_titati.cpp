@@ -44,7 +44,10 @@ RL_Real::RL_Real()
     torch::set_num_threads(4);
 
     // init robot interface
-    this->titati_hw = std::make_unique<tita_robot>(this->params.num_of_dofs);
+    this->titati_hw = std::make_unique<tita_robot>(
+        this->params.num_of_dofs,
+        this->params.can_interface,
+        this->params.use_canfd_router);
     if (this->titati_hw)
     {
         if (this->titati_hw->set_motors_sdk(true))

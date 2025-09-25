@@ -139,6 +139,7 @@ add_library(tita_robot_sdk
     library/robot_interfaces/tita_robot/src/tita_robot.cpp
     library/robot_interfaces/tita_robot/src/can_receiver.cpp
     library/robot_interfaces/tita_robot/src/can_sender.cpp
+    library/robot_interfaces/tita_robot/src/canfd_router_bridge.cpp
 )
 target_include_directories(tita_robot_sdk PUBLIC
     library/robot_interfaces/tita_robot/include
