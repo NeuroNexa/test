@@ -1,130 +1,168 @@
-# Titati 四轮足使用 rl_sar 的迁移说明
+# Titati 四轮足：从 `titati_control` 迁移到 `rl_sar`
 
-本仓库同时保留了原始的 `titati_control` 项目以及已经移植完成的 `rl_sar` 强化学习控制栈，方便在两套方案之间切换、对照调试。本文档梳理 Titati 机器人（两台 Tita 通过连线拼接成的四轮足）在 `rl_sar` 上线需要注意的软硬件准备、构建流程以及运行方法。
+本文记录如何在无需 ROS 的前提下，将由两台 Tita 拼接的四轮足机器人切换到 `rl_sar` 强化学习控制栈。请在动手前完整阅读“主从运行顺序”小节，
+确保两台 Jetson（主控、从控）和 16 个电机能够在同一条 CAN-FD 总线上协同工作。
 
-## 仓库结构速览
+---
 
-- `titati_control/`：原始 ROS2 控制器、CANFD 路由以及 bringup 脚本，可用于参考 URDF、参数或继续使用传统控制器。
-- `rl_sar/`：强化学习仿真与真机部署框架，本次移植已经加入 Titati 的硬件接口（`tita_robot_sdk`）、状态机（`policy/titati`）以及真机入口程序 `rl_real_titati`。
+## 1. 系统概览
 
-建议把 `titati_control` 当作参考资料和紧急兜底方案，实际在线运行强化学习策略时全部工作都在 `rl_sar` 目录完成。
+- **机器人拓扑**：四轮足由两台 Tita 通过连接盒串接，整体共有 16 个电机、2 组 IMU，各自由一台 Jetson Orin NX 16G 控制。
+- **主控 Jetson**：运行 `rl_real_titati`，直接与 16 个电机通信并执行强化学习策略。
+- **从控 Jetson**：保持 CAN-FD 路由心跳，使连接盒持续处于直通模式。`rl_sar` 提供了 `rl_titati_router` 守护程序完成此任务。
+- **仓库结构**：
+  - `titati_control/`：旧 ROS2 控制栈、URDF、CAN 初始化脚本，仅作为参考或回退方案。
+  - `rl_sar/`：强化学习主仓库，本次迁移已经集成 Titati 的硬件驱动（`tita_robot_sdk`）、策略配置与真机程序。
 
-## 硬件与系统先决条件
+在 `rl_sar` 下调试/运行时，无需再启动 `titati_control` 的节点，但仍可复用其中的工具脚本（如 CAN 设置）。
 
-1. **Jetson Orin NX (16G)**：确保已经刷入 Ubuntu 20.04/22.04。若完全在 `rl_sar` 内运行并通过键盘/手柄控制，可跳过 ROS 的安装。
-2. **实时总线**：`tita_robot_sdk` 默认通过 `can0` 接口以 CAN FD 模式访问 16 个电机与 IMU，波特率 1 Mbps / 数据速率 8 Mbps。只需完成接口设置即可；可直接复用 `titati_control` 中的脚本初始化 CAN：
-   ```bash
-   sudo ip link set can0 down
-   sudo ip link set can0 up type can bitrate 1000000 sample-point 0.80 \
-       dbitrate 8000000 dsample-point 0.80 fd on restart-ms 100
-   sudo ifconfig can0 txqueuelen 1000
-   ```
-   或执行 `titati_control/src/can_setup_8m_master.sh` 一键设置（脚本仅负责网络参数，`rl_sar` 不再依赖其它 `titati_control` 组件）。
-   对于运行 `rl_real_titati` 的主控 Jetson，`tita_robot_sdk` 内置的 CAN-FD 路由桥会在切换到 SDK 模式时自动监听路由心跳并下发
-   `READY_WAITING/ FORCE_DIRECT` 序列，保证主控端直接接管全部 16 个电机。
-   串联结构仍需要从机 Jetson 保持与路由器的握手，此时可使用新的守护程序 `rl_titati_router` 取代原来的 ROS 节点：
+---
 
-   ```bash
-   cd rl_sar
-   ./cmake_build/bin/rl_titati_router --interface can0
-   ```
+## 2. 先决条件
 
-   该工具会自动在检测到主从模式变化或路由复位时重发握手指令，确保主从机之间的 CAN 通道持续打通。
-3. **第三方依赖**：
-   - [libtorch 2.0.1 cxx11 ABI](https://download.pytorch.org/libtorch/cpu/libtorch-cxx11-abi-shared-with-deps-2.0.1%2Bcpu.zip)，并通过 `export Torch_DIR=<PATH>/libtorch` 指向其根目录。
-   - `yaml-cpp` 与 `lcm`：`sudo apt install libyaml-cpp-dev liblcm-dev`。
-   - 可选：若需要 ROS 键盘/遥控输入，请安装 `teleop-twist-keyboard`、`ros_control` 等依赖，具体列表见 `rl_sar/README.md`。
+### 2.1 操作系统与工具链
 
-在启动 `rl_real_titati` 前务必确认 `can0` 已经 up，且旧的 `titati_controller` 节点不会同时抢占电机。
+| 组件 | 要求 |
+| --- | --- |
+| 系统 | Ubuntu 20.04 或 22.04（Jetson 官方系统即可） |
+| 编译工具 | CMake ≥ 3.18、gcc ≥ 9（Jetson 默认满足） |
+| Python | 3.8–3.10，用于 TorchScript 运行时 |
 
-## 构建 rl_sar（含 Titati 支持）
+### 2.2 第三方依赖
 
-> 建议在机器人本机或开发主机上完成以下步骤，默认从仓库根目录执行。
+在**两台 Jetson**上均需要准备：
 
-1. **配置 Torch 路径**（仅首次）
+1. **libtorch**：建议使用 `libtorch 2.0.1 cxx11 ABI`，下载后设置环境变量：
    ```bash
    echo 'export Torch_DIR=/opt/libtorch' >> ~/.bashrc
    source ~/.bashrc
    ```
-2. **进入 rl_sar 并执行硬件构建**：
+2. **系统库**：
+   ```bash
+   sudo apt install libyaml-cpp-dev liblcm-dev
+   ```
+3. **可选 ROS 依赖**：若需要在 ROS2 中启动，可再安装 `ros-<distro>-teleop-twist-keyboard` 等工具。
+
+### 2.3 CAN-FD 总线配置
+
+`tita_robot_sdk` 默认使用 `can0`，速率 1 Mbps / 8 Mbps。可执行旧项目里的脚本完成设置：
+
+```bash
+sudo bash titati_control/src/can_setup_8m_master.sh
+```
+
+或手动运行：
+
+```bash
+sudo ip link set can0 down
+sudo ip link set can0 up type can bitrate 1000000 sample-point 0.80 \
+    dbitrate 8000000 dsample-point 0.80 fd on restart-ms 100
+sudo ifconfig can0 txqueuelen 1000
+```
+
+确保命令在**主控与从控**两侧都执行一次，使两条 CAN 链路都处于 CAN-FD 直通状态。
+
+---
+
+## 3. 构建 `rl_sar`
+
+以下步骤默认在仓库根目录执行。
+
+1. **进入子仓库**：
    ```bash
    cd rl_sar
+   ```
+2. **硬件部署构建（推荐）**：
+   ```bash
    ./build.sh --cmake rl_sar
    ```
-   该命令会以纯 CMake 方式生成 `cmake_build/`，包含 `tita_robot_sdk` 与 `rl_real_titati` 可执行文件。
-3. **ROS 工作区构建（可选）**：若需要通过 `ros2 run rl_sar rl_real_titati` 启动，可执行 `./build.sh --ros rl_sar`，脚本会自动创建符号链接并调用 `colcon`/`catkin` 构建。
+   生成的 `cmake_build/` 将包含 `rl_real_titati`、`rl_titati_router`、`rl_titati_motor_test` 等可执行文件。
+3. **ROS 工作区（可选）**：如需 `ros2 run rl_sar rl_real_titati`，执行：
+   ```bash
+   ./build.sh --ros rl_sar
+   ```
+   脚本会自动调用 `colcon`/`catkin` 进行额外构建。
 
-构建成功后，`cmake_build/bin/rl_real_titati` 即可直接运行，无需 ROS 环境。
+> 提示：首次构建可能因 Torch 没有找到而失败，请确认 `Torch_DIR` 已正确导出。
 
-## 策略、模型与参数配置
+---
 
-Titati 的策略配置集中在 `rl_sar/src/rl_sar/policy/titati/`：
+## 4. 策略与配置文件
 
-- `base.yaml`：对齐物理硬件的默认关节姿态、力矩上限、轮子索引以及 `joint_mapping`。如硬件布线顺序发生变化，请同步修改 `joint_mapping`，否则状态和命令会错位。
-- `base.yaml` 同时包含 `can_interface` 与 `use_canfd_router` 两个开关：前者指定使用的 Linux CAN 口，后者控制是否监听 CAN-FD 路由器心跳并自动打通主从机通讯（默认对串联的四轮足开启）。
-- `robot_lab/config.yaml`：描述策略输入输出维度、观测项以及增益。可将训练得到的 TorchScript 模型命名为 `policy.pt`（或在 `model_name` 字段中填写自定义文件名），并放置到 `rl_sar/src/rl_sar/policy/titati/robot_lab/` 目录下。
-- `fsm.hpp`：定义 Titati 的有限状态机，包括被动、起身、下蹲与 RL Locomotion 等状态，通常无须修改，但若需要自定义前置动作可在此扩展。
+相关配置位于 `rl_sar/src/rl_sar/policy/titati/`：
 
-当 `rl_real_titati` 启动后会读取上述 YAML 并自动加载模型、初始化观测缓冲与控制参数。
+- **`base.yaml`**：硬件相关参数，包括 `joint_mapping`、关节限幅、`can_interface` 以及 `use_canfd_router`。若布线顺序有变，务必同步 `joint_mapping`。
+- **`robot_lab/config.yaml`**：策略输入输出维度、观测项定义与默认模型名。训练好的 TorchScript 模型（如 `policy.pt`）需置于同目录。
+- **`fsm.hpp`**：Titati 的有限状态机定义，一般只在自定义起步/收脚动作时修改。
 
-## 运行 rl_real_titati
+`rl_real_titati` 启动时会读取以上配置，初始化观测缓存并加载策略模型。
 
-### 纯 CMake 可执行文件
+---
+
+## 5. 主从运行顺序
+
+为了保证 CAN-FD 路由始终保持直通，请严格遵循以下流程：
+
+1. **从控 Jetson**：
+   ```bash
+   cd rl_sar
+   ./cmake_build/bin/rl_titati_router --interface can0
+   ```
+   - 该守护程序会持续监听路由心跳，一旦检测到模式回落会立即重发 `READY_WAITING/ FORCE_DIRECT` 序列。
+   - 程序输出会记录当前路由模式及是否成功切换到 FORCE_DIRECT，方便排查链路状态。
+
+2. **主控 Jetson**（确保从控已在运行）：
+   ```bash
+   cd rl_sar
+   ./cmake_build/bin/rl_real_titati
+   ```
+   - 启动阶段会自动发送零力矩并将 MCU 切换到 SDK 直驱模式。
+   - 一旦退出（`Ctrl+C`），程序会重新下发 `AUTO_LOCOMOTION`，确保 MCU 重新接管。
+
+3. **再次启动**：直接重复第 2 步即可，程序会检测到路由仍在直通并重发握手以确认主控拥有全部 16 个电机的控制权。
+
+> 若需要回退到 `titati_control`：先退出 `rl_real_titati`，待终端打印“MCU control restored”后，再启动原 ROS2 launch。
+
+---
+
+## 6. 操作接口
+
+- **键盘**：`W/S` 控制前后速度，`A/D` 控制横移，`Q/E` 控制偏航；`Space` 清零命令。
+- **模式切换**：`M` 进入 SDK 直驱、`K` 回落 MCU；`N` 切换键盘/ROS 输入源。
+- **遥控手柄**：`LB+RB` 急停，`LB+A/B/X` 功能等同于键盘热键。
+
+`rl_real_titati` 会循环读取关节位置/速度/力矩与 IMU 数据，经过 FSM 与策略后通过 MIT 控制下发到电机。
+
+---
+
+## 7. 电机连通性与安全测试
+
+在加载强化学习策略前，建议先通过下列测试确认 16 个电机均能响应：
 
 ```bash
 cd rl_sar
-./cmake_build/bin/rl_real_titati
+
+# MIT：对每个关节施加小幅度位置扰动，验证编码器读取与 MIT 参数映射
+./cmake_build/bin/rl_titati_motor_test --mode mit --amplitude 0.05 --hold 0.5
+
+# 力矩：对每个关节输出短脉冲，检查是否存在饱和或正反向接线问题
+./cmake_build/bin/rl_titati_motor_test --mode torque --amplitude 2.0 --hold 0.3
 ```
 
-程序启动后会自动尝试将电机切换至 SDK 直驱模式；退出（或 `Ctrl+C`）时会回落到 MCU 控制，以避免无人值守状态下电机保持使能。
-再次启动 `rl_real_titati` 时会自动重发 `READY_WAITING/ FORCE_DIRECT` 握手，并在握手成功后发送当前位置保持指令，确保每次运行都能顺利接管 16 个电机。
+程序会按 `joint_mapping` 顺序依次测试每个电机，并打印实时的位置、速度、力矩与电机状态。当检测不到 CAN-FD 路由时会提示警告；退出或测试完成后自动切回 MCU 控制。
 
-### ROS2 启动（可选）
+---
 
-```bash
-source install/setup.bash   # 或 source devel/setup.bash (ROS1)
-ros2 run rl_sar rl_real_titati
-```
+## 8. 常见问题
 
-在定义了 `USE_ROS` 的编译配置下，节点会订阅 `/cmd_vel` 并根据导航模式决定使用 ROS 命令或键盘命令。
+| 现象 | 排查步骤 |
+| --- | --- |
+| `Torch package not found` | 检查 `Torch_DIR` 是否指向 libtorch 根目录，或确认 `./build.sh --cmake rl_sar` 的日志中已找到 Torch。 |
+| `Interface does not support CAN FD` | 核对内核与驱动是否支持 CAN-FD，重新执行 CAN 配置脚本，确认 `ip -details link show can0` 中 `fd` 字段为 `on`。 |
+| 主控无法接管全部电机 | 确认从控上的 `rl_titati_router` 正在运行，查看其日志是否持续打印 `FORCE_DIRECT`; 同时检查 `rl_real_titati` 是否成功调用 `set_motors_sdk(true)`。 |
+| 需要回退到旧栈 | 在主控执行 `K` 或直接退出 `rl_real_titati`，待提示“MCU 接管”后，再启动 `titati_control` 的 launch。 |
 
-### 电机连通性测试（MIT / 力矩）
+---
 
-在接入真实机器人之前，可以先使用新的 `rl_titati_motor_test` 工具确认 16 个电机都能正常读取反馈并响应指令：
+完成以上步骤后，便可在主控 Jetson 上运行 `rl_real_titati`，加载强化学习策略并控制四轮足机器人，实现从 `titati_control` 到 `rl_sar` 的平滑迁移。
 
-```bash
-cd rl_sar
-# MIT 模式：依次对每个关节施加 0.05rad 的小幅度 MIT 位移
-./cmake_build/bin/rl_titati_motor_test --mode mit --amplitude 0.05
-
-# 力矩模式：依次对每个关节输出 2Nm 力矩脉冲
-./cmake_build/bin/rl_titati_motor_test --mode torque --amplitude 2.0
-```
-
-该程序会按照 `policy/titati/base.yaml` 中的关节映射顺序逐个测试电机，持续打印当前位置、速度与力矩反馈，便于快速定位通讯或布线问题。测试结束或按下 `Ctrl+C` 后，程序会自动发送零力矩并切回 MCU 控制，避免电机长时间保持在 SDK 模式。
-
-### 键盘 / 手柄指令速查
-
-- `W/S`：前后速度增减；`A/D`：侧向速度增减；`Q/E`：航向角速度增减；`Space`：清空所有速度命令。
-- `M`：强制切换到 SDK 直驱，使能电机；`K`：切回 MCU 控制，关闭电机；`N`：切换导航模式（键盘 VS `/cmd_vel`）。
-- 当接入 Retroid 手柄时，`LB+RB` 会触发 `set_robot_stop()` 急停，`LB+A/B/X` 与键盘热键一致。
-
-策略推理线程会将 IMU、关节位置/速度/力矩写入 `RobotState`，经过状态机输出 MIT 力矩命令，并通过 `tita_robot_sdk` 下发到各电机。
-
-## 与 titati_control 共存的注意事项
-
-> 若已完全迁移到 `rl_sar` 并不再运行旧栈，可忽略本节。
-
-- 两套系统都会占用 `can0` 与电机 SDK 通道，请确保同一时间只启动其中一个，否则会互相抢占导致力矩指令异常。
-- 如需回退到原控制器，可先退出 `rl_real_titati`，执行 `titati_control/src/can_setup_8m_master.sh` 重新拉起原 ROS2 launch。
-- 通过 `tita_robot::set_motors_sdk(false)` 可以在不退出程序的情况下让 MCU 接管，以便切换到 `titati_control` 的节点。
-
-## 调试与排错建议
-
-- 若 `rl_real_titati` 启动报错 `TORCH` 未找到，请检查 `Torch_DIR` 环境变量是否指向正确目录。
-- 若 CAN 报错 `Interface does not support CAN FD`，请确认网卡驱动支持 CAN FD，并按脚本重新设置。
-- 可通过定义 `PLOT` 或 `CSV_LOGGER`（`rl_real_titati.hpp` 顶部）开启实时曲线或数据记录，便于排查策略输出与硬件反馈的差异。
-- 若怀疑主从机握手异常，可观察主控上的 `rl_real_titati` 与从控上的 `rl_titati_router` 日志：程序会在检测到路由模式变化或重发
-  `FORCE_DIRECT` 时打印提示，便于确认 CAN-FD 路由是否保持连通。
-
-按照以上流程完成准备后，即可使用 `rl_sar` 中的强化学习策略对 Titati 四轮足进行实时控制，实现从 `titati_control` 向 RL 框架的平滑迁移。

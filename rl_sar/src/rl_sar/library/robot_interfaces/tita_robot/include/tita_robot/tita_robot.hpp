@@ -1,13 +1,9 @@
 #include "can_receiver.hpp"
 #include "can_sender.hpp"
+#include "canfd_router_bridge.hpp"
 
 #include <functional>
 #include <string>
-
-namespace can_device
-{
-    class CanfdRouterBridge;
-}
 
 class tita_robot
 {
