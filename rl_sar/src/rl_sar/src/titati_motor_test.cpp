@@ -3,7 +3,6 @@
  */
 
 #include "titati_hw/tita_robot.hpp"
-#include "rl_sdk.hpp"
 
 #include <chrono>
 #include <cstdlib>
@@ -12,6 +11,15 @@
 #include <string>
 #include <thread>
 #include <vector>
+
+namespace LOGGER
+{
+    constexpr const char *INFO = "\033[0;37m[INFO]\033[0m ";
+    constexpr const char *WARNING = "\033[0;33m[WARNING]\033[0m ";
+    constexpr const char *ERROR = "\033[0;31m[ERROR]\033[0m ";
+    constexpr const char *DEBUG = "\033[0;32m[DEBUG]\033[0m ";
+    constexpr const char *NOTE = "\033[0;34m[NOTE]\033[0m ";
+}
 
 namespace
 {
