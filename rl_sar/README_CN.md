@@ -133,6 +133,10 @@ sudo ldconfig
 ./build.sh -m  # or ./build.sh --cmake
 ```
 
+> [!NOTE]
+> CMake 构建流程默认仅编译 Titati 硬件相关的可执行文件。如需重新编译其他机器人的目标，请在重新配置 CMake 时添加
+> `-DRL_SAR_BUILD_TITATI_ONLY=OFF`。
+
 详细的使用说明可以通过`./build.sh -h`查看
 
 ```bash

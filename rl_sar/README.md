@@ -133,6 +133,10 @@ If simulation is not needed and you only want to run on the robot, you can compi
 ./build.sh -m  # or ./build.sh --cmake
 ```
 
+> [!NOTE]
+> The CMake workflow compiles only the Titati hardware utilities by default. To rebuild other robot targets, rerun the CMake
+> configuration with `-DRL_SAR_BUILD_TITATI_ONLY=OFF`.
+
 For detailed usage instructions, you can check them via `./build.sh -h`:
 
 ```bash
