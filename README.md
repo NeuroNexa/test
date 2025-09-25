@@ -77,6 +77,8 @@ sudo ifconfig can0 txqueuelen 1000
    ./build.sh --cmake rl_sar
    ```
    生成的 `cmake_build/` 将包含 `rl_real_titati`、`rl_titati_router`、`rl_titati_motor_test` 等可执行文件。
+   - CMake 会在未发现 Unitree/Lite3 依赖时自动启用 `BUILD_TITATI_ONLY=ON`，仅编译 Titati 所需目标。
+   - 若未来需要同时构建其它机器人的可执行文件，可手动传入 `-DBUILD_TITATI_ONLY=OFF` 并确保相关 SDK 就绪。
 3. **ROS 工作区（可选）**：如需 `ros2 run rl_sar rl_real_titati`，执行：
    ```bash
    ./build.sh --ros rl_sar
