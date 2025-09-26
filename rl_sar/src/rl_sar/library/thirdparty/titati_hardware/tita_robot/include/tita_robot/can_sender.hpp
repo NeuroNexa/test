@@ -30,34 +30,10 @@
 #include <cstdint>
 
 #include "protocol/can_utils.hpp"
+#include "tita_robot/env_utils.hpp"
 
 namespace can_device
 {
-namespace detail
-{
-inline std::string get_env_or_default(const char *name, const std::string &default_value)
-{
-  const char *value = std::getenv(name);
-  if (value == nullptr || value[0] == 0) {
-    return default_value;
-  }
-  return std::string(value);
-}
-
-inline uint8_t get_env_u8(const char *name, uint8_t default_value)
-{
-  const char *value = std::getenv(name);
-  if (value == nullptr || value[0] == 0) {
-    return default_value;
-  }
-  char *end = nullptr;
-  long parsed = std::strtol(value, &end, 0);
-  if (end == value || parsed < 0 || parsed > 255) {
-    return default_value;
-  }
-  return static_cast<uint8_t>(parsed);
-}
-}
 
 
 #define CAN_ID_SEND_MOTORS (0x120U)
