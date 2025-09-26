@@ -154,6 +154,7 @@ include_directories(
 set(TITATI_HARDWARE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/titati_hardware)
 set(TITATI_ROBOT_DIR ${TITATI_HARDWARE_DIR}/tita_robot)
 set(TITATI_UTILS_DIR ${TITATI_HARDWARE_DIR}/tita_utils)
+set(TITA_SYSTEM_INTERFACES_INCLUDE_DIR "")
 
 if(ENABLE_ROS)
     add_subdirectory(${TITATI_HARDWARE_DIR}/tita_interfaces/tita_system_interfaces)
@@ -311,13 +312,14 @@ if(ENABLE_ROS)
         ${TITATI_BATTERY_DIR}/include
         ${TITATI_BATTERY_DIR}/utils
         ${TITATI_UTILS_DIR}
+        ${TITA_SYSTEM_INTERFACES_INCLUDE_DIR}
     )
     target_link_libraries(titati_battery_device
         Threads::Threads
         ${ROS_LIBRARIES}
         sensor_msgs::sensor_msgs
         diagnostic_msgs::diagnostic_msgs
-        tita_system_interfaces
+        tita_system_interfaces__rosidl_typesupport_cpp
     )
     rosidl_target_interfaces(titati_battery_device
         tita_system_interfaces "rosidl_typesupport_cpp")
@@ -337,6 +339,7 @@ if(ENABLE_ROS)
         ${TITATI_CANFD_ROUTER_DIR}/include
         ${TITATI_ROBOT_DIR}/include
         ${TITATI_UTILS_DIR}
+        ${TITA_SYSTEM_INTERFACES_INCLUDE_DIR}
     )
     target_link_libraries(titati_canfd_router
         titati_hardware
@@ -347,7 +350,7 @@ if(ENABLE_ROS)
     target_link_libraries(titati_canfd_router_node
         titati_canfd_router
         ${ROS_LIBRARIES}
-        tita_system_interfaces
+        tita_system_interfaces__rosidl_typesupport_cpp
     )
     rosidl_target_interfaces(titati_canfd_router_node
         tita_system_interfaces "rosidl_typesupport_cpp")
