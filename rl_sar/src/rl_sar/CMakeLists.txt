@@ -183,6 +183,7 @@ include_directories(
     library/core/loop
     library/core/fsm
     policy
+    library/thirdparty/titati_hardware
 )
 
 set(TITATI_HARDWARE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/titati_hardware)
