@@ -408,7 +408,18 @@ main() {
 
         if [ "$ros_available" = true ] && [[ -n "$ROS_DISTRO" ]]; then
             print_header "[Building Titati ROS workspace]"
-            run_ros_build rl_sar battery_device hardware_bridge hw_bringup tita_robot tita_system_interfaces titati_canfd_router
+            local titati_ros_packages=(
+                rl_sar
+                robot_msgs
+                robot_joint_controller
+                battery_device
+                hardware_bridge
+                hw_bringup
+                tita_robot
+                tita_system_interfaces
+                titati_canfd_router
+            )
+            run_ros_build "${titati_ros_packages[@]}"
         else
             print_warning "Skipping Titati ROS packages. Source your ROS environment then rerun './build.sh -m' if you need them."
         fi
