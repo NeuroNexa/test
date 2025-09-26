@@ -241,7 +241,7 @@ void RL_Real::RunModel()
     this->obs.ang_vel = torch::tensor(this->robot_state.imu.gyroscope).unsqueeze(0);
     if (this->control.navigation_mode)
     {
-#if !defined(USE_CMAKE) && defined(USE_ROS)
+#if defined(USE_ROS)
         this->obs.commands = torch::tensor({{this->cmd_vel.linear.x, this->cmd_vel.linear.y, this->cmd_vel.angular.z}});
 #endif
     }
@@ -337,7 +337,7 @@ void RL_Real::Plot()
     plt::pause(0.0001);
 }
 
-#if !defined(USE_CMAKE) && defined(USE_ROS)
+#if defined(USE_ROS)
 void RL_Real::CmdvelCallback(
 #if defined(USE_ROS1) && defined(USE_ROS)
     const geometry_msgs::Twist::ConstPtr &msg

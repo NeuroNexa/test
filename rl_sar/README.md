@@ -394,9 +394,12 @@ cd rl_sar
 
    The scripts accept an optional CAN interface argument (default `can0`) and stop the legacy `tita-bringup` service. Environment variables `TITATI_CAN_INTERFACE`, `TITATI_CAN_RX_INTERFACE`, `TITATI_CAN_TX_INTERFACE`, and `TITATI_CAN_ID_OFFSET` can be exported afterwards if a custom interface or ID layout is required.
 
-2. Build the CMake targets on the master Jetson (the hardware build now produces only the Titati binaries; Unitree, Lite3, and other robot targets have been removed):
+2. On the master Jetson, source your ROS environment if you want ROS topics available (skipping this step keeps the build ROS-free) and run the hardware build. The CMake preset still disables Gazebo and non-Titati robots:
 
 ```bash
+# Optional but recommended when ROS interfaces are needed
+source /opt/ros/humble/setup.bash
+
 ./build.sh -m
 ```
 
@@ -408,10 +411,11 @@ cd rl_sar
 
 ```bash
 export TITATI_CAN_INTERFACE=can0   # only required when not using can0
+./cmake_build/bin/titati_motor_test --mode read --duration 5 --rate 20   # stream all motors
 ./cmake_build/bin/titati_motor_test --mode torque --motor 3 --torque 1.0 --duration 2.0
 ```
 
-   The tester streams all joint states and can also drive a joint in MIT mode via `--mode mit --kp ... --kd ...`.
+   The tester now supports a `read` mode to continuously stream every joint, in addition to commanding a single joint in torque or MIT control.
 
 5. Launch the reinforcement-learning controller on the master Jetson:
 

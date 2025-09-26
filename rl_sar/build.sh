@@ -68,7 +68,16 @@ run_cmake_build() {
     print_warning "NOTE: CMake build is for hardware deployment only, not for simulation."
     print_separator
 
-    cmake src/rl_sar/ -B cmake_build -DUSE_CMAKE=ON
+    local cmake_args=(-DUSE_CMAKE=ON)
+    if [[ -n "$ROS_DISTRO" ]]; then
+        print_info "Detected ROS_DISTRO=$ROS_DISTRO (ROS integration enabled)"
+        cmake_args+=(-DENABLE_ROS=ON)
+    else
+        print_info "No ROS environment detected; building without ROS bindings"
+        cmake_args+=(-DENABLE_ROS=OFF)
+    fi
+
+    cmake src/rl_sar/ -B cmake_build "${cmake_args[@]}"
     cmake --build cmake_build -j4
 
     print_success "CMake build completed!"

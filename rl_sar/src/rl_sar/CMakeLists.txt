@@ -7,21 +7,57 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(USE_CMAKE OFF CACHE BOOL "Use Cmake build system")
 message(STATUS "USE_CMAKE: ${USE_CMAKE}")
+
+if(DEFINED ENV{ROS_DISTRO})
+    set(DEFAULT_ENABLE_ROS ON)
+else()
+    set(DEFAULT_ENABLE_ROS OFF)
+endif()
+
+option(ENABLE_ROS "Enable ROS integration when building with CMake" ${DEFAULT_ENABLE_ROS})
+
 if(USE_CMAKE)
     set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
     set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+    add_compile_definitions(USE_CMAKE)
 endif()
+
+if(NOT USE_CMAKE AND NOT ENABLE_ROS)
+    message(WARNING "ROS build requested without ENABLE_ROS; forcing ROS integration on.")
+    set(ENABLE_ROS ON CACHE BOOL "Enable ROS integration when building with CMake" FORCE)
+endif()
+
+set(ROS_LIBRARIES "")
 
 if(NOT USE_CMAKE)
     if($ENV{ROS_DISTRO} MATCHES "noetic")
-        add_compile_definitions(USE_ROS1)
-    elseif($ENV{ROS_DISTRO} MATCHES "foxy|humble")
-        add_compile_definitions(USE_ROS2)
+        add_compile_definitions(USE_ROS USE_ROS1)
+    elseif($ENV{ROS_DISTRO} MATCHES "foxy|humble|galactic|iron|rolling")
+        add_compile_definitions(USE_ROS USE_ROS2)
     endif()
-else()
-    message(WARNING "ROS_DISTRO not set, assuming non-ROS mode")
-    add_compile_definitions(USE_CMAKE)
+elseif(ENABLE_ROS)
+    if(NOT DEFINED ENV{ROS_DISTRO})
+        message(WARNING "ENABLE_ROS requested but ROS_DISTRO is not set. Disabling ROS integration.")
+        set(ENABLE_ROS OFF)
+    elseif($ENV{ROS_DISTRO} MATCHES "noetic")
+        add_compile_definitions(USE_ROS USE_ROS1)
+        find_package(catkin REQUIRED COMPONENTS
+            roscpp
+            geometry_msgs
+            std_msgs
+        )
+        include_directories(${catkin_INCLUDE_DIRS})
+        list(APPEND ROS_LIBRARIES ${catkin_LIBRARIES})
+    elseif($ENV{ROS_DISTRO} MATCHES "foxy|humble|galactic|iron|rolling")
+        add_compile_definitions(USE_ROS USE_ROS2)
+        find_package(rclcpp REQUIRED)
+        find_package(geometry_msgs REQUIRED)
+        list(APPEND ROS_LIBRARIES rclcpp::rclcpp geometry_msgs::geometry_msgs)
+    else()
+        message(WARNING "Unsupported ROS_DISTRO '${ENV{ROS_DISTRO}}'. Disabling ROS integration.")
+        set(ENABLE_ROS OFF)
+    endif()
 endif()
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -101,7 +137,8 @@ include_directories(
     policy
 )
 
-set(TITATI_ROBOT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../tita_hardware_ros2_control/tita_robot)
+set(TITATI_HARDWARE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/titati_hardware)
+set(TITATI_ROBOT_DIR ${TITATI_HARDWARE_DIR}/tita_robot)
 add_library(titati_hardware
     ${TITATI_ROBOT_DIR}/src/tita_robot.cpp
     ${TITATI_ROBOT_DIR}/src/can_receiver.cpp
@@ -185,6 +222,7 @@ target_link_libraries(rl_real_titati
     rl_sdk
     observation_buffer
     yaml-cpp
+    ${ROS_LIBRARIES}
 )
 if(NOT USE_CMAKE)
     if($ENV{ROS_DISTRO} MATCHES "noetic")

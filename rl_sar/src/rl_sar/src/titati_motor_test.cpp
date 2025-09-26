@@ -17,7 +17,7 @@ namespace
 {
 struct Options
 {
-    std::string mode = "torque"; // torque or mit
+    std::string mode = "torque"; // torque, mit, or read
     std::size_t motor_index = 0;
     double torque = 0.0;
     double position = 0.0;
@@ -79,9 +79,9 @@ bool parse_arguments(int argc, char **argv, Options &options)
     options.rate = get_double("--rate", options.rate);
     options.num_motors = get_size("--num-motors", options.num_motors);
 
-    if (options.mode != "torque" && options.mode != "mit")
+    if (options.mode != "torque" && options.mode != "mit" && options.mode != "read")
     {
-        std::cerr << "Unsupported mode: " << options.mode << ". Use 'torque' or 'mit'." << std::endl;
+        std::cerr << "Unsupported mode: " << options.mode << ". Use 'torque', 'mit', or 'read'." << std::endl;
         return false;
     }
 
@@ -91,7 +91,7 @@ bool parse_arguments(int argc, char **argv, Options &options)
 void print_usage(const char *program_name)
 {
     std::cout << "Usage: " << program_name << " [options]\n"
-              << "  --mode [torque|mit]          Control mode (default: torque)\n"
+              << "  --mode [torque|mit|read]    Control mode (default: torque). 'read' only streams state.\n"
               << "  --motor <index>             Motor index to command (0-based)\n"
               << "  --torque <Nm>               Torque command (torque mode, default: 0.0)\n"
               << "  --position <rad>            MIT target position (default: 0.0)\n"
@@ -127,7 +127,7 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    if (options.motor_index >= options.num_motors)
+    if (options.mode != "read" && options.motor_index >= options.num_motors)
     {
         std::cerr << "Motor index " << options.motor_index
                   << " is out of range for " << options.num_motors << " motors." << std::endl;
@@ -155,11 +155,14 @@ int main(int argc, char **argv)
     std::vector<double> kp(options.num_motors, 0.0);
     std::vector<double> kd(options.num_motors, 0.0);
 
-    torques[options.motor_index] = options.torque;
-    positions[options.motor_index] = options.position;
-    velocities[options.motor_index] = options.velocity;
-    kp[options.motor_index] = options.kp;
-    kd[options.motor_index] = options.kd;
+    if (options.mode != "read")
+    {
+        torques[options.motor_index] = options.torque;
+        positions[options.motor_index] = options.position;
+        velocities[options.motor_index] = options.velocity;
+        kp[options.motor_index] = options.kp;
+        kd[options.motor_index] = options.kd;
+    }
 
     while (std::chrono::steady_clock::now() - start < std::chrono::duration<double>(options.duration))
     {
@@ -167,9 +170,19 @@ int main(int argc, char **argv)
         {
             robot.set_target_joint_t(torques);
         }
-        else
+        else if (options.mode == "mit")
         {
             robot.set_target_joint_mit(positions, velocities, kp, kd, torques);
+        }
+        else
+        {
+            std::this_thread::sleep_for(interval);
+            q = robot.get_joint_q();
+            dq = robot.get_joint_v();
+            tau = robot.get_joint_t();
+            std::cout << "--- sample ---" << std::endl;
+            print_joint_state(q, dq, tau);
+            continue;
         }
 
         std::this_thread::sleep_for(interval);
@@ -188,7 +201,10 @@ int main(int argc, char **argv)
     }
 
     std::vector<double> zero(options.num_motors, 0.0);
-    robot.set_target_joint_t(zero);
+    if (options.mode != "read")
+    {
+        robot.set_target_joint_t(zero);
+    }
     robot.set_motors_sdk(false);
 
     std::cout << "Motor test completed." << std::endl;

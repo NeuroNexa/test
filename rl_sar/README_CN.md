@@ -394,9 +394,12 @@ cd rl_sar
 
    脚本支持可选的 CAN 接口参数（默认 `can0`），并会停止旧的 `tita-bringup` 服务。若需要自定义接口或 ID 映射，可在脚本运行后导出 `TITATI_CAN_INTERFACE`、`TITATI_CAN_RX_INTERFACE`、`TITATI_CAN_TX_INTERFACE`、`TITATI_CAN_ID_OFFSET` 等环境变量。
 
-2. 在主机 Jetson 上编译 CMake 目标（硬件 CMake 构建现仅生成 Titati 的可执行文件，Unitree、Lite3 等其他机器人目标已取消）：
+2. 在主机 Jetson 上编译 CMake 目标。若需要 ROS 话题，请先 source 对应的 ROS 环境（不 source 则默认以纯 C++ 模式构建）。硬件构建依旧会禁用 Gazebo 等仿真相关组件：
 
 ```bash
+# 如需 ROS，请先执行（示例为 ROS 2 Humble）
+source /opt/ros/humble/setup.bash
+
 ./build.sh -m
 ```
 
@@ -408,10 +411,11 @@ cd rl_sar
 
 ```bash
 export TITATI_CAN_INTERFACE=can0   # 如果不是默认的 can0 需要显式设置
+./cmake_build/bin/titati_motor_test --mode read --duration 5 --rate 20   # 连续读取全部电机
 ./cmake_build/bin/titati_motor_test --mode torque --motor 3 --torque 1.0 --duration 2.0
 ```
 
-   测试程序会打印全部电机状态，也支持通过 `--mode mit --kp ... --kd ...` 以 MIT 模式驱动单个电机。
+   测试程序新增 `read` 模式可连续打印全部关节信息，也可继续使用 torque/MIT 模式单独驱动某个电机。
 
 5. 在主机 Jetson 启动强化学习控制程序：
 
