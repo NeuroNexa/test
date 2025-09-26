@@ -239,6 +239,8 @@ git clone https://github.com/osrf/gazebo_models.git ~/.gazebo/models
 
 > **Note:** Ensure `Torch_DIR` points to your libtorch installation before building.
 
+> **Note:** The Titati robot is a four-wheeled Titati robot formed by connecting two dual-wheeled Tita robots through a connection box and a cable. Each Tita is equipped with a Jetson Orin NX 16G, eight motors (six joints and two wheels), an IMU, and other components.
+
 1. **Build binaries** on the master Jetson (and copy to the slave if needed)
    ```bash
    ./build.sh -m
