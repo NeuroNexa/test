@@ -315,8 +315,9 @@ show_usage() {
     echo -e "Usage: $0 [OPTIONS] [PACKAGE_NAMES...]"
     echo ""
     echo -e "${COLOR_INFO}Options:${COLOR_RESET}"
-    echo -e "  -c, --clean    Clean workspace (remove symlinks and build artifacts)"
-    echo -e "  -m, --cmake    Build using CMake (for hardware deployment only)"
+    echo -e "  -c, --clean      Clean workspace (remove symlinks and build artifacts)"
+    echo -e "  -m, --minimal    Build minimal ROS2 packages for Titati hardware"
+    echo -e "      --cmake      Build using CMake (for hardware deployment only)"
     echo -e "  -h, --help     Show this help message"
     echo ""
     echo -e "${COLOR_INFO}Examples:${COLOR_RESET}"
@@ -324,19 +325,36 @@ show_usage() {
     echo -e "  $0 package1 package2  # Build specific ROS packages"
     echo -e "  $0 -c                 # Clean all symlinks and build artifacts"
     echo -e "  $0 --clean package1   # Clean specific package and build artifacts"
-    echo -e "  $0 -m                 # Build with CMake for hardware deployment"
+    echo -e "  $0 -m                 # Build Titati minimal hardware stack"
+    echo -e "  $0 --cmake            # Build with CMake for hardware deployment"
 }
 
 main() {
     local packages=()
     local clean_mode=false
     local cmake_mode=false
+    local minimal_mode=false
+
+    local -a MINIMAL_TITATI_PACKAGES=(
+        "tita_robot"
+        "tita_bringup"
+        "battery_device"
+        "hardware_bridge"
+        "hw_bringup"
+        "titati_canfd_router"
+        "titati_bringup"
+        "titati_motor_tools"
+        "robot_msgs"
+        "robot_joint_controller"
+        "rl_sar"
+    )
 
     # Parse command line arguments
     while [[ $# -gt 0 ]]; do
         case $1 in
             -c|--clean) clean_mode=true; shift ;;
-            -m|--cmake) cmake_mode=true; shift ;;
+            -m|--minimal) minimal_mode=true; shift ;;
+            --cmake) cmake_mode=true; shift ;;
             -h|--help) show_usage; exit 0 ;;
             --) shift; packages+=("$@"); break ;;
             -*) print_error "Unknown option: $1"; show_usage; exit 1 ;;
@@ -363,7 +381,11 @@ main() {
         exit 1
     fi
 
-    run_ros_build "${packages[@]}"
+    if [ "$minimal_mode" = true ]; then
+        run_ros_build "${MINIMAL_TITATI_PACKAGES[@]}"
+    else
+        run_ros_build "${packages[@]}"
+    fi
 }
 
 main "$@"

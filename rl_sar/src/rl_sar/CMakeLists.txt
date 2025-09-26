@@ -22,6 +22,10 @@ endif()
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Debug)
 endif()
@@ -67,6 +71,7 @@ if(NOT USE_CMAKE)
         find_package(gazebo_msgs REQUIRED)
         find_package(std_srvs REQUIRED)
         find_package(geometry_msgs REQUIRED)
+        find_package(tita_robot REQUIRED)
         ament_package()
     endif()
     add_compile_options(${GAZEBO_CXX_FLAGS})
@@ -318,6 +323,26 @@ if(NOT USE_CMAKE)
             geometry_msgs
         )
         install(TARGETS rl_real_l4w4 DESTINATION lib/${PROJECT_NAME})
+    endif()
+endif()
+
+add_executable(rl_real_titati src/rl_real_titati.cpp)
+target_link_libraries(rl_real_titati
+    rl_sdk
+    observation_buffer
+    yaml-cpp
+)
+if(NOT USE_CMAKE)
+    if($ENV{ROS_DISTRO} MATCHES "noetic")
+        target_link_libraries(rl_real_titati ${catkin_LIBRARIES})
+    elseif($ENV{ROS_DISTRO} MATCHES "foxy|humble")
+        ament_target_dependencies(rl_real_titati
+            rclcpp
+            geometry_msgs
+            tita_robot
+        )
+        target_link_libraries(rl_real_titati tita_robot)
+        install(TARGETS rl_real_titati DESTINATION lib/${PROJECT_NAME})
     endif()
 endif()
 

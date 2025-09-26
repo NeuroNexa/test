@@ -127,10 +127,16 @@ To clean the build, use the following command. This will remove all compiled out
 ./build.sh -c  # or ./build.sh --clean
 ```
 
-If simulation is not needed and you only want to run on the robot, you can compile using CMake while disabling ROS (the compiled executables will be in `cmake_build/bin` and libraries in `cmake_build/lib`):
+To build only the Titati hardware stack (used on the real robot) without compiling simulation dependencies, run:
 
 ```bash
-./build.sh -m  # or ./build.sh --cmake
+./build.sh -m
+```
+
+If simulation is not needed and you only want to run on the robot without ROS, you can compile using CMake (the compiled executables will be in `cmake_build/bin` and libraries in `cmake_build/lib`):
+
+```bash
+./build.sh --cmake
 ```
 
 For detailed usage instructions, you can check them via `./build.sh -h`:
@@ -139,16 +145,18 @@ For detailed usage instructions, you can check them via `./build.sh -h`:
 Usage: ./build.sh [OPTIONS] [PACKAGE_NAMES...]
 
 Options:
-  -c, --clean    Clean workspace (remove symlinks and build artifacts)
-  -m, --cmake    Build using CMake (for hardware deployment only)
-  -h, --help     Show this help message
+  -c, --clean      Clean workspace (remove symlinks and build artifacts)
+  -m, --minimal    Build minimal ROS2 packages for Titati hardware
+      --cmake      Build using CMake (for hardware deployment only)
+  -h, --help       Show this help message
 
 Examples:
   ./build.sh                    # Build all ROS packages
   ./build.sh package1 package2  # Build specific ROS packages
   ./build.sh -c                 # Clean all symlinks and build artifacts
   ./build.sh --clean package1   # Clean specific package and build artifacts
-  ./build.sh -m                 # Build with CMake for hardware deployment
+  ./build.sh -m                 # Build Titati minimal hardware stack
+  ./build.sh --cmake            # Build with CMake for hardware deployment
 ```
 
 > [!TIP]
@@ -159,6 +167,83 @@ Examples:
 In the following text, **\<ROBOT\>/\<CONFIG\>** is used to represent different environments, such as `go2/himloco` and `go2w/robot_lab`.
 
 Before running, copy the trained pt model file to `rl_sar/src/rl_sar/policy/<ROBOT>/<CONFIG>`, and configure the parameters in `<ROBOT>/<CONFIG>/config.yaml` and `<ROBOT>/base.yaml`.
+
+## Titati Hardware Quick Start (ROS 2 Humble)
+
+> [!IMPORTANT]
+> The Titati robot uses a dual-controller architecture. Always run the CAN-FD handshake helpers (`battery_device` and `titati_canfd_router`) on **both** Jetson Orin NX boards before sending motor commands from RL or the motor test tool.
+
+### 1. Build only the required packages
+
+```bash
+cd <workspace>/rl_sar
+source /opt/ros/humble/setup.bash
+./build.sh -m
+source install/setup.bash
+```
+
+### 2. Prepare the CAN-FD bus on both Jetsons
+
+On the **master** Orin NX:
+
+```bash
+cd <workspace>/rl_sar
+sudo ./scripts/can_setup_8m_master.sh
+```
+
+On the **slave** Orin NX:
+
+```bash
+cd <workspace>/rl_sar
+sudo ./scripts/can_setup_8m_slave.sh
+```
+
+### 3. Start background services
+
+Perform the following on **both** machines (start the slave first, then the master):
+
+```bash
+source /opt/ros/humble/setup.bash
+cd <workspace>/rl_sar
+source install/setup.bash
+
+# Power & MCU status bridge
+ros2 launch battery_device battery_device_node.launch.py
+
+# CAN-FD handshake helper
+ros2 run titati_canfd_router titati_canfd_router_node
+```
+
+Keep the two terminals running so that the nodes continue publishing on the shared CAN-FD bus.
+
+### 4. Optional ROS 2 hardware bridge
+
+If you want ROS 2 controllers (joint_state_broadcaster, IMU, etc.), start the hardware bridge on the **master**:
+
+```bash
+ros2 launch hw_bringup hw_bringup.launch.py
+```
+
+### 5. Motor sanity check
+
+After the services above are running, you can command individual motors from the master using the new test node:
+
+```bash
+ros2 launch titati_motor_tools motor_test.launch.py \
+  joint_index:=0 mode:=torque torque:=2.0 duration:=3.0
+```
+
+Switch to MIT mode by adding parameters such as `mode:=mit kp:=40.0 kd:=2.0 position:=0.5`.
+
+### 6. Reinforcement learning controller
+
+With the services active, launch the RL policy on the **master**:
+
+```bash
+ros2 run rl_sar rl_real_titati
+```
+
+The node reads Titati-specific parameters from `policy/titati/*` and takes ownership of all 16 actuators through the shared CAN-FD bus.
 
 ### Simulation
 
