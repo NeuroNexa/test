@@ -27,7 +27,7 @@ Support List:
 |FFTAI-GR1T2 (gr1t2)</br>(Only available on Ubuntu20.04)|legged_gym (IsaacGym)|⚪|
 |GoldenRetriever-L4W4 (l4w4)|legged_gym (IsaacGym)</br>robot_lab (IsaacSim)|✅</br>✅|
 |Deeprobotics-Lite3 (lite3)|himloco (IsaacGym)|✅|
-|DDTRobot-Tita (tita)|robot_lab (IsaacSim)|⚪|
+|DDTRobot-Tita (tita)|robot_lab (IsaacSim)|✅|
 
 > [!IMPORTANT]
 > Python version temporarily suspended maintenance, please use [v2.3](https://github.com/fan-ziqi/rl_sar/releases/tag/v2.3) if necessary, may be re-released in the future.
@@ -373,6 +373,54 @@ ros2 run rl_sar rl_real_lite3
 # CMake
 ./cmake_build/bin/rl_real_lite3
 ```
+
+</details>
+
+<details>
+
+<summary>DDTRobot Titati (Click to expand)</summary>
+
+1. Configure the CAN bus on both Jetson controllers:
+
+```bash
+# Master Jetson
+cd rl_sar
+./src/rl_sar/scripts/titati_can_setup_master.sh [can-interface]
+
+# Slave Jetson
+cd rl_sar
+./src/rl_sar/scripts/titati_can_setup_slave.sh [can-interface]
+```
+
+   The scripts accept an optional CAN interface argument (default `can0`) and stop the legacy `tita-bringup` service. Environment variables `TITATI_CAN_INTERFACE`, `TITATI_CAN_RX_INTERFACE`, `TITATI_CAN_TX_INTERFACE`, and `TITATI_CAN_ID_OFFSET` can be exported afterwards if a custom interface or ID layout is required.
+
+2. Build the CMake targets on the master Jetson:
+
+```bash
+./build.sh -m
+```
+
+   This produces `cmake_build/bin/rl_real_titati` and `cmake_build/bin/titati_motor_test`.
+
+3. Deploy your policy to `src/rl_sar/policy/titati/robot_lab/` (for example copy `<MODEL>.pt` there) and adjust `config.yaml` if necessary.
+
+4. (Optional) Verify communication before running reinforcement learning:
+
+```bash
+export TITATI_CAN_INTERFACE=can0   # only required when not using can0
+./cmake_build/bin/titati_motor_test --mode torque --motor 3 --torque 1.0 --duration 2.0
+```
+
+   The tester streams all joint states and can also drive a joint in MIT mode via `--mode mit --kp ... --kd ...`.
+
+5. Launch the reinforcement-learning controller on the master Jetson:
+
+```bash
+export TITATI_CAN_INTERFACE=can0   # or your interface name
+./cmake_build/bin/rl_real_titati
+```
+
+   Keyboard shortcuts follow the global table above (WASD to move, Q/E to yaw, Space to stop, `N` toggles navigation mode).
 
 </details>
 

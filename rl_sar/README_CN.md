@@ -27,7 +27,7 @@
 |FFTAI-GR1T2 (gr1t2)</br>(Only available on Ubuntu20.04)|legged_gym (IsaacGym)|⚪|
 |GoldenRetriever-L4W4 (l4w4)|legged_gym (IsaacGym)</br>robot_lab (IsaacSim)|✅</br>✅|
 |Deeprobotics-Lite3 (lite3)|himloco (IsaacGym)|✅|
-|DDTRobot-Tita (tita)|robot_lab (IsaacSim)|⚪|
+|DDTRobot-Tita (tita)|robot_lab (IsaacSim)|✅|
 
 > [!IMPORTANT]
 > Python版本暂时停止维护，如有需要请使用[v2.3](https://github.com/fan-ziqi/rl_sar/releases/tag/v2.3)版本，后续可能会重新上线。
@@ -373,6 +373,54 @@ ros2 run rl_sar rl_real_lite3
 # CMake
 ./cmake_build/bin/rl_real_lite3
 ```
+
+</details>
+
+<details>
+
+<summary>DDTRobot Titati（点击展开）</summary>
+
+1. 在主从两台 Jetson 上配置 CAN 总线：
+
+```bash
+# 主机 Jetson
+cd rl_sar
+./src/rl_sar/scripts/titati_can_setup_master.sh [can-interface]
+
+# 从机 Jetson
+cd rl_sar
+./src/rl_sar/scripts/titati_can_setup_slave.sh [can-interface]
+```
+
+   脚本支持可选的 CAN 接口参数（默认 `can0`），并会停止旧的 `tita-bringup` 服务。若需要自定义接口或 ID 映射，可在脚本运行后导出 `TITATI_CAN_INTERFACE`、`TITATI_CAN_RX_INTERFACE`、`TITATI_CAN_TX_INTERFACE`、`TITATI_CAN_ID_OFFSET` 等环境变量。
+
+2. 在主机 Jetson 上编译 CMake 目标：
+
+```bash
+./build.sh -m
+```
+
+   编译后会生成 `cmake_build/bin/rl_real_titati` 与 `cmake_build/bin/titati_motor_test`。
+
+3. 将策略文件复制到 `src/rl_sar/policy/titati/robot_lab/`，并按需调整 `config.yaml`。
+
+4. （可选）在运行强化学习之前先做通讯测试：
+
+```bash
+export TITATI_CAN_INTERFACE=can0   # 如果不是默认的 can0 需要显式设置
+./cmake_build/bin/titati_motor_test --mode torque --motor 3 --torque 1.0 --duration 2.0
+```
+
+   测试程序会打印全部电机状态，也支持通过 `--mode mit --kp ... --kd ...` 以 MIT 模式驱动单个电机。
+
+5. 在主机 Jetson 启动强化学习控制程序：
+
+```bash
+export TITATI_CAN_INTERFACE=can0   # 或者你的接口名称
+./cmake_build/bin/rl_real_titati
+```
+
+   键盘按键与前文表格一致（WASD 控制移动，Q/E 控制偏航，空格清零，`N` 切换导航模式）。
 
 </details>
 

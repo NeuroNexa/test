@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.5)
 project(rl_sar VERSION 3.0.0 LANGUAGES CXX)
 
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+
 set(USE_CMAKE OFF CACHE BOOL "Use Cmake build system")
 message(STATUS "USE_CMAKE: ${USE_CMAKE}")
 if(USE_CMAKE)
@@ -157,9 +161,24 @@ include_directories(
     policy
 )
 
+set(TITATI_ROBOT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../tita_hardware_ros2_control/tita_robot)
+add_library(titati_hardware
+    ${TITATI_ROBOT_DIR}/src/tita_robot.cpp
+    ${TITATI_ROBOT_DIR}/src/can_receiver.cpp
+    ${TITATI_ROBOT_DIR}/src/can_sender.cpp
+)
+target_include_directories(titati_hardware PUBLIC
+    ${TITATI_ROBOT_DIR}/include
+)
+set_target_properties(titati_hardware PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+)
+target_link_libraries(titati_hardware PUBLIC Threads::Threads)
+
 add_library(rl_sdk library/core/rl_sdk/rl_sdk.cpp)
 set_target_properties(rl_sdk PROPERTIES
-    CXX_STANDARD 14
+    CXX_STANDARD 17
     CXX_STANDARD_REQUIRED ON
 )
 target_link_libraries(rl_sdk PUBLIC
@@ -183,7 +202,7 @@ endif()
 add_library(observation_buffer library/core/observation_buffer/observation_buffer.cpp)
 target_link_libraries(observation_buffer PUBLIC "${TORCH_LIBRARIES}")
 set_target_properties(observation_buffer PROPERTIES
-    CXX_STANDARD 14
+    CXX_STANDARD 17
     CXX_STANDARD_REQUIRED ON
 )
 if(NOT USE_CMAKE)
@@ -321,15 +340,53 @@ if(NOT USE_CMAKE)
     endif()
 endif()
 
+add_executable(rl_real_titati src/rl_real_titati.cpp)
+target_link_libraries(rl_real_titati
+    titati_hardware
+    rl_sdk
+    observation_buffer
+    yaml-cpp
+)
+if(NOT USE_CMAKE)
+    if($ENV{ROS_DISTRO} MATCHES "noetic")
+        target_link_libraries(rl_real_titati ${catkin_LIBRARIES})
+    elseif($ENV{ROS_DISTRO} MATCHES "foxy|humble")
+        ament_target_dependencies(rl_real_titati
+            rclcpp
+            geometry_msgs
+        )
+        install(TARGETS rl_real_titati DESTINATION lib/${PROJECT_NAME})
+    endif()
+endif()
+
+add_executable(titati_motor_test src/titati_motor_test.cpp)
+target_link_libraries(titati_motor_test
+    titati_hardware
+)
+if(NOT USE_CMAKE)
+    if($ENV{ROS_DISTRO} MATCHES "noetic")
+        install(TARGETS titati_motor_test DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
+    elseif($ENV{ROS_DISTRO} MATCHES "foxy|humble")
+        install(TARGETS titati_motor_test DESTINATION lib/${PROJECT_NAME})
+    endif()
+endif()
+
 if(NOT USE_CMAKE)
     if($ENV{ROS_DISTRO} MATCHES "noetic")
         catkin_install_python(PROGRAMS
             scripts/actuator_net.py
             DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
         )
+        install(PROGRAMS
+            scripts/titati_can_setup_master.sh
+            scripts/titati_can_setup_slave.sh
+            DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+        )
     elseif($ENV{ROS_DISTRO} MATCHES "foxy|humble")
         install(PROGRAMS
             scripts/actuator_net.py
+            scripts/titati_can_setup_master.sh
+            scripts/titati_can_setup_slave.sh
             DESTINATION lib/${PROJECT_NAME}
         )
     endif()
