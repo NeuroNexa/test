@@ -63,17 +63,40 @@ ask_confirmation() {
 # Build Functions
 # ========================
 
+ensure_ros_environment() {
+    if [[ -n "${ROS_DISTRO:-}" ]]; then
+        return 0
+    fi
+
+    local default_ros_distros=("humble" "foxy" "noetic")
+    for distro in "${default_ros_distros[@]}"; do
+        local setup_file="/opt/ros/${distro}/setup.bash"
+        if [[ -f "${setup_file}" ]]; then
+            # shellcheck disable=SC1090
+            source "${setup_file}"
+            print_info "Automatically sourced ${setup_file}"
+            return 0
+        fi
+    done
+
+    print_warning "ROS environment not detected automatically."
+    print_warning "If you need the Titati ROS services, source /opt/ros/<distro>/setup.bash before running -m."
+    return 1
+}
+
 run_cmake_build() {
     print_header "[Running CMake Build]"
     print_warning "NOTE: CMake build is for hardware deployment only, not for simulation."
     print_separator
+
+    ensure_ros_environment || true
 
     local cmake_args=(-DUSE_CMAKE=ON)
     if [[ -n "$ROS_DISTRO" ]]; then
         print_info "Detected ROS_DISTRO=$ROS_DISTRO (ROS integration enabled)"
         cmake_args+=(-DENABLE_ROS=ON)
     else
-        print_info "No ROS environment detected; building without ROS bindings"
+        print_info "Building without ROS bindings"
         cmake_args+=(-DENABLE_ROS=OFF)
     fi
 

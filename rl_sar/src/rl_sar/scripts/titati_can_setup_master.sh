@@ -49,5 +49,8 @@ start_background_node() {
 start_background_node battery_device_node
 start_background_node titati_canfd_router_node
 
-echo "[Titati] ${CAN_IFACE} configured for master and ROS power services are running in namespace '${TITATI_NAMESPACE}'."
+echo "[Titati] ${CAN_IFACE} configured for master."
+echo "[Titati] Active services:"
+echo "    - battery_device_node → /${TITATI_NAMESPACE}/power_state_set, /${TITATI_NAMESPACE}/power_heart_beat, /${TITATI_NAMESPACE}/power_self_test"
+echo "    - titati_canfd_router_node → CAN power heartbeat bridge"
 echo "[Titati] Run rl_real_titati from ${REPO_ROOT}/cmake_build/bin after the slave bring-up completes."

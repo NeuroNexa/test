@@ -380,42 +380,50 @@ ros2 run rl_sar rl_real_lite3
 
 <summary>DDTRobot Titati (Click to expand)</summary>
 
-1. Build the hardware deployment artifacts once on each Jetson (or sync the `cmake_build` folder between them). The `-m` preset now compiles the real controller, motor tester, CAN heartbeat daemon, and the battery/power ROS services in a single step:
+1. **Build once on each Jetson.** The `-m` preset now detects and sources your ROS installation automatically, then compiles everything that is required on hardware (RL controller, motor test tool, battery daemon, CAN heartbeat daemon) in a single pass. You no longer need to build `battery_device`, `hardware_bridge` or `hw_bringup` separately.
 
 ```bash
 cd rl_sar
-source /opt/ros/${ROS_DISTRO:-humble}/setup.bash   # keeps ROS messages available to the binaries
 ./build.sh -m
 ```
 
-   After the build you should have these executables in `cmake_build/bin`:
+   The resulting binaries live in `cmake_build/bin/`:
 
    | Binary | Purpose |
    | --- | --- |
    | `rl_real_titati` | Reinforcement-learning controller that drives all 16 motors from the master Jetson. |
    | `titati_motor_test` | CLI utility to read state or command a single joint (torque/MIT). |
-   | `battery_device_node` | Publishes battery diagnostics and exposes the power-state services required by the BMS. |
-   | `titati_canfd_router_node` | Periodically refreshes the power-board heartbeat so the BMS keeps the robot online. |
+   | `battery_device_node` | Publishes battery diagnostics and exposes `/power_state_set`, `/power_heart_beat`, `/power_self_test`. |
+   | `titati_canfd_router_node` | Keeps the power board alive by mirroring the CAN heartbeat. |
 
-2. Bring up the slave Jetson first. The helper script configures `can0`, stops legacy bring-up services, and launches the ROS heartbeat/battery daemons in the background (logs are written to `cmake_build/logs/*_slave.log`):
+2. **Bring up the slave Jetson.** Run the helper script to configure `can0`, stop the legacy `tita-bringup` service, and launch the ROS daemons in the background. Logs are written to `cmake_build/logs/*_slave.log`.
 
 ```bash
 cd rl_sar
 ./src/rl_sar/scripts/titati_can_setup_slave.sh
 ```
 
-3. Repeat the procedure on the master Jetson. This sets up the CAN link for the aggregated robot and starts the same ROS nodes so the master can answer power heartbeat requests as well. Logs are stored alongside the binaries in `cmake_build/logs/`.
+   The slave runs `battery_device_node` and `titati_canfd_router_node` in namespace `tita` (or your custom `TITATI_NAMESPACE`). These services keep the batteries powered and answer power-board heartbeat requests so the master can take over.
+
+3. **Bring up the master Jetson.** The master script performs the same CAN configuration, restarts the ROS power services, and prepares the machine for the RL controller. Logs are written to `cmake_build/logs/`.
 
 ```bash
 cd rl_sar
 ./src/rl_sar/scripts/titati_can_setup_master.sh
 ```
 
-   Both scripts default to namespace `tita` and interface `can0`. Override them with `TITATI_NAMESPACE` or by passing a different interface name if you have a custom wiring layout. Each invocation will terminate any stale copies of the daemons before launching new ones so you can safely re-run the scripts after reboot or network faults.
+   When both scripts have finished, the following ROS endpoints are available on each Jetson:
 
-4. Deploy your policy to `src/rl_sar/policy/titati/robot_lab/` (copy `<MODEL>.pt` and adjust `config.yaml` as needed).
+   | Node | Namespace | Interfaces |
+   | --- | --- | --- |
+   | `battery_device_node` | `/tita` | Services `/power_state_set`, `/power_heart_beat`, `/power_self_test`; topics `/left_battery_state`, `/right_battery_state`, `/power_domain_info_diagnostic`, … |
+   | `titati_canfd_router_node` | `/tita` | Forwards CAN FD traffic and maintains the heartbeat toward the power board. |
 
-5. (Optional) Validate CAN communication and joint indexing before enabling the policy:
+   Re-run either script whenever you reboot or lose CAN; they terminate stale daemons before spawning new ones.
+
+4. **Deploy your policy** under `src/rl_sar/policy/titati/robot_lab/` (copy `<MODEL>.pt` and update `config.yaml`).
+
+5. **(Optional) Validate CAN and joint indexing** before enabling the policy:
 
 ```bash
 # Stream all joint states at 20 Hz for 5 seconds
@@ -428,14 +436,14 @@ cd rl_sar
 
    Use `--num-motors` if you temporarily work with fewer than 16 actuators.
 
-6. Launch the reinforcement-learning controller on the master Jetson once the slave script reports success:
+6. **Start the reinforcement-learning controller** on the master once the slave is ready:
 
 ```bash
 cd rl_sar
 ./cmake_build/bin/rl_real_titati
 ```
 
-   Keyboard shortcuts follow the global table above (WASD to move, Q/E to yaw, Space to stop, `N` toggles navigation mode).
+   Keyboard shortcuts follow the global table above (WASD to move, Q/E to yaw, Space to stop, `N` toggles navigation mode). Do not launch any packages from `titati_control`; everything needed has been migrated into `rl_sar`.
 
 </details>
 
