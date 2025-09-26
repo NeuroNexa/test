@@ -160,6 +160,93 @@ In the following text, **\<ROBOT\>/\<CONFIG\>** is used to represent different e
 
 Before running, copy the trained pt model file to `rl_sar/src/rl_sar/policy/<ROBOT>/<CONFIG>`, and configure the parameters in `<ROBOT>/<CONFIG>/config.yaml` and `<ROBOT>/base.yaml`.
 
+### Titati hardware deployment (real robot)
+
+> The Titati deployment targets the dual-Tita quadruped described in the task (two wheeled legs bridged through the connection box). Only the Titati binaries are built when you use `./build.sh -m`.
+
+#### 1. Build (one-time on each Jetson)
+
+```bash
+cd rl_sar
+./build.sh -m
+```
+
+This uses CMake with C++17 and generates binaries in `cmake_build/bin/`.
+
+#### 2. Prepare CAN-FD on both controllers
+
+On **both** Jetson Orin NX boards (master and slave) configure `can0` to 1 Mbps arbitration / 8 Mbps data:
+
+```bash
+cd rl_sar/src/rl_sar/scripts
+sudo ./can_setup_8m_master.sh    # on the master Jetson
+sudo ./can_setup_8m_slave.sh     # on the slave Jetson
+```
+
+The scripts are identical to those in `titati_control` and bring up CAN-FD, set the bit timings, and start the `titati_canfd` interface.
+
+#### 3. Start the Titati battery service bridge (ROS 2)
+
+The CAN-FD router expects the `battery_device` ROS 2 services to be present. This lightweight node answers the `power_self_test` request and streams the required heartbeats so the MCU grants force-direct control to the host.
+
+On **each** Jetson (master and slave) open a ROS 2 terminal and run:
+
+```bash
+source /opt/ros/humble/setup.bash
+source install/setup.bash
+ros2 run rl_sar titati_battery_device_node
+```
+
+Leave the node running; it is idle until the router requests a self-test and publishes a heartbeat every second.
+
+#### 4. Start the CAN-FD router watchdog (keeps the MCU in FORCE_DIRECT)
+
+The watchdog listens to broadcast frame `0x09F` and replays the `READY_WAITING -> FORCE_DIRECT` RPC pair (`0x170`) whenever the MCU falls back to auto mode.
+
+On **both** master and slave Jetsons run:
+
+```bash
+cd rl_sar/cmake_build/bin
+./titati_router_watchdog
+```
+
+You can keep this process in the background (Ctrl+C to exit). The RL controller and the motor test tool also embed the same handshake logic, so the watchdog is mostly a safety net for unexpected resets.
+
+#### 5. Master-side quick diagnostics
+
+Before loading a policy you can verify motor connectivity and state feedback with the standalone motor exerciser:
+
+```bash
+cd rl_sar/cmake_build/bin
+./titati_motor_test --joint 3 --mode torque --value 5.0 --duration 3
+```
+
+Options:
+
+* `--joint <id>`: select joint `[0-15]`.
+* `--mode torque|mit`: pure torque command (Nm) or MIT mode with position/PD gains.
+* `--value`: torque (Nm) in torque mode, position (rad) in MIT mode.
+* `--kp/--kd`: PD gains for MIT mode (defaults to zero).
+* `--duration`: hold time in seconds.
+
+The tool streams the current position/velocity/torque of the chosen joint every 200 ms so you can confirm feedback from all actuators.
+
+#### 6. Run the Titati RL controller on the master
+
+```bash
+cd rl_sar/cmake_build/bin
+./rl_real_titati
+```
+
+Key notes:
+
+* The controller reads the policies in `policy/titati/*` and matches the joint ordering defined in `policy/titati/base.yaml`.
+* Force-direct CAN handshake is handled internally (no extra ROS2 nodes required).
+* Keyboard teleop matches other RL deployments: `W/S` for forward/backward, `A/D` lateral, `Q/E` yaw, `Space` to zero the command, `N` to toggle navigation mode (`/cmd_vel` takeover if ROS2 teleop is running).
+* On exit the node sends zero torques and hands control back to the MCU.
+
+If you prefer ROS2 command inputs, compile with ROS enabled (`source /opt/ros/humble/setup.bash` before calling `./build.sh -m`) and publish `geometry_msgs/Twist` on `/cmd_vel`.
+
 ### Simulation
 
 Open a terminal, launch the gazebo simulation environment
