@@ -345,6 +345,7 @@ if(ENABLE_ROS)
     target_include_directories(titati_battery_device PUBLIC
         ${TITATI_BATTERY_DIR}/include
         ${TITATI_BATTERY_DIR}/utils
+        ${TITATI_HARDWARE_DIR}
         ${TITATI_UTILS_DIR}
         ${TITA_SYSTEM_INTERFACES_INCLUDE_DIR}
     )
@@ -376,6 +377,7 @@ if(ENABLE_ROS)
     target_include_directories(titati_canfd_router PUBLIC
         ${TITATI_CANFD_ROUTER_DIR}/include
         ${TITATI_ROBOT_DIR}/include
+        ${TITATI_HARDWARE_DIR}
         ${TITATI_UTILS_DIR}
         ${TITA_SYSTEM_INTERFACES_INCLUDE_DIR}
     )
