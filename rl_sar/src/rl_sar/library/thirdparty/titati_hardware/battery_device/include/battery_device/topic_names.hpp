@@ -2,6 +2,8 @@
 
 #include <string>
 
+namespace tita
+{
 namespace battery_device
 {
 namespace topics
@@ -16,3 +18,4 @@ inline const std::string kPowerHeartBeatSrv = "system/power_supply/power_heart_b
 inline const std::string kPowerSelfTestSrv = "system/power_supply/power_self_test_srv";
 }  // namespace topics
 }  // namespace battery_device
+}  // namespace tita
