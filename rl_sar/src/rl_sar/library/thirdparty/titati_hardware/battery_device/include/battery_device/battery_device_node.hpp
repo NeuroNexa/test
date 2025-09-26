@@ -32,7 +32,7 @@
 #include "tita_system_interfaces/srv/power_heart_beat_srv.hpp"
 #include "tita_system_interfaces/srv/power_self_test_srv.hpp"
 #include "tita_system_interfaces/srv/power_state_set_srv.hpp"
-#include "tita_utils/topic_names.hpp"
+#include "battery_device/topic_names.hpp"
 namespace tita
 {
 namespace battery_device

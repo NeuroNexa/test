@@ -39,35 +39,35 @@ BatteryDeviceNode::BatteryDeviceNode(const rclcpp::NodeOptions & options)
 
   // pub topic
   this->left_battery_state_topic_ = this->create_publisher<sensor_msgs::msg::BatteryState>(
-    tita_topic::kleft_battery_topic, battery_info_qos);
+    battery_device::topics::kLeftBattery, battery_info_qos);
 
   this->right_battery_state_topic_ = this->create_publisher<sensor_msgs::msg::BatteryState>(
-    tita_topic::kright_battery_topic, battery_info_qos);
+    battery_device::topics::kRightBattery, battery_info_qos);
 
   this->left_battery_diagnostic_topic_ =
     this->create_publisher<diagnostic_msgs::msg::DiagnosticArray>(
-      tita_topic::kleft_battery_diagnostic_topic, battery_info_qos);
+      battery_device::topics::kLeftBatteryDiag, battery_info_qos);
 
   this->right_battery_diagnostic_topic_ =
     this->create_publisher<diagnostic_msgs::msg::DiagnosticArray>(
-      tita_topic::kright_battery_diagnostic_topic, battery_info_qos);
+      battery_device::topics::kRightBatteryDiag, battery_info_qos);
 
   this->power_domain_diagnostic_topic_ =
     this->create_publisher<diagnostic_msgs::msg::DiagnosticArray>(
-      tita_topic::kpower_domain_info_diagnostic_topic, battery_info_qos);
+      battery_device::topics::kPowerDomainDiag, battery_info_qos);
 
   // client service
   this->power_state_set_srv_ = this->create_service<tita_system_interfaces::srv::PowerStateSetSrv>(
-    tita_topic::kpower_state_set_service, std::bind(
+    battery_device::topics::kPowerStateSetSrv, std::bind(
                                             &BatteryDeviceNode::power_state_set_callback, this,
                                             std::placeholders::_1, std::placeholders::_2));
   this->power_heart_beat_srv_ =
     this->create_service<tita_system_interfaces::srv::PowerHeartBeatSrv>(
-      tita_topic::kpower_heart_beat_service, std::bind(
+      battery_device::topics::kPowerHeartBeatSrv, std::bind(
                                                &BatteryDeviceNode::power_heartbeat_callback, this,
                                                std::placeholders::_1, std::placeholders::_2));
   this->power_self_test_srv_ = this->create_service<tita_system_interfaces::srv::PowerSelfTestSrv>(
-    tita_topic::kpower_self_test_service, std::bind(
+    battery_device::topics::kPowerSelfTestSrv, std::bind(
                                             &BatteryDeviceNode::power_self_test_callback, this,
                                             std::placeholders::_1, std::placeholders::_2));
 
