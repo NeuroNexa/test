@@ -119,6 +119,31 @@ run_ros_build() {
     print_success "ROS build completed!"
 }
 
+run_hardware_build() {
+    print_header "[Running Titati Hardware Build]"
+    run_cmake_build
+
+    if [ -z "$ROS_DISTRO" ]; then
+        print_warning "ROS_DISTRO not set; skipping Titati ROS packages"
+        return
+    fi
+
+    local titati_packages=(
+        "tita_robot"
+        "hardware_bridge"
+        "hw_bringup"
+        "battery_device"
+        "titati_canfd_router"
+        "tita_system_interfaces"
+        "tita_description"
+        "titati_description"
+    )
+
+    print_info "Building Titati ROS packages: ${titati_packages[*]}"
+    run_ros_build "${titati_packages[@]}"
+    print_success "Titati hardware build completed!"
+}
+
 # ========================
 # Clean Functions
 # ========================
@@ -316,7 +341,7 @@ show_usage() {
     echo ""
     echo -e "${COLOR_INFO}Options:${COLOR_RESET}"
     echo -e "  -c, --clean    Clean workspace (remove symlinks and build artifacts)"
-    echo -e "  -m, --cmake    Build using CMake (for hardware deployment only)"
+    echo -e "  -m, --cmake    Build Titati hardware targets (CMake + ROS packages)"
     echo -e "  -h, --help     Show this help message"
     echo ""
     echo -e "${COLOR_INFO}Examples:${COLOR_RESET}"
@@ -324,7 +349,7 @@ show_usage() {
     echo -e "  $0 package1 package2  # Build specific ROS packages"
     echo -e "  $0 -c                 # Clean all symlinks and build artifacts"
     echo -e "  $0 --clean package1   # Clean specific package and build artifacts"
-    echo -e "  $0 -m                 # Build with CMake for hardware deployment"
+    echo -e "  $0 -m                 # Build Titati hardware (CMake + ROS packages)"
 }
 
 main() {
@@ -346,7 +371,7 @@ main() {
 
     # Handle CMake build mode
     if [ "$cmake_mode" = true ]; then
-        run_cmake_build
+        run_hardware_build
         exit 0
     fi
 

@@ -1,98 +1,69 @@
-#!/bin/bash
-# Configure the slave Titati Jetson: stop the stock service, bring up CAN, and launch the ROS bringup stack.
-set -e
+#!/usr/bin/env bash
+set -euo pipefail
 
-CAN_IFACE=${1:-can0}
-BITRATE=${TITATI_CAN_BITRATE:-1000000}
-DBITRATE=${TITATI_CAN_DBITRATE:-8000000}
-SAMPLE_POINT=${TITATI_CAN_SAMPLE_POINT:-0.80}
-DSAMPLE_POINT=${TITATI_CAN_DSAMPLE_POINT:-0.80}
-QUEUE_LEN=${TITATI_CAN_QUEUE_LEN:-1000}
-LOG_DIR=${TITATI_CAN_LOG_DIR:-/tmp/titati}
-
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-WORKSPACE_ROOT="$( cd "${SCRIPT_DIR}/../../.." && pwd )"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+LOG_DIR="${REPO_ROOT}/logs"
+CAN_INTERFACE="can0"
+LOG_PREFIX="${LOG_DIR}/titati_slave"
 
 mkdir -p "${LOG_DIR}"
-LOG_FILE="${LOG_DIR}/slave_bringup.log"
 
-source_ros_env() {
-    if command -v ros2 >/dev/null 2>&1; then
-        return 0
+stop_systemd_service() {
+    local service_name="$1"
+    if systemctl list-unit-files 2>/dev/null | grep -q "^${service_name}"; then
+        echo "[INFO] Stopping systemd service ${service_name}" >&2
+        sudo systemctl stop "${service_name}" 2>/dev/null || true
     fi
+}
 
-    if [[ -n "$ROS_DISTRO" && -f "/opt/ros/${ROS_DISTRO}/setup.bash" ]]; then
+prepare_can_interface() {
+    echo "[INFO] Configuring ${CAN_INTERFACE} for CAN-FD" >&2
+    if ip link show "${CAN_INTERFACE}" &>/dev/null; then
+        sudo ip link set "${CAN_INTERFACE}" down || true
+    fi
+    sudo ip link set "${CAN_INTERFACE}" up type can \
+        bitrate 1000000 sample-point 0.80 \
+        dbitrate 8000000 dsample-point 0.80 \
+        fd on restart-ms 100
+    sudo ifconfig "${CAN_INTERFACE}" txqueuelen 1000
+}
+
+source_ros_environment() {
+    local ros_distro="${ROS_DISTRO:-humble}"
+    local ros_setup="/opt/ros/${ros_distro}/setup.bash"
+    if [ -f "${ros_setup}" ]; then
         # shellcheck disable=SC1090
-        source "/opt/ros/${ROS_DISTRO}/setup.bash"
+        source "${ros_setup}"
     else
-        local candidates=("humble" "foxy")
-        for distro in "${candidates[@]}"; do
-            local setup="/opt/ros/${distro}/setup.bash"
-            if [ -f "$setup" ]; then
-                # shellcheck disable=SC1090
-                source "$setup"
-                break
-            fi
-        done
+        echo "[WARNING] ROS setup file ${ros_setup} not found. Set ROS_DISTRO or install ROS 2." >&2
     fi
 
-    command -v ros2 >/dev/null 2>&1
-}
-
-source_workspace_overlay() {
-    if [ -f "${WORKSPACE_ROOT}/install/setup.bash" ]; then
-        # shellcheck disable=SC1090
-        source "${WORKSPACE_ROOT}/install/setup.bash"
-    elif [ -f "${WORKSPACE_ROOT}/devel/setup.bash" ]; then
-        # shellcheck disable=SC1090
-        source "${WORKSPACE_ROOT}/devel/setup.bash"
+    local workspace_setup="${REPO_ROOT}/install/setup.bash"
+    if [ ! -f "${workspace_setup}" ]; then
+        echo "[ERROR] ${workspace_setup} not found. Run ./build.sh -m first." >&2
+        exit 1
     fi
+    # shellcheck disable=SC1090
+    source "${workspace_setup}"
 }
 
-echo "[Titati] Preparing CAN interface ${CAN_IFACE} on slave..."
-sudo systemctl stop tita-bringup.service >/dev/null 2>&1 || true
-sudo ip link set "${CAN_IFACE}" down >/dev/null 2>&1 || true
-sudo ip link set "${CAN_IFACE}" up type can bitrate "${BITRATE}" sample-point "${SAMPLE_POINT}" \
-    dbitrate "${DBITRATE}" dsample-point "${DSAMPLE_POINT}" fd on restart-ms 100
-sudo ifconfig "${CAN_IFACE}" txqueuelen "${QUEUE_LEN}"
+launch_background() {
+    local label="$1"
+    shift
+    local log_file="${LOG_PREFIX}_${label}.log"
+    echo "[INFO] Launching ${label} (log: ${log_file})" >&2
+    nohup "$@" >"${log_file}" 2>&1 &
+}
 
-echo "[Titati] CAN interface ${CAN_IFACE} configured."
+stop_systemd_service "tita-bringup.service"
+prepare_can_interface
+source_ros_environment
 
-if ! source_ros_env; then
-    echo "[Titati] ERROR: Unable to locate a ROS 2 environment. Please source /opt/ros/<distro>/setup.bash first." >&2
-    exit 1
-fi
+export TITATI_NAMESPACE="${TITATI_NAMESPACE:-titati}"
 
-source_workspace_overlay
+launch_background "battery" ros2 launch battery_device battery_device_node.launch.py namespace:="${TITATI_NAMESPACE}"
+launch_background "canfd_router" ros2 run titati_canfd_router titati_canfd_router_node --ros-args --remap __ns:="/${TITATI_NAMESPACE}"
 
-if ! command -v ros2 >/dev/null 2>&1; then
-    echo "[Titati] ERROR: 'ros2' command not available after sourcing environment." >&2
-    exit 1
-fi
-
-if pgrep -f "battery_device_node" >/dev/null 2>&1; then
-    pkill -f "battery_device_node" >/dev/null 2>&1 || true
-    sleep 1
-fi
-
-if pgrep -f "titati_canfd_router_node" >/dev/null 2>&1; then
-    pkill -f "titati_canfd_router_node" >/dev/null 2>&1 || true
-    sleep 1
-fi
-
-echo "[Titati] Launching battery_device_node on slave..."
-nohup ros2 launch battery_device battery_device_node.launch.py \
-    >"${LOG_FILE%.log}_battery.log" 2>&1 &
-BATTERY_PID=$!
-
-echo "[Titati] Launching titati_canfd_router_node on slave..."
-nohup ros2 run titati_canfd_router titati_canfd_router_node \
-    >"${LOG_FILE%.log}_router.log" 2>&1 &
-ROUTER_PID=$!
-
-disown "$BATTERY_PID" "$ROUTER_PID" 2>/dev/null || true
-
-echo "[Titati] battery_device_node PID ${BATTERY_PID}, titati_canfd_router_node PID ${ROUTER_PID}."
-echo "Logs: ${LOG_FILE%.log}_battery.log and ${LOG_FILE%.log}_router.log"
-echo "If the slave contributes additional actuators, export TITATI_CAN_INTERFACE=${CAN_IFACE} and"
-echo "TITATI_CAN_ID_OFFSET before running diagnostics or custom tools."
+echo "[INFO] Titati slave pre-launch complete." >&2
+echo "[INFO] Keep this terminal open to monitor logs in ${LOG_DIR}." >&2

@@ -395,27 +395,33 @@ The hardware binaries (`rl_real_titati`, `titati_motor_test`, …) are written t
 
 #### 2. Prepare the slave Jetson (battery/power side)
 
-Bring up the slave first so the CAN bus and the power services are available before the master connects:
+Bring up the slave first so the CAN bus and the power services are available before the master connects. The script starts the ROS 2 infrastructure that lives permanently on the slave:
+
+- `battery_device/battery_device_node` publishes battery and power telemetry under the `titati` namespace.
+- `titati_canfd_router/titati_canfd_router_node` requests the MCU to enter the direct (SDK) control mode by calling `system/power_supply/power_self_test_srv` and keeps the routing heartbeat alive.
 
 ```bash
 cd rl_sar
 ./src/rl_sar/scripts/titati_can_setup_slave.sh
 ```
 
-The script stops the factory `tita-bringup` service, configures `can0`, and then launches the local copies of `battery_device` and `titati_canfd_router`. Logs are stored at `/tmp/titati/slave_bringup_battery.log` and `/tmp/titati/slave_bringup_router.log` by default.
+The script stops the factory `tita-bringup` service, configures `can0`, and then launches the local copies of `battery_device` and `titati_canfd_router`. Logs are written to `logs/titati_slave_battery.log` and `logs/titati_slave_canfd_router.log` inside the workspace.
 
 #### 3. Prepare the master Jetson (control side)
 
-Once the slave is online, configure the master:
+Once the slave is online, configure the master. This script mirrors the slave services locally so the controller and monitoring tools always have nearby ROS endpoints:
+
+- `battery_device/battery_device_node` for local battery state monitoring.
+- `titati_canfd_router/titati_canfd_router_node` to ensure the master also keeps the MCU in direct control mode.
 
 ```bash
 cd rl_sar
 ./src/rl_sar/scripts/titati_can_setup_master.sh
 ```
 
-The master runs the same CAN initialisation, starts its own monitoring `battery_device` instance, and launches `titati_canfd_router` so the robot switches to SDK (direct) control mode before the reinforcement-learning binary takes over. Logs mirror the slave under `/tmp/titati/master_bringup_*.log`.
+The master runs the same CAN initialisation, starts its own monitoring `battery_device` instance, and launches `titati_canfd_router` so the robot switches to SDK (direct) control mode before the reinforcement-learning binary takes over. Logs mirror the slave under `logs/titati_master_battery.log` and `logs/titati_master_canfd_router.log`.
 
-Both scripts default to `can0`. If you use another interface, export `TITATI_CAN_INTERFACE` (and optionally `TITATI_CAN_ID_OFFSET`) before running the reinforcement-learning binaries.
+Both scripts default to the namespace `titati`. Export `TITATI_NAMESPACE` before running them if you need to integrate with a different tree of ROS topics.
 
 #### 4. Deploy and run reinforcement learning
 
@@ -427,6 +433,8 @@ Both scripts default to `can0`. If you use another interface, export `TITATI_CAN
    ./cmake_build/bin/titati_motor_test --mode torque --motor 3 --torque 1.0 --duration 2.0
    ```
 
+   `titati_motor_test` accepts `--mode torque`, `--mode mit`, or `--mode read`. The torque and MIT modes apply commands to a single motor selected with `--motor <index>` (0-based) while streaming live joint feedback at 10 Hz. Use `--torque`, `--position`, `--velocity`, `--kp`, and `--kd` to customise the command.
+
 3. Start the reinforcement-learning controller on the master Jetson:
 
    ```bash
@@ -434,6 +442,8 @@ Both scripts default to `can0`. If you use another interface, export `TITATI_CAN
    ```
 
    Keyboard shortcuts follow the global table above (WASD to move, Q/E to yaw, Space to stop, `N` toggles navigation mode).
+
+   If you prefer running inside a ROS 2 workspace, source `install/setup.bash` after the hardware build and launch the same executable with `ros2 run rl_sar rl_real_titati`.
 
 </details>
 

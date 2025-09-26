@@ -12,3 +12,9 @@ __pycache__
 cmake_build
 
 package.xml
+!src/rl_sar/library/thirdparty/titati_hardware/tita_robot/package.xml
+!src/rl_sar/library/thirdparty/titati_hardware/hw_bringup/package.xml
+!src/rl_sar/library/thirdparty/titati_hardware/hardware_bridge/package.xml
+!src/rl_sar/library/thirdparty/titati_hardware/battery_device/package.xml
+!src/rl_sar/library/thirdparty/tita_system_interfaces/package.xml
+!src/rl_sar/library/thirdparty/titati_canfd_router/package.xml

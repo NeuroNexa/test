@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.5)
 project(rl_sar VERSION 3.0.0 LANGUAGES CXX)
 
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
 set(USE_CMAKE OFF CACHE BOOL "Use Cmake build system")
 message(STATUS "USE_CMAKE: ${USE_CMAKE}")
 if(USE_CMAKE)
@@ -69,6 +73,7 @@ if(NOT USE_CMAKE)
         find_package(geometry_msgs REQUIRED)
         ament_package()
     endif()
+    add_compile_definitions(USE_ROS)
     add_compile_options(${GAZEBO_CXX_FLAGS})
     find_package(gazebo REQUIRED)
 endif()
@@ -80,6 +85,26 @@ find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
 
 link_directories(/usr/local/lib)
 include_directories(${YAML_CPP_INCLUDE_DIR})
+
+set(TITATI_ROBOT_LIB titati_robot_static)
+set(TITATI_ROBOT_SRC
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/titati_hardware/tita_robot/src/tita_robot.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/titati_hardware/tita_robot/src/can_sender.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/titati_hardware/tita_robot/src/can_receiver.cpp
+)
+
+add_library(${TITATI_ROBOT_LIB} STATIC ${TITATI_ROBOT_SRC})
+target_include_directories(${TITATI_ROBOT_LIB} PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/titati_hardware/tita_robot/include
+)
+target_link_libraries(${TITATI_ROBOT_LIB} PUBLIC Threads::Threads)
+
+if(NOT USE_CMAKE)
+    if($ENV{ROS_DISTRO} MATCHES "foxy|humble")
+        find_package(tita_robot REQUIRED)
+        set(TITATI_ROBOT_LIB tita_robot)
+    endif()
+endif()
 
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64|ARM64")
     message(STATUS "Current system architecture: ${CMAKE_SYSTEM_PROCESSOR}")
@@ -159,7 +184,7 @@ include_directories(
 
 add_library(rl_sdk library/core/rl_sdk/rl_sdk.cpp)
 set_target_properties(rl_sdk PROPERTIES
-    CXX_STANDARD 14
+    CXX_STANDARD 17
     CXX_STANDARD_REQUIRED ON
 )
 target_link_libraries(rl_sdk PUBLIC
@@ -183,7 +208,7 @@ endif()
 add_library(observation_buffer library/core/observation_buffer/observation_buffer.cpp)
 target_link_libraries(observation_buffer PUBLIC "${TORCH_LIBRARIES}")
 set_target_properties(observation_buffer PROPERTIES
-    CXX_STANDARD 14
+    CXX_STANDARD 17
     CXX_STANDARD_REQUIRED ON
 )
 if(NOT USE_CMAKE)
@@ -318,6 +343,39 @@ if(NOT USE_CMAKE)
             geometry_msgs
         )
         install(TARGETS rl_real_l4w4 DESTINATION lib/${PROJECT_NAME})
+    endif()
+endif()
+
+if(NOT TITATI_ROBOT_LIB STREQUAL "")
+    add_executable(rl_real_titati src/rl_real_titati.cpp)
+    target_link_libraries(rl_real_titati
+        ${TITATI_ROBOT_LIB}
+        rl_sdk
+        observation_buffer
+        yaml-cpp
+        Threads::Threads
+    )
+    if(NOT USE_CMAKE)
+        if($ENV{ROS_DISTRO} MATCHES "noetic")
+            target_link_libraries(rl_real_titati ${catkin_LIBRARIES})
+        elseif($ENV{ROS_DISTRO} MATCHES "foxy|humble")
+            ament_target_dependencies(rl_real_titati
+                rclcpp
+                geometry_msgs
+            )
+            install(TARGETS rl_real_titati DESTINATION lib/${PROJECT_NAME})
+        endif()
+    endif()
+
+    add_executable(titati_motor_test src/titati_motor_test.cpp)
+    target_link_libraries(titati_motor_test
+        ${TITATI_ROBOT_LIB}
+        Threads::Threads
+    )
+    if(NOT USE_CMAKE)
+        if($ENV{ROS_DISTRO} MATCHES "foxy|humble")
+            install(TARGETS titati_motor_test DESTINATION lib/${PROJECT_NAME})
+        endif()
     endif()
 endif()
 
