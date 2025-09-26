@@ -12,3 +12,10 @@ __pycache__
 cmake_build
 
 package.xml
+# Generated vendor ROS package mirrors
+src/battery_device/
+src/hardware_bridge/
+src/hw_bringup/
+src/tita_robot/
+src/tita_system_interfaces/
+src/titati_canfd_router/

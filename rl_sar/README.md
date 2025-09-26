@@ -107,7 +107,7 @@ sudo ldconfig
 
 ## Compilation
 
-Since this project supports multiple versions of ROS, some symbolic links need to be created for different versions. A build script is provided in the project root directory for one-click compilation.
+Since this project supports multiple versions of ROS, the build helper will automatically mirror the bundled third-party ROS packages into the workspace (without relying on symbolic links). A build script is provided in the project root directory for one-click compilation.
 
 Execute the following script in the project root directory to compile the entire project:
 

@@ -7,6 +7,18 @@ set -e
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 WORKSPACE_ROOT="$SCRIPT_DIR"
 
+# Mapping of ROS packages that are stored in third-party directories but need
+# to appear under src/ during a build. The keys are the package names and the
+# values are paths relative to the workspace root.
+declare -A VENDOR_PACKAGE_MAP=(
+    [battery_device]="src/rl_sar/library/thirdparty/titati_hardware/battery_device"
+    [hardware_bridge]="src/rl_sar/library/thirdparty/titati_hardware/hardware_bridge"
+    [hw_bringup]="src/rl_sar/library/thirdparty/titati_hardware/hw_bringup"
+    [tita_robot]="src/rl_sar/library/thirdparty/titati_hardware/tita_robot"
+    [tita_system_interfaces]="src/rl_sar/library/thirdparty/tita_system_interfaces"
+    [titati_canfd_router]="src/rl_sar/library/thirdparty/titati_canfd_router"
+)
+
 # ========================
 # Configuration
 # ========================
@@ -46,6 +58,59 @@ print_error() {
 
 print_info() {
     echo -e "${COLOR_INFO}$1${COLOR_RESET}"
+}
+
+sync_vendor_directory() {
+    local source_dir="$1"
+    local destination_dir="$2"
+
+    if ! [ -d "$source_dir" ]; then
+        return 1
+    fi
+
+    if [ -L "$destination_dir" ] || [ -f "$destination_dir" ]; then
+        rm -rf "$destination_dir"
+    fi
+
+    mkdir -p "$destination_dir"
+
+    if command -v rsync >/dev/null 2>&1; then
+        rsync -a --delete "$source_dir/" "$destination_dir/"
+    else
+        rm -rf "$destination_dir"
+        mkdir -p "$destination_dir"
+        cp -a "$source_dir/." "$destination_dir/"
+    fi
+
+    return 0
+}
+
+materialize_vendor_packages() {
+    print_header "[Preparing Third-Party ROS Packages]"
+
+    local materialized=()
+    local missing=()
+
+    for package_name in "${!VENDOR_PACKAGE_MAP[@]}"; do
+        local source_dir="${WORKSPACE_ROOT}/${VENDOR_PACKAGE_MAP[$package_name]}"
+        local destination_dir="${WORKSPACE_ROOT}/src/${package_name}"
+
+        if sync_vendor_directory "$source_dir" "$destination_dir"; then
+            materialized+=("$package_name")
+        else
+            missing+=("$package_name")
+        fi
+    done
+
+    if [ ${#materialized[@]} -gt 0 ]; then
+        print_success "Prepared vendor packages: ${materialized[*]}"
+    else
+        print_warning "No vendor packages were materialized"
+    fi
+
+    if [ ${#missing[@]} -gt 0 ]; then
+        print_warning "Missing vendor package sources: ${missing[*]}"
+    fi
 }
 
 sanitize_colon_path_var() {
@@ -141,6 +206,8 @@ run_ros_build() {
 
     print_header "[Running ROS Build]"
 
+    materialize_vendor_packages
+
     # Clean existing symlinks
     clean_existing_symlinks "${packages[@]}"
 
@@ -202,6 +269,7 @@ clean_workspace() {
     echo "  - directory log/"
     echo "  - directory logs/"
     echo "  - directory .catkin_tools/"
+    echo "  - generated vendor package mirrors in src/"
 
     # Ask for confirmation
     if [ ${#packages[@]} -eq 0 ]; then
@@ -241,6 +309,10 @@ clean_workspace() {
     # Clean build artifacts
     print_info "Cleaning build artifacts..."
     rm -rf build/ devel/ install/ log/ logs/ .catkin_tools/
+
+    for package_name in "${!VENDOR_PACKAGE_MAP[@]}"; do
+        rm -rf "${WORKSPACE_ROOT}/src/${package_name}"
+    done
 
     print_success "Clean completed!"
 }
