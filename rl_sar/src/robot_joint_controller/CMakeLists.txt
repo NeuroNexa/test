@@ -39,6 +39,7 @@ elseif($ENV{ROS_DISTRO} MATCHES "foxy|humble")
     find_package(rclcpp REQUIRED)
     find_package(urdf REQUIRED)
     find_package(control_toolbox REQUIRED)
+    find_package(filters REQUIRED)
     find_package(realtime_tools REQUIRED)
     find_package(hardware_interface REQUIRED)
     find_package(controller_interface REQUIRED)
@@ -60,6 +61,7 @@ elseif($ENV{ROS_DISTRO} MATCHES "foxy|humble")
         rclcpp
         urdf
         control_toolbox
+        filters
         realtime_tools
         hardware_interface
         controller_interface
@@ -80,6 +82,7 @@ elseif($ENV{ROS_DISTRO} MATCHES "foxy|humble")
         rclcpp
         urdf
         control_toolbox
+        filters
         realtime_tools
         hardware_interface
         controller_interface
