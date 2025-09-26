@@ -11,6 +11,7 @@
 
 #include "rl_sdk.hpp"
 #include "loop.hpp"
+#include "fsm.hpp"
 #include "titati/titati_hardware.hpp"
 
 #include <csignal>

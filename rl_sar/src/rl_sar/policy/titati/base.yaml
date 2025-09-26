@@ -54,5 +54,6 @@ titati:                                           # 机器人名称命名空间
                            "FR_foot_controller", "FL_foot_controller", "RR_foot_controller", "RL_foot_controller"]
                                                  # ros2_control / Gazebo 控制器的名字，每个关节对应一个控制器
 
-  joint_mapping: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+  joint_mapping: [4, 5, 6, 0, 1, 2, 8, 9, 10, 12, 13, 14, 7, 3, 11, 15]
+                                                 # 真实titati机器人的电机：0-3是前左腿，4-7是前右腿。8-11是后右腿，12-15是后左腿
                                                  # 动作/观测数组索引与物理关节的映射。这里是顺序一致 (0~15)
