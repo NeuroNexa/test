@@ -68,7 +68,11 @@ run_cmake_build() {
     print_warning "NOTE: CMake build is for hardware deployment only, not for simulation."
     print_separator
 
-    cmake src/rl_sar/ -B cmake_build -DUSE_CMAKE=ON
+    cmake src/rl_sar/ -B cmake_build -DUSE_CMAKE=ON \
+        -DBUILD_UNITREE_ROBOTS=OFF \
+        -DBUILD_LITE3_ROBOT=OFF \
+        -DBUILD_L4W4_ROBOT=OFF \
+        -DBUILD_TITATI_ROBOT=ON
     cmake --build cmake_build -j4
 
     print_success "CMake build completed!"

@@ -6,6 +6,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(USE_CMAKE OFF CACHE BOOL "Use Cmake build system")
+option(BUILD_UNITREE_ROBOTS "Build Unitree robot binaries (A1/Go2/G1)" ON)
+option(BUILD_LITE3_ROBOT "Build the Lite3 real-robot binary" ON)
+option(BUILD_L4W4_ROBOT "Build the L4W4 real-robot binary" ON)
+option(BUILD_TITATI_ROBOT "Build the Titati real-robot binary and tools" ON)
 message(STATUS "USE_CMAKE: ${USE_CMAKE}")
 if(USE_CMAKE)
     set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
@@ -106,57 +110,70 @@ if(NOT USE_CMAKE)
     endif()
 endif()
 
-if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64|ARM64")
-    message(STATUS "Current system architecture: ${CMAKE_SYSTEM_PROCESSOR}")
-    set(ARCH_DIR "aarch64")
-    set(UNITREE_LIB "libunitree_legged_sdk_arm64")
-elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64|AMD64")
-message(STATUS "Current system architecture: ${CMAKE_SYSTEM_PROCESSOR}")
-    set(ARCH_DIR "x86_64")
-    set(UNITREE_LIB "libunitree_legged_sdk_amd64")
-else()
-    message(FATAL_ERROR "Unsupported architecture: ${CMAKE_SYSTEM_PROCESSOR}")
+set(NEED_ARCH FALSE)
+if(BUILD_UNITREE_ROBOTS OR BUILD_LITE3_ROBOT OR BUILD_L4W4_ROBOT)
+    set(NEED_ARCH TRUE)
 endif()
 
-# unitree_legged_sdk-3.2
-add_library(unitree_legged_sdk SHARED IMPORTED)
-set_target_properties(unitree_legged_sdk PROPERTIES
-    INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/unitree_legged_sdk-3.2/include"
-    IMPORTED_LOCATION "${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/unitree_legged_sdk-3.2/lib/${UNITREE_LIB}.so"
-)
-set(UNITREE_A1_LIBS Threads::Threads unitree_legged_sdk lcm)
-if($ENV{ROS_DISTRO} MATCHES "foxy|humble")
-    file(GLOB GLOB_UNITREE_LEGGED_SDK "${CMAKE_CURRENT_SOURCE_DIR}/library/unitree_legged_sdk-3.2/lib/${UNITREE_LIB}.so")
-    install(FILES
-        ${GLOB_UNITREE_LEGGED_SDK}
-        DESTINATION lib/
-    )
+if(NEED_ARCH)
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64|ARM64")
+        message(STATUS "Current system architecture: ${CMAKE_SYSTEM_PROCESSOR}")
+        set(ARCH_DIR "aarch64")
+        set(UNITREE_LIB "libunitree_legged_sdk_arm64")
+    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64|AMD64")
+        message(STATUS "Current system architecture: ${CMAKE_SYSTEM_PROCESSOR}")
+        set(ARCH_DIR "x86_64")
+        set(UNITREE_LIB "libunitree_legged_sdk_amd64")
+    else()
+        message(FATAL_ERROR "Unsupported architecture: ${CMAKE_SYSTEM_PROCESSOR}")
+    endif()
 endif()
 
-# unitree_sdk2-2.0.0
-set(BUILD_EXAMPLES OFF CACHE BOOL "Disable examples build for unitree_sdk2" FORCE)
-add_subdirectory(library/thirdparty/unitree_sdk2-2.0.0)
-
-# l4w4_sdk
-add_library(l4w4_sdk INTERFACE)
-target_include_directories(l4w4_sdk INTERFACE
-    library/thirdparty/l4w4_sdk
-)
-target_link_libraries(l4w4_sdk INTERFACE Threads::Threads)
-
-# Lite3_MotionSDK
-add_library(lite3_motionsdk SHARED IMPORTED)
-set_target_properties(lite3_motionsdk PROPERTIES
-    INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/Lite3_MotionSDK/include"
-    IMPORTED_LOCATION "${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/Lite3_MotionSDK/lib/libdeeprobotics_legged_sdk_${ARCH_DIR}.so"
-)
-set(LITE3_REAL_LIBS Threads::Threads lite3_motionsdk)
-if($ENV{ROS_DISTRO} MATCHES "foxy|humble")
-    file(GLOB GLOB_LITE3_SDK_SO "${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/Lite3_MotionSDK/lib/libdeeprobotics_legged_sdk_${ARCH_DIR}.so")
-    install(FILES
-        ${GLOB_LITE3_SDK_SO}
-        DESTINATION lib/
+if(BUILD_UNITREE_ROBOTS)
+    # unitree_legged_sdk-3.2
+    add_library(unitree_legged_sdk SHARED IMPORTED)
+    set_target_properties(unitree_legged_sdk PROPERTIES
+        INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/unitree_legged_sdk-3.2/include"
+        IMPORTED_LOCATION "${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/unitree_legged_sdk-3.2/lib/${UNITREE_LIB}.so"
     )
+    set(UNITREE_A1_LIBS Threads::Threads unitree_legged_sdk lcm)
+    if($ENV{ROS_DISTRO} MATCHES "foxy|humble")
+        file(GLOB GLOB_UNITREE_LEGGED_SDK "${CMAKE_CURRENT_SOURCE_DIR}/library/unitree_legged_sdk-3.2/lib/${UNITREE_LIB}.so")
+        install(FILES
+            ${GLOB_UNITREE_LEGGED_SDK}
+            DESTINATION lib/
+        )
+    endif()
+
+    # unitree_sdk2-2.0.0
+    set(BUILD_EXAMPLES OFF CACHE BOOL "Disable examples build for unitree_sdk2" FORCE)
+    add_subdirectory(library/thirdparty/unitree_sdk2-2.0.0)
+endif()
+
+if(BUILD_L4W4_ROBOT)
+    # l4w4_sdk
+    add_library(l4w4_sdk INTERFACE)
+    target_include_directories(l4w4_sdk INTERFACE
+        library/thirdparty/l4w4_sdk
+    )
+    target_link_libraries(l4w4_sdk INTERFACE Threads::Threads)
+endif()
+
+if(BUILD_LITE3_ROBOT)
+    # Lite3_MotionSDK
+    add_library(lite3_motionsdk SHARED IMPORTED)
+    set_target_properties(lite3_motionsdk PROPERTIES
+        INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/Lite3_MotionSDK/include"
+        IMPORTED_LOCATION "${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/Lite3_MotionSDK/lib/libdeeprobotics_legged_sdk_${ARCH_DIR}.so"
+    )
+    set(LITE3_REAL_LIBS Threads::Threads lite3_motionsdk)
+    if($ENV{ROS_DISTRO} MATCHES "foxy|humble")
+        file(GLOB GLOB_LITE3_SDK_SO "${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/Lite3_MotionSDK/lib/libdeeprobotics_legged_sdk_${ARCH_DIR}.so")
+        install(FILES
+            ${GLOB_LITE3_SDK_SO}
+            DESTINATION lib/
+        )
+    endif()
 endif()
 
 # Retroid Gamepad
@@ -245,108 +262,114 @@ if(NOT USE_CMAKE)
     endif()
 endif()
 
-add_executable(rl_real_a1 src/rl_real_a1.cpp)
-target_link_libraries(rl_real_a1
-    ${UNITREE_A1_LIBS}
-    rl_sdk
-    observation_buffer
-    yaml-cpp
-)
-if(NOT USE_CMAKE)
-    if($ENV{ROS_DISTRO} MATCHES "noetic")
-        target_link_libraries(rl_real_a1 ${catkin_LIBRARIES})
-    elseif($ENV{ROS_DISTRO} MATCHES "foxy|humble")
-        ament_target_dependencies(rl_real_a1
-            rclcpp
-            geometry_msgs
-        )
-        install(TARGETS rl_real_a1 DESTINATION lib/${PROJECT_NAME})
+if(BUILD_UNITREE_ROBOTS)
+    add_executable(rl_real_a1 src/rl_real_a1.cpp)
+    target_link_libraries(rl_real_a1
+        ${UNITREE_A1_LIBS}
+        rl_sdk
+        observation_buffer
+        yaml-cpp
+    )
+    if(NOT USE_CMAKE)
+        if($ENV{ROS_DISTRO} MATCHES "noetic")
+            target_link_libraries(rl_real_a1 ${catkin_LIBRARIES})
+        elseif($ENV{ROS_DISTRO} MATCHES "foxy|humble")
+            ament_target_dependencies(rl_real_a1
+                rclcpp
+                geometry_msgs
+            )
+            install(TARGETS rl_real_a1 DESTINATION lib/${PROJECT_NAME})
+        endif()
+    endif()
+
+    add_executable(rl_real_go2 src/rl_real_go2.cpp)
+    target_link_libraries(rl_real_go2
+        unitree_sdk2
+        rl_sdk
+        observation_buffer
+        yaml-cpp
+    )
+    if(NOT USE_CMAKE)
+        if($ENV{ROS_DISTRO} MATCHES "noetic")
+            target_link_libraries(rl_real_go2 ${catkin_LIBRARIES})
+        elseif($ENV{ROS_DISTRO} MATCHES "foxy|humble")
+            ament_target_dependencies(rl_real_go2
+                rclcpp
+                geometry_msgs
+            )
+            install(TARGETS rl_real_go2 DESTINATION lib/${PROJECT_NAME})
+        endif()
+    endif()
+
+    add_executable(rl_real_g1 src/rl_real_g1.cpp)
+    target_link_libraries(rl_real_g1
+        unitree_sdk2
+        rl_sdk
+        observation_buffer
+        yaml-cpp
+    )
+    if(NOT USE_CMAKE)
+        if($ENV{ROS_DISTRO} MATCHES "noetic")
+            target_link_libraries(rl_real_g1 ${catkin_LIBRARIES})
+        elseif($ENV{ROS_DISTRO} MATCHES "foxy|humble")
+            ament_target_dependencies(rl_real_g1
+                rclcpp
+                geometry_msgs
+            )
+            install(TARGETS rl_real_g1 DESTINATION lib/${PROJECT_NAME})
+        endif()
     endif()
 endif()
 
-add_executable(rl_real_lite3
-    src/rl_real_lite3.cpp
-    ${GAMEPAD_SRC}
-)
-target_link_libraries(rl_real_lite3
-    ${LITE3_REAL_LIBS}
-    rl_sdk
-    observation_buffer
-    yaml-cpp
-)
-target_include_directories(rl_real_lite3 PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/gamepad/include
-)
-if(NOT USE_CMAKE)
-    if($ENV{ROS_DISTRO} MATCHES "noetic")
-        target_link_libraries(rl_real_lite3 ${catkin_LIBRARIES})
-    elseif($ENV{ROS_DISTRO} MATCHES "foxy|humble")
-        ament_target_dependencies(rl_real_lite3
-            rclcpp
-            geometry_msgs
-        )
-        install(TARGETS rl_real_lite3 DESTINATION lib/${PROJECT_NAME})
+if(BUILD_LITE3_ROBOT)
+    add_executable(rl_real_lite3
+        src/rl_real_lite3.cpp
+        ${GAMEPAD_SRC}
+    )
+    target_link_libraries(rl_real_lite3
+        ${LITE3_REAL_LIBS}
+        rl_sdk
+        observation_buffer
+        yaml-cpp
+    )
+    target_include_directories(rl_real_lite3 PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/gamepad/include
+    )
+    if(NOT USE_CMAKE)
+        if($ENV{ROS_DISTRO} MATCHES "noetic")
+            target_link_libraries(rl_real_lite3 ${catkin_LIBRARIES})
+        elseif($ENV{ROS_DISTRO} MATCHES "foxy|humble")
+            ament_target_dependencies(rl_real_lite3
+                rclcpp
+                geometry_msgs
+            )
+            install(TARGETS rl_real_lite3 DESTINATION lib/${PROJECT_NAME})
+        endif()
     endif()
 endif()
 
-add_executable(rl_real_go2 src/rl_real_go2.cpp)
-target_link_libraries(rl_real_go2
-    unitree_sdk2
-    rl_sdk
-    observation_buffer
-    yaml-cpp
-)
-if(NOT USE_CMAKE)
-    if($ENV{ROS_DISTRO} MATCHES "noetic")
-        target_link_libraries(rl_real_go2 ${catkin_LIBRARIES})
-    elseif($ENV{ROS_DISTRO} MATCHES "foxy|humble")
-        ament_target_dependencies(rl_real_go2
-            rclcpp
-            geometry_msgs
-        )
-        install(TARGETS rl_real_go2 DESTINATION lib/${PROJECT_NAME})
+if(BUILD_L4W4_ROBOT)
+    add_executable(rl_real_l4w4 src/rl_real_l4w4.cpp)
+    target_link_libraries(rl_real_l4w4
+        l4w4_sdk
+        rl_sdk
+        observation_buffer
+        yaml-cpp
+    )
+    if(NOT USE_CMAKE)
+        if($ENV{ROS_DISTRO} MATCHES "noetic")
+            target_link_libraries(rl_real_l4w4 ${catkin_LIBRARIES})
+        elseif($ENV{ROS_DISTRO} MATCHES "foxy|humble")
+            ament_target_dependencies(rl_real_l4w4
+                rclcpp
+                geometry_msgs
+            )
+            install(TARGETS rl_real_l4w4 DESTINATION lib/${PROJECT_NAME})
+        endif()
     endif()
 endif()
 
-add_executable(rl_real_g1 src/rl_real_g1.cpp)
-target_link_libraries(rl_real_g1
-    unitree_sdk2
-    rl_sdk
-    observation_buffer
-    yaml-cpp
-)
-if(NOT USE_CMAKE)
-    if($ENV{ROS_DISTRO} MATCHES "noetic")
-        target_link_libraries(rl_real_g1 ${catkin_LIBRARIES})
-    elseif($ENV{ROS_DISTRO} MATCHES "foxy|humble")
-        ament_target_dependencies(rl_real_g1
-            rclcpp
-            geometry_msgs
-        )
-        install(TARGETS rl_real_g1 DESTINATION lib/${PROJECT_NAME})
-    endif()
-endif()
-
-add_executable(rl_real_l4w4 src/rl_real_l4w4.cpp)
-target_link_libraries(rl_real_l4w4
-    l4w4_sdk
-    rl_sdk
-    observation_buffer
-    yaml-cpp
-)
-if(NOT USE_CMAKE)
-    if($ENV{ROS_DISTRO} MATCHES "noetic")
-        target_link_libraries(rl_real_l4w4 ${catkin_LIBRARIES})
-    elseif($ENV{ROS_DISTRO} MATCHES "foxy|humble")
-        ament_target_dependencies(rl_real_l4w4
-            rclcpp
-            geometry_msgs
-        )
-        install(TARGETS rl_real_l4w4 DESTINATION lib/${PROJECT_NAME})
-    endif()
-endif()
-
-if(NOT TITATI_ROBOT_LIB STREQUAL "")
+if(BUILD_TITATI_ROBOT AND NOT TITATI_ROBOT_LIB STREQUAL "")
     add_executable(rl_real_titati src/rl_real_titati.cpp)
     target_link_libraries(rl_real_titati
         ${TITATI_ROBOT_LIB}

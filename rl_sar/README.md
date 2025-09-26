@@ -127,7 +127,7 @@ To clean the build, use the following command. This will remove all compiled out
 ./build.sh -c  # or ./build.sh --clean
 ```
 
-If simulation is not needed and you only want to run on the robot, you can invoke the combined hardware build. This compiles the CMake binaries (stored in `cmake_build/bin`) **and** colcon-builds the Titati ROS packages when a ROS 2 environment is available:
+If simulation is not needed and you only want to run on the robot, you can invoke the combined hardware build. This compiles the CMake binaries (stored in `cmake_build/bin`) **and** colcon-builds the Titati ROS packages when a ROS 2 environment is available. The helper disables all non-Titati real-robot targets during this pass so the Unitree, Lite3, and L4W4 SDKs are not required on your Jetsons:
 
 ```bash
 ./build.sh -m  # or ./build.sh --cmake
@@ -148,7 +148,7 @@ Examples:
   ./build.sh package1 package2  # Build specific ROS packages
   ./build.sh -c                 # Clean all symlinks and build artifacts
   ./build.sh --clean package1   # Clean specific package and build artifacts
-  ./build.sh -m                 # Build hardware targets and Titati ROS packages
+  ./build.sh -m                 # Build Titati hardware targets and ROS packages
 ```
 
 > [!TIP]
