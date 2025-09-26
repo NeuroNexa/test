@@ -53,6 +53,10 @@ elseif(ENABLE_ROS)
         add_compile_definitions(USE_ROS USE_ROS2)
         find_package(rclcpp REQUIRED)
         find_package(geometry_msgs REQUIRED)
+        find_package(sensor_msgs REQUIRED)
+        find_package(diagnostic_msgs REQUIRED)
+        find_package(std_srvs REQUIRED)
+        find_package(rosidl_default_generators REQUIRED)
         list(APPEND ROS_LIBRARIES rclcpp::rclcpp)
         if(TARGET geometry_msgs::geometry_msgs)
             list(APPEND ROS_LIBRARIES geometry_msgs::geometry_msgs)
@@ -149,6 +153,11 @@ include_directories(
 
 set(TITATI_HARDWARE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/titati_hardware)
 set(TITATI_ROBOT_DIR ${TITATI_HARDWARE_DIR}/tita_robot)
+set(TITATI_UTILS_DIR ${TITATI_HARDWARE_DIR}/tita_utils)
+
+if(ENABLE_ROS)
+    add_subdirectory(${TITATI_HARDWARE_DIR}/tita_interfaces/tita_system_interfaces)
+endif()
 add_library(titati_hardware
     ${TITATI_ROBOT_DIR}/src/tita_robot.cpp
     ${TITATI_ROBOT_DIR}/src/can_receiver.cpp
@@ -286,6 +295,63 @@ if(NOT USE_CMAKE)
             DESTINATION share/${PROJECT_NAME}/${dir}
         )
     endif()
+endif()
+
+# ROS 2 hardware support utilities for Titati
+if(ENABLE_ROS)
+    set(TITATI_BATTERY_DIR ${TITATI_HARDWARE_DIR}/battery_device)
+    add_library(titati_battery_device
+        ${TITATI_BATTERY_DIR}/src/battery.cpp
+        ${TITATI_BATTERY_DIR}/src/battery_device_node.cpp
+        ${TITATI_BATTERY_DIR}/src/update_battery_info.cpp
+        ${TITATI_BATTERY_DIR}/src/update_power_info.cpp
+        ${TITATI_BATTERY_DIR}/src/power_management.cpp
+    )
+    target_include_directories(titati_battery_device PUBLIC
+        ${TITATI_BATTERY_DIR}/include
+        ${TITATI_BATTERY_DIR}/utils
+        ${TITATI_UTILS_DIR}
+    )
+    target_link_libraries(titati_battery_device
+        Threads::Threads
+        ${ROS_LIBRARIES}
+        sensor_msgs::sensor_msgs
+        diagnostic_msgs::diagnostic_msgs
+        tita_system_interfaces
+    )
+    rosidl_target_interfaces(titati_battery_device
+        tita_system_interfaces "rosidl_typesupport_cpp")
+    add_dependencies(titati_battery_device tita_system_interfaces__rosidl_generator_cpp)
+
+    add_executable(battery_device_node ${TITATI_BATTERY_DIR}/src/main.cpp)
+    target_link_libraries(battery_device_node
+        titati_battery_device
+    )
+    add_dependencies(battery_device_node tita_system_interfaces__rosidl_generator_cpp)
+
+    set(TITATI_CANFD_ROUTER_DIR ${TITATI_HARDWARE_DIR}/titati_canfd_router)
+    add_library(titati_canfd_router
+        ${TITATI_CANFD_ROUTER_DIR}/src/canfd_router_can_receive_api.cpp
+    )
+    target_include_directories(titati_canfd_router PUBLIC
+        ${TITATI_CANFD_ROUTER_DIR}/include
+        ${TITATI_ROBOT_DIR}/include
+        ${TITATI_UTILS_DIR}
+    )
+    target_link_libraries(titati_canfd_router
+        titati_hardware
+        Threads::Threads
+    )
+
+    add_executable(titati_canfd_router_node ${TITATI_CANFD_ROUTER_DIR}/src/main.cpp)
+    target_link_libraries(titati_canfd_router_node
+        titati_canfd_router
+        ${ROS_LIBRARIES}
+        tita_system_interfaces
+    )
+    rosidl_target_interfaces(titati_canfd_router_node
+        tita_system_interfaces "rosidl_typesupport_cpp")
+    add_dependencies(titati_canfd_router_node tita_system_interfaces__rosidl_generator_cpp)
 endif()
 
 # only for test

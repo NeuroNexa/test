@@ -380,78 +380,62 @@ ros2 run rl_sar rl_real_lite3
 
 <summary>DDTRobot Titati（点击展开）</summary>
 
-1. 在主从两台 Jetson 上配置 CAN 总线：
+1. 在两台 Jetson 上各执行一次硬件构建（或将构建产物同步过去）。`-m` 预设现在会一次性编译真实控制器、电机测试工具、CAN 心跳程序以及电源相关的 ROS 服务：
 
 ```bash
-# 主机 Jetson
 cd rl_sar
-./src/rl_sar/scripts/titati_can_setup_master.sh [can-interface]
-
-# 从机 Jetson
-cd rl_sar
-./src/rl_sar/scripts/titati_can_setup_slave.sh [can-interface]
-```
-
-   脚本支持可选的 CAN 接口参数（默认 `can0`），并会停止旧的 `tita-bringup` 服务。若需要自定义接口或 ID 映射，可在脚本运行后导出 `TITATI_CAN_INTERFACE`、`TITATI_CAN_RX_INTERFACE`、`TITATI_CAN_TX_INTERFACE`、`TITATI_CAN_ID_OFFSET` 等环境变量。
-
-2. （可选但推荐）如果需要电源管理或诊断信息，请先使用 ROS 构建迁移过来的服务程序。该步骤使用 ROS 的编译流程，只需在代码更新这些节点后执行一次：
-
-```bash
-source /opt/ros/humble/setup.bash
-./build.sh battery_device hardware_bridge hw_bringup
-```
-
-   构建完成后，在计划运行 ROS 节点的 Jetson 上 `source install/setup.bash`（路径按实际情况修改）。
-
-3. 在启动强化学习前先启动电源相关的 ROS 节点。通常从机 Jetson 连接电池盒并运行电源服务，主机 Jetson 按需监听诊断信息：
-
-```bash
-# 从机 Jetson（电池盒侧）：
-source /opt/ros/humble/setup.bash
-source <PATH_TO_RL_SAR>/install/setup.bash
-ros2 launch battery_device battery_device_node.launch.py
-
-# 主机 Jetson（可选诊断）：
-source /opt/ros/humble/setup.bash
-source <PATH_TO_RL_SAR>/install/setup.bash
-ros2 launch hardware_bridge hardware_bridge.launch.py
-# 或使用一条指令启动组合流程
-ros2 launch hw_bringup hw_bringup.launch.py
-```
-
-   上述启动文件会提供 `tita_system_interfaces` 的电源服务与诊断话题；若不需要 ROS 侧遥测，可跳过此步骤。
-
-4. 在主机 Jetson 上编译 CMake 目标。若需要 ROS 话题，请先 source 对应的 ROS 环境（不 source 则默认以纯 C++ 模式构建）。硬件构建依旧会禁用 Gazebo 等仿真相关组件：
-
-```bash
-# 如需 ROS，请先执行（示例为 ROS 2 Humble）
-source /opt/ros/humble/setup.bash
-
+source /opt/ros/${ROS_DISTRO:-humble}/setup.bash   # 建议保留 ROS 消息依赖
 ./build.sh -m
 ```
 
-   编译后会生成 `cmake_build/bin/rl_real_titati` 与 `cmake_build/bin/titati_motor_test`。
+   构建完成后 `cmake_build/bin` 中会包含下列可执行文件：
 
-5. 将策略文件复制到 `src/rl_sar/policy/titati/robot_lab/`，并按需调整 `config.yaml`。
+   | 可执行文件 | 功能 |
+   | --- | --- |
+   | `rl_real_titati` | 主机 Jetson 上运行的强化学习控制器，可控制全部 16 个电机。 |
+   | `titati_motor_test` | 命令行电机测试工具，支持读取全部状态或对单个关节进行 torque/MIT 控制。 |
+   | `battery_device_node` | 发布电池诊断并提供 BMS 所需的电源状态服务。 |
+   | `titati_canfd_router_node` | 定期刷新电源板心跳，防止 BMS 判定主控掉线。 |
 
-6. （可选）在运行强化学习之前先做通讯测试：
+2. 先在从机 Jetson 上执行辅助脚本。脚本会配置 `can0`、停止旧的 bringup 服务，并在后台启动 ROS 电源守护进程（日志位于 `cmake_build/logs/*_slave.log`）：
 
 ```bash
-export TITATI_CAN_INTERFACE=can0   # 如果不是默认的 can0 需要显式设置
-./cmake_build/bin/titati_motor_test --mode read --duration 5 --rate 20   # 连续读取全部电机
-./cmake_build/bin/titati_motor_test --mode torque --motor 3 --torque 1.0 --duration 2.0
+cd rl_sar
+./src/rl_sar/scripts/titati_can_setup_slave.sh
 ```
 
-   测试程序新增 `read` 模式可连续打印全部关节信息，也可继续使用 torque/MIT 模式单独驱动某个电机。
-
-7. 在主机 Jetson 启动强化学习控制程序：
+3. 在主机 Jetson 上同样执行脚本，完成与从机的联合 CAN 配置，并启动同样的 ROS 节点以响应电源心跳。日志同样保存在 `cmake_build/logs/` 中：
 
 ```bash
-export TITATI_CAN_INTERFACE=can0   # 或者你的接口名称
+cd rl_sar
+./src/rl_sar/scripts/titati_can_setup_master.sh
+```
+
+   两个脚本默认使用 `can0` 接口和 `tita` 命名空间，如需自定义可通过命令行参数或环境变量 `TITATI_NAMESPACE` 进行覆盖。脚本会在启动前结束旧进程，可在重启或故障后反复执行。
+
+4. 将策略文件拷贝到 `src/rl_sar/policy/titati/robot_lab/`，按需修改 `config.yaml`。
+
+5. （可选）在启用策略前做一次通信与关节映射检查：
+
+```bash
+# 以 20 Hz 连续打印全部电机 5 秒
+./cmake_build/bin/titati_motor_test --mode read --duration 5 --rate 20
+
+# 以 torque/MIT 控制单个关节
+./cmake_build/bin/titati_motor_test --mode torque --motor 3 --torque 1.0 --duration 2
+./cmake_build/bin/titati_motor_test --mode mit --motor 5 --position 0.2 --kp 5 --kd 0.1 --duration 2
+```
+
+   若当前只连接部分电机，可通过 `--num-motors` 修改电机数量。
+
+6. 从机脚本完成后，在主机 Jetson 上启动强化学习控制程序：
+
+```bash
+cd rl_sar
 ./cmake_build/bin/rl_real_titati
 ```
 
-   键盘按键与前文表格一致（WASD 控制移动，Q/E 控制偏航，空格清零，`N` 切换导航模式）。
+   键盘按键与前文表格一致（WASD 控制移动，Q/E 控制偏航，空格停止，`N` 切换导航模式）。
 
 </details>
 

@@ -380,74 +380,58 @@ ros2 run rl_sar rl_real_lite3
 
 <summary>DDTRobot Titati (Click to expand)</summary>
 
-1. Configure the CAN bus on both Jetson controllers:
+1. Build the hardware deployment artifacts once on each Jetson (or sync the `cmake_build` folder between them). The `-m` preset now compiles the real controller, motor tester, CAN heartbeat daemon, and the battery/power ROS services in a single step:
 
 ```bash
-# Master Jetson
 cd rl_sar
-./src/rl_sar/scripts/titati_can_setup_master.sh [can-interface]
-
-# Slave Jetson
-cd rl_sar
-./src/rl_sar/scripts/titati_can_setup_slave.sh [can-interface]
-```
-
-   The scripts accept an optional CAN interface argument (default `can0`) and stop the legacy `tita-bringup` service. Environment variables `TITATI_CAN_INTERFACE`, `TITATI_CAN_RX_INTERFACE`, `TITATI_CAN_TX_INTERFACE`, and `TITATI_CAN_ID_OFFSET` can be exported afterwards if a custom interface or ID layout is required.
-
-2. (Optional but recommended) Build the ROS2 service daemons that ship with the Titati hardware stack if you rely on battery management or diagnostics. This step uses the ROS build toolchain rather than the hardware CMake build, so you only need to run it when the ROS nodes change:
-
-```bash
-source /opt/ros/humble/setup.bash
-./build.sh battery_device hardware_bridge hw_bringup
-```
-
-   After the build completes, source the generated overlay (for example `source install/setup.bash`) on whichever Jetson will host the ROS nodes.
-
-3. Launch the migrated power-management nodes before starting the reinforcement-learning controller. Typically the slave Jetson hosts the battery device while the master listens to diagnostics:
-
-```bash
-# Slave Jetson (battery box):
-source /opt/ros/humble/setup.bash
-source <PATH_TO_RL_SAR>/install/setup.bash
-ros2 launch battery_device battery_device_node.launch.py
-
-# Master Jetson (optional diagnostics):
-source /opt/ros/humble/setup.bash
-source <PATH_TO_RL_SAR>/install/setup.bash
-ros2 launch hardware_bridge hardware_bridge.launch.py
-# or launch the combined bringup if you prefer a single process
-ros2 launch hw_bringup hw_bringup.launch.py
-```
-
-   These launch files expose the power-state services (`tita_system_interfaces`) and diagnostic topics that Titati Control previously provided. You can skip this step if you do not need ROS telemetry.
-
-4. On the master Jetson, source your ROS environment if you want ROS topics available (skipping this step keeps the build ROS-free) and run the hardware build. The CMake preset still disables Gazebo and non-Titati robots:
-
-```bash
-# Optional but recommended when ROS interfaces are needed
-source /opt/ros/humble/setup.bash
-
+source /opt/ros/${ROS_DISTRO:-humble}/setup.bash   # keeps ROS messages available to the binaries
 ./build.sh -m
 ```
 
-   This produces `cmake_build/bin/rl_real_titati` and `cmake_build/bin/titati_motor_test`.
+   After the build you should have these executables in `cmake_build/bin`:
 
-5. Deploy your policy to `src/rl_sar/policy/titati/robot_lab/` (for example copy `<MODEL>.pt` there) and adjust `config.yaml` if necessary.
+   | Binary | Purpose |
+   | --- | --- |
+   | `rl_real_titati` | Reinforcement-learning controller that drives all 16 motors from the master Jetson. |
+   | `titati_motor_test` | CLI utility to read state or command a single joint (torque/MIT). |
+   | `battery_device_node` | Publishes battery diagnostics and exposes the power-state services required by the BMS. |
+   | `titati_canfd_router_node` | Periodically refreshes the power-board heartbeat so the BMS keeps the robot online. |
 
-6. (Optional) Verify communication before running reinforcement learning:
+2. Bring up the slave Jetson first. The helper script configures `can0`, stops legacy bring-up services, and launches the ROS heartbeat/battery daemons in the background (logs are written to `cmake_build/logs/*_slave.log`):
 
 ```bash
-export TITATI_CAN_INTERFACE=can0   # only required when not using can0
-./cmake_build/bin/titati_motor_test --mode read --duration 5 --rate 20   # stream all motors
-./cmake_build/bin/titati_motor_test --mode torque --motor 3 --torque 1.0 --duration 2.0
+cd rl_sar
+./src/rl_sar/scripts/titati_can_setup_slave.sh
 ```
 
-   The tester now supports a `read` mode to continuously stream every joint, in addition to commanding a single joint in torque or MIT control.
-
-7. Launch the reinforcement-learning controller on the master Jetson after the ROS services (if any) are running:
+3. Repeat the procedure on the master Jetson. This sets up the CAN link for the aggregated robot and starts the same ROS nodes so the master can answer power heartbeat requests as well. Logs are stored alongside the binaries in `cmake_build/logs/`.
 
 ```bash
-export TITATI_CAN_INTERFACE=can0   # or your interface name
+cd rl_sar
+./src/rl_sar/scripts/titati_can_setup_master.sh
+```
+
+   Both scripts default to namespace `tita` and interface `can0`. Override them with `TITATI_NAMESPACE` or by passing a different interface name if you have a custom wiring layout. Each invocation will terminate any stale copies of the daemons before launching new ones so you can safely re-run the scripts after reboot or network faults.
+
+4. Deploy your policy to `src/rl_sar/policy/titati/robot_lab/` (copy `<MODEL>.pt` and adjust `config.yaml` as needed).
+
+5. (Optional) Validate CAN communication and joint indexing before enabling the policy:
+
+```bash
+# Stream all joint states at 20 Hz for 5 seconds
+./cmake_build/bin/titati_motor_test --mode read --duration 5 --rate 20
+
+# Command a single joint in torque or MIT mode
+./cmake_build/bin/titati_motor_test --mode torque --motor 3 --torque 1.0 --duration 2
+./cmake_build/bin/titati_motor_test --mode mit --motor 5 --position 0.2 --kp 5 --kd 0.1 --duration 2
+```
+
+   Use `--num-motors` if you temporarily work with fewer than 16 actuators.
+
+6. Launch the reinforcement-learning controller on the master Jetson once the slave script reports success:
+
+```bash
+cd rl_sar
 ./cmake_build/bin/rl_real_titati
 ```
 

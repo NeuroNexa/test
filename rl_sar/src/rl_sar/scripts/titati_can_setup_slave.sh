@@ -1,7 +1,7 @@
 #!/bin/bash
-# Configure CAN interface on the slave Titati Jetson. This prepares the bus for master control.
+# Configure the Titati slave Jetson CAN interface and launch the ROS power keep-alive services.
 # Usage: ./titati_can_setup_slave.sh [can-interface]
-set -e
+set -euo pipefail
 
 CAN_IFACE=${1:-can0}
 BITRATE=${TITATI_CAN_BITRATE:-1000000}
@@ -9,6 +9,19 @@ DBITRATE=${TITATI_CAN_DBITRATE:-8000000}
 SAMPLE_POINT=${TITATI_CAN_SAMPLE_POINT:-0.80}
 DSAMPLE_POINT=${TITATI_CAN_DSAMPLE_POINT:-0.80}
 QUEUE_LEN=${TITATI_CAN_QUEUE_LEN:-1000}
+TITATI_NAMESPACE=${TITATI_NAMESPACE:-tita}
+
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+REPO_ROOT=$(cd "${SCRIPT_DIR}/../../.." && pwd)
+BIN_DIR="${REPO_ROOT}/cmake_build/bin"
+LOG_DIR="${REPO_ROOT}/cmake_build/logs"
+mkdir -p "${LOG_DIR}"
+
+if [[ ! -x "${BIN_DIR}/battery_device_node" || ! -x "${BIN_DIR}/titati_canfd_router_node" ]]; then
+    echo "[Titati] Missing battery_device_node or titati_canfd_router_node binaries in ${BIN_DIR}." >&2
+    echo "[Titati] Please run ./build.sh -m on both master and slave before launching the hardware stack." >&2
+    exit 1
+fi
 
 sudo systemctl stop tita-bringup.service >/dev/null 2>&1 || true
 sudo ip link set "${CAN_IFACE}" down >/dev/null 2>&1 || true
@@ -16,6 +29,24 @@ sudo ip link set "${CAN_IFACE}" up type can bitrate "${BITRATE}" sample-point "$
     dbitrate "${DBITRATE}" dsample-point "${DSAMPLE_POINT}" fd on restart-ms 100
 sudo ifconfig "${CAN_IFACE}" txqueuelen "${QUEUE_LEN}"
 
-echo "[Titati] ${CAN_IFACE} configured (slave)."
-echo "If the slave contributes additional actuators, export TITATI_CAN_INTERFACE=${CAN_IFACE} and"
-echo "TITATI_CAN_ID_OFFSET before running diagnostics or custom tools."
+ROS_DISTRO_ENV=${ROS_DISTRO:-humble}
+if [[ -f "/opt/ros/${ROS_DISTRO_ENV}/setup.bash" ]]; then
+    # shellcheck disable=SC1090
+    source "/opt/ros/${ROS_DISTRO_ENV}/setup.bash"
+else
+    echo "[Titati] Warning: ROS 2 setup for ${ROS_DISTRO_ENV} not found on the slave." >&2
+fi
+
+start_background_node() {
+    local binary_name="$1"
+    local log_file="${LOG_DIR}/${binary_name}_slave.log"
+    pkill -f "${BIN_DIR}/${binary_name}" >/dev/null 2>&1 || true
+    nohup "${BIN_DIR}/${binary_name}" --ros-args --namespace "${TITATI_NAMESPACE}" \
+        >"${log_file}" 2>&1 &
+    echo "[Titati] Launched ${binary_name} on slave (log: ${log_file})."
+}
+
+start_background_node battery_device_node
+start_background_node titati_canfd_router_node
+
+echo "[Titati] ${CAN_IFACE} configured for slave and ROS power services are running in namespace '${TITATI_NAMESPACE}'."
