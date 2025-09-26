@@ -4,9 +4,6 @@
 #!/bin/bash
 set -e
 
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-WORKSPACE_ROOT="$SCRIPT_DIR"
-
 # ========================
 # Configuration
 # ========================
@@ -48,25 +45,6 @@ print_info() {
     echo -e "${COLOR_INFO}$1${COLOR_RESET}"
 }
 
-attempt_source_ros_environment() {
-    if [[ -n "$ROS_DISTRO" ]]; then
-        return 0
-    fi
-
-    local candidates=("humble" "foxy" "noetic")
-    for distro in "${candidates[@]}"; do
-        local setup_file="/opt/ros/${distro}/setup.bash"
-        if [ -f "$setup_file" ]; then
-            print_info "Sourcing ${setup_file}"
-            # shellcheck disable=SC1090
-            source "$setup_file"
-            return 0
-        fi
-    done
-
-    return 1
-}
-
 ask_confirmation() {
     local message="$1"
     echo -e -n "${COLOR_WARNING}$message (y/n): ${COLOR_RESET}"
@@ -90,16 +68,7 @@ run_cmake_build() {
     print_warning "NOTE: CMake build is for hardware deployment only, not for simulation."
     print_separator
 
-    local cmake_args=(-DUSE_CMAKE=ON)
-    if [[ -n "$ROS_DISTRO" ]]; then
-        print_info "Detected ROS_DISTRO=$ROS_DISTRO (ROS integration enabled)"
-        cmake_args+=(-DENABLE_ROS=ON)
-    else
-        print_info "No ROS environment detected; building without ROS bindings"
-        cmake_args+=(-DENABLE_ROS=OFF)
-    fi
-
-    cmake src/rl_sar/ -B cmake_build "${cmake_args[@]}"
+    cmake src/rl_sar/ -B cmake_build -DUSE_CMAKE=ON
     cmake --build cmake_build -j4
 
     print_success "CMake build completed!"
@@ -277,53 +246,43 @@ detect_incompatible_build_artifacts() {
 
 create_symlinks_for_package() {
     local package_dir="$1"
-    local ros1_manifest="$package_dir/package.ros1.xml"
-    local ros2_manifest="$package_dir/package.ros2.xml"
+    local package_name=$(basename "$package_dir")
 
-    if [ ! -d "$package_dir" ]; then
-        return 1
-    fi
+    if [ -d "$package_dir" ]; then
+        if [ -f "$package_dir/package.ros1.xml" ] && [ -f "$package_dir/package.ros2.xml" ]; then
+            [ -e "$package_dir/package.xml" ] && rm -f "$package_dir/package.xml"
 
-    [ -e "$package_dir/package.xml" ] && rm -f "$package_dir/package.xml"
-
-    if [[ "$ROS_DISTRO" == "noetic" ]]; then
-        if [ -f "$ros1_manifest" ]; then
-            ln -s package.ros1.xml "$package_dir/package.xml"
-            return 0
+            if [[ "$ROS_DISTRO" == "noetic" ]]; then
+                ln -s package.ros1.xml "$package_dir/package.xml"
+                return 0
+            elif [[ "$ROS_DISTRO" == "foxy" || "$ROS_DISTRO" == "humble" ]]; then
+                ln -s package.ros2.xml "$package_dir/package.xml"
+                return 0
+            else
+                print_error "Unknown ROS version: $ROS_DISTRO"
+                return 1
+            fi
         fi
-        print_warning "Package $(basename "$package_dir") has no ROS1 manifest"
-        return 1
-    else
-        if [ -f "$ros2_manifest" ]; then
-            ln -s package.ros2.xml "$package_dir/package.xml"
-            return 0
-        fi
-        print_warning "Package $(basename "$package_dir") has no ROS2 manifest"
-        return 1
     fi
+    return 1
 }
 
 create_symlinks_for_all_packages() {
     print_header "[Creating Symlinks for All Packages]"
 
     created_packages=()
-    declare -A seen_dirs=()
-    while IFS= read -r -d '' manifest; do
-        package_dir=$(dirname "$manifest")
-        if [[ -n "${seen_dirs[$package_dir]}" ]]; then
-            continue
-        fi
-        seen_dirs[$package_dir]=1
+    while IFS= read -r -d '' package_dir; do
+        package_dir=$(dirname "$package_dir")
         package_name=$(basename "$package_dir")
         if create_symlinks_for_package "$package_dir"; then
             created_packages+=("$package_name")
         fi
-    done < <(find src -name "package.ros1.xml" -o -name "package.ros2.xml" -print0)
+    done < <(find src -name "package.ros1.xml" -print0)
 
     if [ ${#created_packages[@]} -gt 0 ]; then
         print_success "Created symlinks for: ${created_packages[*]}"
     else
-        print_warning "No ROS packages detected for symlink creation"
+        print_warning "No packages with dual ROS support found"
     fi
 }
 
@@ -357,7 +316,7 @@ show_usage() {
     echo ""
     echo -e "${COLOR_INFO}Options:${COLOR_RESET}"
     echo -e "  -c, --clean    Clean workspace (remove symlinks and build artifacts)"
-    echo -e "  -m, --cmake    Build CMake targets and Titati ROS packages"
+    echo -e "  -m, --cmake    Build using CMake (for hardware deployment only)"
     echo -e "  -h, --help     Show this help message"
     echo ""
     echo -e "${COLOR_INFO}Examples:${COLOR_RESET}"
@@ -387,43 +346,7 @@ main() {
 
     # Handle CMake build mode
     if [ "$cmake_mode" = true ]; then
-        local ros_available=false
-        if attempt_source_ros_environment; then
-            ros_available=true
-        else
-            print_warning "ROS environment not detected automatically."
-        fi
-
-        if [ -f "${WORKSPACE_ROOT}/install/setup.bash" ]; then
-            # shellcheck disable=SC1090
-            source "${WORKSPACE_ROOT}/install/setup.bash"
-            ros_available=true
-        elif [ -f "${WORKSPACE_ROOT}/devel/setup.bash" ]; then
-            # shellcheck disable=SC1090
-            source "${WORKSPACE_ROOT}/devel/setup.bash"
-            ros_available=true
-        fi
-
         run_cmake_build
-
-        if [ "$ros_available" = true ] && [[ -n "$ROS_DISTRO" ]]; then
-            print_header "[Building Titati ROS workspace]"
-            local titati_ros_packages=(
-                rl_sar
-                robot_msgs
-                robot_joint_controller
-                battery_device
-                hardware_bridge
-                hw_bringup
-                tita_robot
-                tita_system_interfaces
-                titati_canfd_router
-            )
-            run_ros_build "${titati_ros_packages[@]}"
-        else
-            print_warning "Skipping Titati ROS packages. Source your ROS environment then rerun './build.sh -m' if you need them."
-        fi
-
         exit 0
     fi
 
@@ -435,13 +358,9 @@ main() {
 
     # Handle ROS build
     if [ -z "$ROS_DISTRO" ]; then
-        if attempt_source_ros_environment; then
-            :
-        else
-            print_error "ROS environment not detected. Please source your ROS setup.bash first."
-            print_info "For hardware deployment, use the --cmake option instead."
-            exit 1
-        fi
+        print_error "ROS environment not detected. Please source your ROS setup.bash first."
+        print_info "For hardware deployment, use the --cmake option instead."
+        exit 1
     fi
 
     run_ros_build "${packages[@]}"

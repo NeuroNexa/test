@@ -380,6 +380,8 @@ ros2 run rl_sar rl_real_lite3
 
 <summary>DDTRobot Titati (Click to expand)</summary>
 
+The Titati robot is a four-wheeled robot formed by connecting two dual-wheeled Tita robots via a connection box and a cable. Each Tita is equipped with a Jetson Orin NX 16G, eight motors (six for joints and two for wheels), as well as an IMU, a battery, and other components.
+
 #### 1. Build once on each Jetson
 
 Run the combined hardware build so the CMake executables and the Titati ROS packages inside `rl_sar` are ready. No external repository is required:

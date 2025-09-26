@@ -382,6 +382,8 @@ ros2 run rl_sar rl_real_lite3
 
 <summary>DDTRobot Titati（点击展开）</summary>
 
+titati机器人是由两台双轮足tita通过一个连接盒和一根线拼成的四轮足。每台tita都有一个jetson orin nx 16G和8个电机(6个关节和2个轮)，以及IMU、电池等等其他东西。
+
 #### 1. 每台 Jetson 各执行一次构建
 
 ```bash
