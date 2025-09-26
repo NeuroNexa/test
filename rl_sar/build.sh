@@ -144,6 +144,7 @@ run_hardware_build() {
     )
 
     print_info "Building Titati ROS packages: ${titati_packages[*]}"
+    prepare_titati_package_symlinks
     run_ros_build "${titati_packages[@]}"
     print_success "Titati hardware build completed!"
 }
@@ -221,6 +222,7 @@ clean_existing_symlinks() {
     if [ ${#packages[@]} -eq 0 ]; then
         print_info "Removing all existing package.xml symlinks..."
         find src -name "package.xml" -type l -delete
+        find src -maxdepth 1 -type l -delete
         print_success "Removed all existing symlinks"
     else
         print_info "Removing existing symlinks for specified packages..."
@@ -231,6 +233,11 @@ clean_existing_symlinks() {
                 rm -f "$package_dir/package.xml"
                 removed_packages+=("$package_name")
             fi
+            local link_path="src/${package_name}"
+            if [ -L "$link_path" ]; then
+                rm -f "$link_path"
+                removed_packages+=("$package_name")
+            fi
         done
 
         if [ ${#removed_packages[@]} -gt 0 ]; then
@@ -239,6 +246,60 @@ clean_existing_symlinks() {
             print_warning "No existing symlinks found"
         fi
     fi
+}
+
+# ========================
+# Symlink Helpers
+# ========================
+
+ensure_package_directory_symlink() {
+    local package_name="$1"
+    local target_path="$2"
+    local link_path="src/${package_name}"
+
+    if [ ! -e "$target_path/package.xml" ]; then
+        print_warning "Package manifest not found for ${package_name} at ${target_path}; skipping overlay symlink."
+        return 1
+    fi
+
+    if [ -L "$link_path" ]; then
+        local resolved_target
+        local resolved_link
+        resolved_target=$(readlink -f "$target_path")
+        resolved_link=$(readlink -f "$link_path")
+        if [ "$resolved_target" = "$resolved_link" ]; then
+            return 0
+        fi
+        rm -f "$link_path"
+    elif [ -e "$link_path" ]; then
+        return 0
+    fi
+
+    local relative_target
+    if command -v realpath >/dev/null 2>&1; then
+        relative_target=$(realpath --relative-to="src" "$target_path")
+    else
+        relative_target=$(python3 -c 'import os,sys; print(os.path.relpath(sys.argv[1], sys.argv[2]))' "$target_path" "src")
+    fi
+    ln -s "$relative_target" "$link_path"
+    return 0
+}
+
+prepare_titati_package_symlinks() {
+    declare -A package_map=(
+        [tita_robot]="src/rl_sar/library/thirdparty/titati_hardware/tita_robot"
+        [hardware_bridge]="src/rl_sar/library/thirdparty/titati_hardware/hardware_bridge"
+        [hw_bringup]="src/rl_sar/library/thirdparty/titati_hardware/hw_bringup"
+        [battery_device]="src/rl_sar/library/thirdparty/titati_hardware/battery_device"
+        [titati_canfd_router]="src/rl_sar/library/thirdparty/titati_canfd_router"
+        [tita_system_interfaces]="src/rl_sar/library/thirdparty/tita_system_interfaces"
+        [tita_description]="src/robots/tita_description"
+        [titati_description]="src/robots/titati_description"
+    )
+
+    for package_name in "${!package_map[@]}"; do
+        ensure_package_directory_symlink "$package_name" "${package_map[$package_name]}"
+    done
 }
 
 # ========================

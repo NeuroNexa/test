@@ -29,12 +29,29 @@ prepare_can_interface() {
     sudo ifconfig "${CAN_INTERFACE}" txqueuelen 1000
 }
 
+safe_source() {
+    local script_path="$1"
+    if [ ! -f "$script_path" ]; then
+        return 1
+    fi
+    local nounset_on=0
+    if set -o | grep -q "nounset *on"; then
+        nounset_on=1
+        set +u
+    fi
+    # shellcheck disable=SC1090
+    source "$script_path"
+    if [ "$nounset_on" -eq 1 ]; then
+        set -u
+    fi
+    return 0
+}
+
 source_ros_environment() {
     local ros_distro="${ROS_DISTRO:-humble}"
     local ros_setup="/opt/ros/${ros_distro}/setup.bash"
     if [ -f "${ros_setup}" ]; then
-        # shellcheck disable=SC1090
-        source "${ros_setup}"
+        safe_source "${ros_setup}" || echo "[WARNING] Failed to source ${ros_setup}" >&2
     else
         echo "[WARNING] ROS setup file ${ros_setup} not found. Set ROS_DISTRO or install ROS 2." >&2
     fi
@@ -44,8 +61,10 @@ source_ros_environment() {
         echo "[ERROR] ${workspace_setup} not found. Run ./build.sh -m first." >&2
         exit 1
     fi
-    # shellcheck disable=SC1090
-    source "${workspace_setup}"
+    safe_source "${workspace_setup}" || {
+        echo "[ERROR] Failed to source ${workspace_setup}" >&2
+        exit 1
+    }
 }
 
 launch_background() {
