@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(tita_system_interfaces LANGUAGES CXX)
+project(tita_system_interfaces LANGUAGES C CXX)
 
 find_package(rosidl_default_generators REQUIRED)
 find_package(std_msgs REQUIRED)
