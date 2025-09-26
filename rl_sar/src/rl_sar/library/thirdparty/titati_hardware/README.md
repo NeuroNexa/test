@@ -11,6 +11,16 @@
 
 Tita hardware ros2 control.
 
+### ROS interfaces
+
+The `tita_system_interfaces` package vendored in this directory provides the
+ROS 2 service definitions that the Titati battery manager and CAN-FD router use
+to talk to the power board.  Those nodes call the power heartbeat, self-test
+and lighting services exposed in `tita_system_interfaces`, so the interface
+package must be present and built whenever the battery device or router is
+enabled.  Without it the ROS nodes cannot be generated and the hardware bring
+up will fail at compile time.
+
 ## Prerequisites
 
 - **Operating System**: Ubuntu 22.04
