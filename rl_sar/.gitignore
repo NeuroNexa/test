@@ -11,4 +11,6 @@ log
 __pycache__
 cmake_build
 
+# Allow vendored ROS interface manifests to be versioned
 package.xml
+!src/rl_sar/library/thirdparty/titati_hardware/**/package.xml
