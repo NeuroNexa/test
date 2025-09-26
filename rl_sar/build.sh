@@ -48,6 +48,36 @@ print_info() {
     echo -e "${COLOR_INFO}$1${COLOR_RESET}"
 }
 
+sanitize_colon_path_var() {
+    local var_name="$1"
+    local current_value="${!var_name:-}"
+    if [ -z "$current_value" ]; then
+        return
+    fi
+
+    local sanitized_entries=()
+    IFS=':' read -r -a entries <<< "$current_value"
+    for entry in "${entries[@]}"; do
+        if [ -d "$entry" ]; then
+            sanitized_entries+=("$entry")
+        else
+            print_warning "Pruning missing workspace overlay '$entry' from $var_name"
+        fi
+    done
+
+    if [ ${#sanitized_entries[@]} -gt 0 ]; then
+        export "$var_name"="$(IFS=':'; echo "${sanitized_entries[*]}")"
+    else
+        unset "$var_name"
+    fi
+}
+
+sanitize_ros_environment() {
+    sanitize_colon_path_var "AMENT_PREFIX_PATH"
+    sanitize_colon_path_var "COLCON_PREFIX_PATH"
+    sanitize_colon_path_var "CMAKE_PREFIX_PATH"
+}
+
 attempt_source_ros_environment() {
     if [[ -n "$ROS_DISTRO" ]]; then
         return 0
@@ -372,6 +402,8 @@ main() {
     local packages=()
     local clean_mode=false
     local cmake_mode=false
+
+    sanitize_ros_environment
 
     # Parse command line arguments
     while [[ $# -gt 0 ]]; do
