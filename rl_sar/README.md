@@ -394,7 +394,7 @@ cd rl_sar
 
    The scripts accept an optional CAN interface argument (default `can0`) and stop the legacy `tita-bringup` service. Environment variables `TITATI_CAN_INTERFACE`, `TITATI_CAN_RX_INTERFACE`, `TITATI_CAN_TX_INTERFACE`, and `TITATI_CAN_ID_OFFSET` can be exported afterwards if a custom interface or ID layout is required.
 
-2. Build the CMake targets on the master Jetson:
+2. Build the CMake targets on the master Jetson (the hardware build now produces only the Titati binaries; Unitree, Lite3, and other robot targets have been removed):
 
 ```bash
 ./build.sh -m

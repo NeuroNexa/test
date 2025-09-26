@@ -394,7 +394,7 @@ cd rl_sar
 
    脚本支持可选的 CAN 接口参数（默认 `can0`），并会停止旧的 `tita-bringup` 服务。若需要自定义接口或 ID 映射，可在脚本运行后导出 `TITATI_CAN_INTERFACE`、`TITATI_CAN_RX_INTERFACE`、`TITATI_CAN_TX_INTERFACE`、`TITATI_CAN_ID_OFFSET` 等环境变量。
 
-2. 在主机 Jetson 上编译 CMake 目标：
+2. 在主机 Jetson 上编译 CMake 目标（硬件 CMake 构建现仅生成 Titati 的可执行文件，Unitree、Lite3 等其他机器人目标已取消）：
 
 ```bash
 ./build.sh -m
