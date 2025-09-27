@@ -27,6 +27,14 @@ if(NOT USE_CMAKE)
 else()
     message(WARNING "ROS_DISTRO not set, assuming non-ROS mode")
     add_compile_definitions(USE_CMAKE)
+    find_package(ament_cmake QUIET)
+    if(NOT ament_cmake_FOUND)
+        message(FATAL_ERROR "ament_cmake not found. Source your ROS 2 environment (e.g. 'source /opt/ros/humble/setup.bash') before running ./build.sh -m.")
+    endif()
+    find_package(rclcpp REQUIRED)
+    find_package(sensor_msgs REQUIRED)
+    find_package(diagnostic_msgs REQUIRED)
+    find_package(tita_system_interfaces REQUIRED)
 endif()
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -169,6 +177,9 @@ include_directories(
     library/core/fsm
     policy
     library/hardware/titati/include
+    library/hardware/titati/battery_device/include
+    library/hardware/titati/battery_device/utils
+    library/hardware/titati/canfd_router/include
 )
 
 set(TITATI_HARDWARE_SOURCES
@@ -176,7 +187,6 @@ set(TITATI_HARDWARE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/library/hardware/titati/src/can_sender.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/library/hardware/titati/src/tita_robot.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/library/hardware/titati/src/force_direct_manager.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/library/hardware/titati/src/power_management_sender.cpp
 )
 add_library(titati_hardware ${TITATI_HARDWARE_SOURCES})
 target_link_libraries(titati_hardware PUBLIC Threads::Threads)
@@ -184,6 +194,33 @@ target_include_directories(titati_hardware PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/library/hardware/titati/include
 )
 target_compile_features(titati_hardware PUBLIC cxx_std_17)
+
+set(TITATI_BATTERY_DEVICE_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/hardware/titati/battery_device/src/battery.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/hardware/titati/battery_device/src/battery_device_node.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/hardware/titati/battery_device/src/power_management.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/hardware/titati/battery_device/src/update_battery_info.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/hardware/titati/battery_device/src/update_power_info.cpp
+)
+add_library(titati_battery_device ${TITATI_BATTERY_DEVICE_SOURCES})
+target_link_libraries(titati_battery_device PUBLIC titati_hardware Threads::Threads)
+target_include_directories(titati_battery_device PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/hardware/titati/battery_device/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/hardware/titati/battery_device/utils
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/hardware/titati/include
+)
+target_compile_features(titati_battery_device PUBLIC cxx_std_17)
+
+set(TITATI_CANFD_ROUTER_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/hardware/titati/canfd_router/src/canfd_router_can_receive_api.cpp
+)
+add_library(titati_canfd_router ${TITATI_CANFD_ROUTER_SOURCES})
+target_link_libraries(titati_canfd_router PUBLIC titati_hardware Threads::Threads)
+target_include_directories(titati_canfd_router PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/hardware/titati/canfd_router/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/hardware/titati/include
+)
+target_compile_features(titati_canfd_router PUBLIC cxx_std_17)
 
 add_library(rl_sdk library/core/rl_sdk/rl_sdk.cpp)
 target_compile_features(rl_sdk PUBLIC cxx_std_17)
@@ -370,16 +407,33 @@ target_link_libraries(titati_motor_test titati_hardware)
 add_executable(titati_router_watchdog src/titati_router_watchdog.cpp)
 target_link_libraries(titati_router_watchdog titati_hardware)
 
+add_executable(titati_battery_device_node
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/hardware/titati/battery_device/src/main.cpp
+)
+target_link_libraries(titati_battery_device_node titati_battery_device)
+ament_target_dependencies(titati_battery_device_node
+    rclcpp
+    diagnostic_msgs
+    sensor_msgs
+    tita_system_interfaces
+)
+
+add_executable(titati_canfd_router_node
+    ${CMAKE_CURRENT_SOURCE_DIR}/library/hardware/titati/canfd_router/src/main.cpp
+)
+target_link_libraries(titati_canfd_router_node titati_canfd_router)
+ament_target_dependencies(titati_canfd_router_node
+    rclcpp
+    tita_system_interfaces
+)
+
 if(NOT USE_CMAKE)
     if($ENV{ROS_DISTRO} MATCHES "foxy|humble")
-        add_executable(titati_battery_device_node src/titati_battery_device.cpp)
-        target_link_libraries(titati_battery_device_node titati_hardware)
-        ament_target_dependencies(titati_battery_device_node
-            rclcpp
-            diagnostic_msgs
-            tita_system_interfaces
+        install(TARGETS
+            titati_battery_device_node
+            titati_canfd_router_node
+            DESTINATION lib/${PROJECT_NAME}
         )
-        install(TARGETS titati_battery_device_node DESTINATION lib/${PROJECT_NAME})
     endif()
 endif()
 

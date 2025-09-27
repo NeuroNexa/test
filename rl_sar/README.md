@@ -167,50 +167,46 @@ Before running, copy the trained pt model file to `rl_sar/src/rl_sar/policy/<ROB
 #### 1. Build (one-time on each Jetson)
 
 ```bash
+source /opt/ros/humble/setup.bash   # ensures tita_system_interfaces is found
 cd rl_sar
 ./build.sh -m
 ```
 
-This uses CMake with C++17 and generates binaries in `cmake_build/bin/`.
+This uses CMake with C++17 and generates binaries in `cmake_build/bin/`. The build targets the Titati hardware only and produces both ROS2 utilities (`titati_battery_device_node`, `titati_canfd_router_node`) and the RL controller.
 
-#### 2. Prepare CAN-FD on both controllers
+#### 2. Prepare CAN-FD and start infrastructure
 
-On **both** Jetson Orin NX boards (master and slave) configure `can0` to 1 Mbps arbitration / 8 Mbps data:
+On **each** Jetson Orin NX (run the master script on the master, slave script on the slave):
 
 ```bash
 cd rl_sar/src/rl_sar/scripts
-sudo ./can_setup_8m_master.sh    # on the master Jetson
-sudo ./can_setup_8m_slave.sh     # on the slave Jetson
+sudo ./can_setup_8m_master.sh    # master Jetson
+sudo ./can_setup_8m_slave.sh     # slave Jetson
 ```
 
-The scripts are identical to those in `titati_control` and bring up CAN-FD, set the bit timings, and start the `titati_canfd` interface.
+The scripts stop the legacy `tita-bringup` service, configure `can0` for 1 Mbps arbitration / 8 Mbps data, and launch the ported `titati_canfd_router_node` together with the full `battery_device` ROS 2 bridge from this repository. Logs are written to `rl_sar/logs/` (`titati_canfd_router_*.log`, `titati_battery_device_*.log`).
 
-#### 3. Start the Titati battery service bridge (ROS 2)
+#### 3. Verify the FORCE_DIRECT handshake on both Jetsons
 
-The CAN-FD router expects the `battery_device` ROS 2 services to be present. This lightweight node answers the `power_self_test` request and streams the required heartbeats so the MCU grants force-direct control to the host.
-
-On **each** Jetson (master and slave) open a ROS 2 terminal and run:
+The router node prints the MCU mode and replays the `READY_WAITING -> FORCE_DIRECT` RPC automatically. Confirm that both Jetsons see the MCU switch to force-direct mode:
 
 ```bash
-source /opt/ros/humble/setup.bash
-source install/setup.bash
-ros2 run rl_sar titati_battery_device_node
+tail -f rl_sar/logs/titati_canfd_router_master.log
+tail -f rl_sar/logs/titati_canfd_router_slave.log
 ```
 
-Leave the node running; it is idle until the router requests a self-test and publishes a heartbeat every second.
+You should see the CAN watchdog report `mode:1` or `mode:2` followed by `set_forcedirect_mode is started`. If the MCU drops back to auto mode the router resends the handshake and the log records the transition, allowing you to spot synchronization issues between master and slave.
 
-#### 4. Start the CAN-FD router watchdog (keeps the MCU in FORCE_DIRECT)
+#### 4. (Optional) Run the standalone CAN watchdog
 
-The watchdog listens to broadcast frame `0x09F` and replays the `READY_WAITING -> FORCE_DIRECT` RPC pair (`0x170`) whenever the MCU falls back to auto mode.
-
-On **both** master and slave Jetsons run:
+For additional redundancy you can still run the minimal watchdog utility which mirrors the router handshake:
 
 ```bash
 cd rl_sar/cmake_build/bin
 ./titati_router_watchdog
 ```
 
-You can keep this process in the background (Ctrl+C to exit). The RL controller and the motor test tool also embed the same handshake logic, so the watchdog is mostly a safety net for unexpected resets.
+This is optional because the ported `titati_canfd_router_node` already enforces the handshake, but keeping the watchdog in the background provides another layer of monitoring.
 
 #### 5. Master-side quick diagnostics
 
