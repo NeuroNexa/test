@@ -247,23 +247,38 @@ detect_incompatible_build_artifacts() {
 create_symlinks_for_package() {
     local package_dir="$1"
     local package_name=$(basename "$package_dir")
+    local ros1_manifest="$package_dir/package.ros1.xml"
+    local ros2_manifest="$package_dir/package.ros2.xml"
 
-    if [ -d "$package_dir" ]; then
-        if [ -f "$package_dir/package.ros1.xml" ] && [ -f "$package_dir/package.ros2.xml" ]; then
-            [ -e "$package_dir/package.xml" ] && rm -f "$package_dir/package.xml"
-
-            if [[ "$ROS_DISTRO" == "noetic" ]]; then
-                ln -s package.ros1.xml "$package_dir/package.xml"
-                return 0
-            elif [[ "$ROS_DISTRO" == "foxy" || "$ROS_DISTRO" == "humble" ]]; then
-                ln -s package.ros2.xml "$package_dir/package.xml"
-                return 0
-            else
-                print_error "Unknown ROS version: $ROS_DISTRO"
-                return 1
-            fi
-        fi
+    if [ ! -d "$package_dir" ]; then
+        return 1
     fi
+
+    [ -e "$package_dir/package.xml" ] && rm -f "$package_dir/package.xml"
+
+    if [[ "$ROS_DISTRO" == "noetic" ]]; then
+        if [ -f "$ros1_manifest" ]; then
+            ln -s package.ros1.xml "$package_dir/package.xml"
+            return 0
+        elif [ -f "$ros2_manifest" ]; then
+            print_warning "Package $package_name does not provide package.ros1.xml, using ROS 2 manifest"
+            ln -s package.ros2.xml "$package_dir/package.xml"
+            return 0
+        fi
+    elif [[ "$ROS_DISTRO" == "foxy" || "$ROS_DISTRO" == "humble" ]]; then
+        if [ -f "$ros2_manifest" ]; then
+            ln -s package.ros2.xml "$package_dir/package.xml"
+            return 0
+        elif [ -f "$ros1_manifest" ]; then
+            print_warning "Package $package_name does not provide package.ros2.xml, falling back to ROS 1 manifest"
+            ln -s package.ros1.xml "$package_dir/package.xml"
+            return 0
+        fi
+    else
+        print_error "Unknown ROS version: $ROS_DISTRO"
+        return 1
+    fi
+
     return 1
 }
 
@@ -271,13 +286,22 @@ create_symlinks_for_all_packages() {
     print_header "[Creating Symlinks for All Packages]"
 
     created_packages=()
-    while IFS= read -r -d '' package_dir; do
-        package_dir=$(dirname "$package_dir")
+    declare -A package_dirs=()
+
+    while IFS= read -r -d '' manifest; do
+        package_dirs["$(dirname "$manifest")"]=1
+    done < <(find src -name "package.ros1.xml" -print0)
+
+    while IFS= read -r -d '' manifest; do
+        package_dirs["$(dirname "$manifest")"]=1
+    done < <(find src -name "package.ros2.xml" -print0)
+
+    for package_dir in "${!package_dirs[@]}"; do
         package_name=$(basename "$package_dir")
         if create_symlinks_for_package "$package_dir"; then
             created_packages+=("$package_name")
         fi
-    done < <(find src -name "package.ros1.xml" -print0)
+    done
 
     if [ ${#created_packages[@]} -gt 0 ]; then
         print_success "Created symlinks for: ${created_packages[*]}"
@@ -338,6 +362,7 @@ main() {
     local -a MINIMAL_TITATI_PACKAGES=(
         "tita_robot"
         "tita_bringup"
+        "tita_system_interfaces"
         "battery_device"
         "hardware_bridge"
         "hw_bringup"
