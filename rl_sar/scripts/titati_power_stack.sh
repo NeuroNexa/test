@@ -17,4 +17,4 @@ else
   echo "[WARNING] install/setup.bash not found. Make sure you have built the workspace." >&2
 fi
 
-exec ros2 launch hw_bringup titati_power_stack.launch.py "$@"
+exec ros2 launch rl_sar titati_power_stack.launch.py "$@"

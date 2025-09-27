@@ -364,8 +364,6 @@ main() {
         "tita_system_interfaces"
         "tita_utils"
         "battery_device"
-        "hardware_bridge"
-        "hw_bringup"
         "titati_canfd_router"
         "titati_motor_tools"
         "robot_msgs"

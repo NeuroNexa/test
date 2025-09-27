@@ -221,17 +221,10 @@ ros2 service list | grep power
 ```
 
 You should see `/battery_device/power_state_set`, `/battery_device/power_heart_beat` and `/battery_device/power_self_test` in
-the output before moving on to motor control.
+the output before moving on to motor control. The RL integration no longer bundles the `hardware_bridge`/`hw_bringup`
+packages from `titati_control`; run them from the original repository if you still need the ros2_control stack.
 
-### 4. Optional ROS 2 hardware bridge
-
-If you want ROS 2 controllers (joint_state_broadcaster, IMU, etc.), start the hardware bridge on the **master**:
-
-```bash
-ros2 launch hw_bringup hw_bringup.launch.py
-```
-
-### 5. Motor sanity check
+### 4. Motor sanity check
 
 After the services above are running, you can command individual motors from the master using the new test node:
 
@@ -242,7 +235,7 @@ ros2 launch titati_motor_tools motor_test.launch.py \
 
 Switch to MIT mode by adding parameters such as `mode:=mit kp:=40.0 kd:=2.0 position:=0.5`.
 
-### 6. Reinforcement learning controller
+### 5. Reinforcement learning controller
 
 With the services active, launch the RL policy on the **master**:
 

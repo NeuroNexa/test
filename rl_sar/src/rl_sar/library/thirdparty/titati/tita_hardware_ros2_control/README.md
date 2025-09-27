@@ -9,33 +9,24 @@
 
 ## Description
 
-Tita hardware ros2 control.
+This directory now keeps only the low-level SDK helpers needed by the RL stack:
+
+- `tita_robot`: C++ bindings around the Titati CAN-FD SDK.
+- `battery_device`: ROS 2 wrapper for the power handshake services/topics.
+
+The ros2_control bridge (`hardware_bridge`) and bringup launch files have been removed from `rl_sar` because the RL controller talks to the robot directly.
 
 ## Prerequisites
 
 - **Operating System**: Ubuntu 22.04
 - **ROS 2**: Humble
-  
-## Dependencies
+
+## Build & Launch
+
+These packages are built together with the rest of `rl_sar`. After compiling the workspace, start the power helpers with:
 
 ```bash
-sudo apt install ros-humble-ros2-control
-sudo apt install ros-humble-ros2-controllers
-```
-## Build Package
-
-```bash
-ssh robot@192.168.42.1
-mkdir tita_ws/src && cd tita_ws/src
-git clone https://github.com/DDTRobot/TITA_Description.git
-git clone https://github.com/DDTRobot/tita_hardware_ros2_control.git
-colcon build --packages-up-to hw_bringup 
-source install/setup.bash
-ros2 launch hw_bringup hw_bringup.launch.py
-```
-In the launch file, the default controller to start is `effort_controllers/JointGroupEffortController`. Create a new terminal and enter the following command to confirm if the controller is working properly.
-```bash
-ros2 topic pub -1 /tita_hw/effort_controller/commands std_msgs/msg/Float64MultiArray "{data: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.5]}"
+ros2 launch rl_sar titati_power_stack.launch.py
 ```
 
-If you want to write your own controller, you can modify it according to `template_ros2_controller`.
+This launches `battery_device` and `titati_canfd_router`, preparing the CAN-FD bus for direct control through `tita_robot`.
