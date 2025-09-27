@@ -41,29 +41,41 @@ mpl2_header = """
 import os
 import sys
 
-exclusions = set(['relicense.py'])
+exclusions = {"relicense.py"}
+
 
 def update(text):
   if text.find(lgpl3_header) == -1:
     return text, False
   return text.replace(lgpl3_header, mpl2_header), True
 
+
+def read_file(path):
+  with open(path, "r", encoding="utf-8", errors="ignore") as handle:
+    return handle.read()
+
+
+def write_file(path, content):
+  with open(path, "w", encoding="utf-8") as handle:
+    handle.write(content)
+
+
+if len(sys.argv) < 2:
+  raise SystemExit("Usage: relicense.py <rootdir>")
+
 rootdir = sys.argv[1]
-for root, sub_folders, files in os.walk(rootdir):
+for root, _sub_folders, files in os.walk(rootdir):
     for basename in files:
-        if basename in exclusions:
-          print 'SKIPPED', filename
-          continue
         filename = os.path.join(root, basename)
-        fo = file(filename)
-        text = fo.read()
-        fo.close()
+        if basename in exclusions:
+          print(f"SKIPPED {filename}")
+          continue
+
+        text = read_file(filename)
 
         text, updated = update(text)
         if updated:
-          fo = file(filename, "w")
-          fo.write(text)
-          fo.close()
-          print 'UPDATED', filename
+          write_file(filename, text)
+          print(f"UPDATED {filename}")
         else:
-          print '       ', filename
+          print(f"        {filename}")

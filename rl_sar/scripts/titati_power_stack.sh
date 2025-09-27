@@ -1,5 +1,5 @@
 #!/bin/bash
-# Launch the Titati power handshake helpers (battery_device + CAN-FD router)
+# Launch the Titati power handshake helpers (power services + CAN-FD gateway)
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)

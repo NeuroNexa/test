@@ -360,12 +360,12 @@ main() {
     local minimal_mode=false
 
     local -a MINIMAL_TITATI_PACKAGES=(
-        "tita_robot"
-        "tita_system_interfaces"
-        "tita_utils"
-        "battery_device"
-        "titati_canfd_router"
-        "titati_motor_tools"
+        "titati_can_driver"
+        "titati_system_interfaces"
+        "titati_topics"
+        "titati_power_services"
+        "titati_canfd_gateway"
+        "titati_motor_test"
         "robot_msgs"
         "robot_joint_controller"
         "rl_sar"

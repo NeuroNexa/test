@@ -171,7 +171,7 @@ Before running, copy the trained pt model file to `rl_sar/src/rl_sar/policy/<ROB
 ## Titati Hardware Quick Start (ROS 2 Humble)
 
 > [!IMPORTANT]
-> The Titati robot uses a dual-controller architecture. Always run the CAN-FD handshake helpers (`battery_device` and `titati_canfd_router`) on **both** Jetson Orin NX boards before sending motor commands from RL or the motor test tool.
+> The Titati robot uses a dual-controller architecture. Always run the CAN-FD handshake helpers (`titati_power_services` and `titati_canfd_gateway`) on **both** Jetson Orin NX boards before sending motor commands from RL or the motor test tool.
 
 All Titati-specific ROS 2 packages live under `src/rl_sar/library/thirdparty/titati` to keep the core RL stack uncluttered. The build helper automatically discovers them when you run `./build.sh -m` or when you explicitly select the packages with `colcon`.
 
@@ -220,7 +220,7 @@ Once both nodes are alive you can verify the handshake from the master controlle
 ros2 service list | grep power
 ```
 
-You should see `/battery_device/power_state_set`, `/battery_device/power_heart_beat` and `/battery_device/power_self_test` in
+You should see `/titati_power_services/power_state_set`, `/titati_power_services/power_heart_beat` and `/titati_power_services/power_self_test` in
 the output before moving on to motor control. The RL integration no longer bundles the `hardware_bridge`/`hw_bringup`
 packages from `titati_control`; run them from the original repository if you still need the ros2_control stack.
 
@@ -229,7 +229,7 @@ packages from `titati_control`; run them from the original repository if you sti
 After the services above are running, you can command individual motors from the master using the new test node:
 
 ```bash
-ros2 launch titati_motor_tools motor_test.launch.py \
+ros2 launch titati_motor_test motor_test.launch.py \
   joint_index:=0 mode:=torque torque:=2.0 duration:=3.0
 ```
 

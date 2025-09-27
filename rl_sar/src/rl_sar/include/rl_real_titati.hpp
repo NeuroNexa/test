@@ -15,7 +15,7 @@
 #include "loop.hpp"
 #include "fsm.hpp"
 
-#include "tita_robot/tita_robot.hpp"
+#include "titati_can_driver/tita_robot.hpp"
 #include <mutex>
 #include <csignal>
 
@@ -62,7 +62,7 @@ private:
     void Plot();
 
     // titati interface
-    std::unique_ptr<tita_robot> robot_;
+  std::unique_ptr<tita_robot> robot_;
     std::vector<double> last_commanded_torque_;
     std::mutex robot_mutex_;
 

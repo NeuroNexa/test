@@ -11,8 +11,8 @@
 
 This directory now keeps only the low-level SDK helpers needed by the RL stack:
 
-- `tita_robot`: C++ bindings around the Titati CAN-FD SDK.
-- `battery_device`: ROS 2 wrapper for the power handshake services/topics.
+- `titati_can_driver`: C++ bindings around the Titati CAN-FD SDK.
+- `titati_power_services`: ROS 2 wrapper for the power handshake services/topics.
 
 The ros2_control bridge (`hardware_bridge`) and bringup launch files have been removed from `rl_sar` because the RL controller talks to the robot directly.
 
@@ -29,4 +29,4 @@ These packages are built together with the rest of `rl_sar`. After compiling the
 ros2 launch rl_sar titati_power_stack.launch.py
 ```
 
-This launches `battery_device` and `titati_canfd_router`, preparing the CAN-FD bus for direct control through `tita_robot`.
+This launches `titati_power_services` and `titati_canfd_gateway`, preparing the CAN-FD bus for direct control through `titati_can_driver`.

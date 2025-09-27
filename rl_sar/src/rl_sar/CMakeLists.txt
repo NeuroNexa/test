@@ -71,7 +71,7 @@ if(NOT USE_CMAKE)
         find_package(gazebo_msgs REQUIRED)
         find_package(std_srvs REQUIRED)
         find_package(geometry_msgs REQUIRED)
-        find_package(tita_robot REQUIRED)
+        find_package(titati_can_driver REQUIRED)
         ament_package()
     endif()
     add_compile_options(${GAZEBO_CXX_FLAGS})
@@ -339,9 +339,9 @@ if(NOT USE_CMAKE)
         ament_target_dependencies(rl_real_titati
             rclcpp
             geometry_msgs
-            tita_robot
+            titati_can_driver
         )
-        target_link_libraries(rl_real_titati tita_robot)
+        target_link_libraries(rl_real_titati titati_can_driver)
         install(TARGETS rl_real_titati DESTINATION lib/${PROJECT_NAME})
     endif()
 endif()

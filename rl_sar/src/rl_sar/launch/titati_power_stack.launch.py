@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Launch battery_device and titati_canfd_router together.
+"""Launch titati_power_services and titati_canfd_gateway together.
 
 This keeps the Titati power handshake helpers in sync on a single command.
 """
@@ -45,16 +45,16 @@ def generate_launch_description() -> LaunchDescription:
     battery_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(
-                get_package_share_directory("battery_device"),
+                get_package_share_directory("titati_power_services"),
                 "launch",
-                "battery_device_node.launch.py",
+                "titati_power_services_node.launch.py",
             )
         )
     )
 
     canfd_router = Node(
-        package="titati_canfd_router",
-        executable="titati_canfd_router_node",
+        package="titati_canfd_gateway",
+        executable="titati_canfd_gateway_node",
         namespace=TITA_NAMESPACE,
         output="screen",
     )
