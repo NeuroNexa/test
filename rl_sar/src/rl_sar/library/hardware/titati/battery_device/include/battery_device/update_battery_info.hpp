@@ -27,7 +27,7 @@
 #include <vector>
 
 #include "battery_device/battery_info.hpp"
-#include "protocol/can_utils.hpp"
+#include "titati/protocol/can_utils.hpp"
 namespace tita
 {
 namespace battery_device

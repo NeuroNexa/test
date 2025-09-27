@@ -28,7 +28,7 @@
 
 #include "battery_device/battery_info.hpp"
 #include "battery_device/power_management_info.hpp"
-#include "protocol/can_utils.hpp"
+#include "titati/protocol/can_utils.hpp"
 namespace tita
 {
 namespace battery_device
