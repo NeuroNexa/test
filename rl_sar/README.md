@@ -173,6 +173,8 @@ Before running, copy the trained pt model file to `rl_sar/src/rl_sar/policy/<ROB
 > [!IMPORTANT]
 > The Titati robot uses a dual-controller architecture. Always run the CAN-FD handshake helpers (`battery_device` and `titati_canfd_router`) on **both** Jetson Orin NX boards before sending motor commands from RL or the motor test tool.
 
+All Titati-specific ROS 2 packages live under `src/rl_sar/library/thirdparty/titati` to keep the core RL stack uncluttered. The build helper automatically discovers them when you run `./build.sh -m` or when you explicitly select the packages with `colcon`.
+
 ### 1. Build only the required packages
 
 ```bash
