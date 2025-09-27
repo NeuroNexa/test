@@ -1,4 +1,4 @@
-<p align="center"><strong>tita_hardware</strong></p>
+<p align="center"><strong>titati_hardware_support</strong></p>
 <p align="center"><a href="https://github.com/${YOUR_GIT_REPOSITORY}/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/badge/License-Apache%202.0-orange"/></a>
 <img alt="language" src="https://img.shields.io/badge/language-c++-red"/>
 <img alt="platform" src="https://img.shields.io/badge/platform-linux-l"/>
