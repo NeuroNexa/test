@@ -164,6 +164,10 @@ Before running, copy the trained pt model file to `rl_sar/src/rl_sar/policy/<ROB
 
 > The Titati deployment targets the dual-Tita quadruped described in the task (two wheeled legs bridged through the connection box). Only the Titati binaries are built when you use `./build.sh -m`.
 
+The Titati support inside `rl_sar` includes the following ROS 2 interface package:
+
+* **tita_system_interfaces** – provides the `PowerHeartBeat`, `PowerSelfTest`, and `PowerStateSet` services that the CAN-FD router and battery device nodes call to coordinate MCU state transitions. During the CMake build these services are generated and exported so that the binaries can be launched through standard ROS 2 tooling (`ros2 launch`, `ros2 run`).
+
 #### 1. Build (one-time on each Jetson)
 
 ```bash
@@ -172,7 +176,11 @@ cd rl_sar
 ./build.sh -m
 ```
 
-This uses CMake with C++17 and generates binaries in `cmake_build/bin/`. The build targets the Titati hardware only and produces both ROS2 utilities (`titati_battery_device_node`, `titati_canfd_router_node`) and the RL controller.
+This uses CMake with C++17 and generates binaries in `cmake_build/bin/` together with an install space under `cmake_build/install`. The build targets the Titati hardware only and produces both ROS 2 utilities (`titati_battery_device_node`, `titati_canfd_router_node`) and the RL controller. Source the generated environment before launching any nodes:
+
+```bash
+source rl_sar/cmake_build/install/setup.bash
+```
 
 #### 2. Prepare CAN-FD and start infrastructure
 
@@ -184,15 +192,17 @@ sudo ./can_setup_8m_master.sh    # master Jetson
 sudo ./can_setup_8m_slave.sh     # slave Jetson
 ```
 
-The scripts stop the legacy `tita-bringup` service, configure `can0` for 1 Mbps arbitration / 8 Mbps data, and launch the ported `titati_canfd_router_node` together with the full `battery_device` ROS 2 bridge from this repository. Logs are written to `rl_sar/logs/` (`titati_canfd_router_*.log`, `titati_battery_device_*.log`).
+The scripts stop the legacy `tita-bringup` service, configure `can0` for 1 Mbps arbitration / 8 Mbps data, and then invoke `ros2 launch rl_sar titati_bringup.launch.py` (passing the appropriate `role` argument). The launch file starts the ported `titati_canfd_router_node` together with the full `battery_device` ROS 2 bridge from this repository. Logs are written to `rl_sar/logs/` (`titati_infrastructure_master.log`, `titati_infrastructure_slave.log`) via the standard ROS 2 logging pipeline.
+
+> Tip: If you prefer to supervise the nodes manually, you can also run `ros2 launch rl_sar titati_bringup.launch.py role:=master` (or `role:=slave`) in a terminal after sourcing `cmake_build/install/setup.bash`.
 
 #### 3. Verify the FORCE_DIRECT handshake on both Jetsons
 
 The router node prints the MCU mode and replays the `READY_WAITING -> FORCE_DIRECT` RPC automatically. Confirm that both Jetsons see the MCU switch to force-direct mode:
 
 ```bash
-tail -f rl_sar/logs/titati_canfd_router_master.log
-tail -f rl_sar/logs/titati_canfd_router_slave.log
+tail -f rl_sar/logs/titati_infrastructure_master.log
+tail -f rl_sar/logs/titati_infrastructure_slave.log
 ```
 
 You should see the router log report `mode:1` or `mode:2` followed by `set_forcedirect_mode is started`. If the MCU drops back to auto mode the router resends the handshake and the log records the transition, allowing you to spot synchronization issues between master and slave.

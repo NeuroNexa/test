@@ -17,6 +17,14 @@ COLOR_DEBUG='\033[0;36m'     # Cyan
 COLOR_RESET='\033[0m'        # Reset
 
 # ========================
+# Path Setup
+# ========================
+
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+PROJECT_ROOT="${SCRIPT_DIR}"
+INSTALL_PREFIX="${PROJECT_ROOT}/cmake_build/install"
+
+# ========================
 # Helper Functions
 # ========================
 
@@ -68,10 +76,19 @@ run_cmake_build() {
     print_warning "NOTE: CMake build is for hardware deployment only, not for simulation."
     print_separator
 
-    cmake src/rl_sar/ -B cmake_build -DUSE_CMAKE=ON -DBUILD_TITATI_ONLY=ON
-    cmake --build cmake_build -j4
+    cmake "${PROJECT_ROOT}/src/rl_sar" \
+        -B "${PROJECT_ROOT}/cmake_build" \
+        -DUSE_CMAKE=ON \
+        -DBUILD_TITATI_ONLY=ON \
+        -DCMAKE_INSTALL_PREFIX="${INSTALL_PREFIX}"
+    cmake --build "${PROJECT_ROOT}/cmake_build" -j"$(nproc)"
+    cmake --install "${PROJECT_ROOT}/cmake_build"
 
     print_success "CMake build completed!"
+    print_info "Install space available at: ${INSTALL_PREFIX}"
+    if [ -f "${INSTALL_PREFIX}/setup.bash" ]; then
+        print_info "Source ${INSTALL_PREFIX}/setup.bash before running ROS 2 launch files."
+    fi
 }
 
 run_ros_build() {

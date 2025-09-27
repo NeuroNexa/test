@@ -467,7 +467,22 @@ else()
     )
 endif()
 
-if(NOT USE_CMAKE)
+if(USE_CMAKE)
+    install(TARGETS
+        titati_hardware
+        titati_battery_device
+        titati_canfd_router
+        rl_sdk
+        observation_buffer
+        rl_real_titati
+        titati_motor_test
+        titati_battery_device_node
+        titati_canfd_router_node
+        ARCHIVE DESTINATION lib
+        LIBRARY DESTINATION lib
+        RUNTIME DESTINATION lib/${PROJECT_NAME}
+    )
+else()
     if($ENV{ROS_DISTRO} MATCHES "foxy|humble")
         install(TARGETS
             titati_battery_device_node
@@ -491,13 +506,19 @@ if(NOT USE_CMAKE)
     endif()
 endif()
 
-if(NOT USE_CMAKE)
+if(USE_CMAKE)
+    install(DIRECTORY launch DESTINATION share/${PROJECT_NAME})
+    install(DIRECTORY policy/titati DESTINATION share/${PROJECT_NAME}/policy)
+else()
     if($ENV{ROS_DISTRO} MATCHES "foxy|humble")
-        install(
-            DIRECTORY launch worlds policy
-            DESTINATION share/${PROJECT_NAME}/${dir}
-        )
+        install(DIRECTORY launch worlds policy DESTINATION share/${PROJECT_NAME})
     endif()
+endif()
+
+if(USE_CMAKE)
+    ament_package()
+elseif($ENV{ROS_DISTRO} MATCHES "foxy|humble")
+    ament_package()
 endif()
 
 # only for test

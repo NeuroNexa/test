@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 PROJECT_ROOT=$(cd "${SCRIPT_DIR}/../../.." && pwd)
-BIN_DIR="${PROJECT_ROOT}/cmake_build/bin"
+INSTALL_SETUP="${PROJECT_ROOT}/cmake_build/install/setup.bash"
 LOG_DIR="${PROJECT_ROOT}/logs"
 ROS_SETUP="/opt/ros/${ROS_DISTRO:-humble}/setup.bash"
 
@@ -22,6 +22,7 @@ echo "Configured can0 for 1Mbps/8Mbps FD operation."
 if command -v pkill >/dev/null 2>&1; then
   pkill -f titati_canfd_router_node || true
   pkill -f titati_battery_device_node || true
+  pkill -f "ros2 launch rl_sar titati_bringup.launch.py" || true
 fi
 
 if [ -f "${ROS_SETUP}" ]; then
@@ -29,21 +30,21 @@ if [ -f "${ROS_SETUP}" ]; then
   source "${ROS_SETUP}"
 fi
 
-export LD_LIBRARY_PATH="${PROJECT_ROOT}/cmake_build/lib:${LD_LIBRARY_PATH:-}"
+if [ ! -f "${INSTALL_SETUP}" ]; then
+  echo "Error: ${INSTALL_SETUP} not found. Run ./build.sh -m to create the install space."
+  exit 1
+fi
 
-start_node() {
-  local executable="$1"
-  local log_name="$2"
-  if [ ! -x "${BIN_DIR}/${executable}" ]; then
-    echo "Warning: ${executable} not found in ${BIN_DIR}; build the project with ./build.sh -m."
-    return
-  fi
-  nohup "${BIN_DIR}/${executable}" > "${LOG_DIR}/${log_name}" 2>&1 &
-  local pid=$!
-  echo "Started ${executable} (PID ${pid}) -> ${LOG_DIR}/${log_name}"
-}
+# shellcheck source=/dev/null
+source "${INSTALL_SETUP}"
 
-start_node titati_canfd_router_node titati_canfd_router_master.log
-start_node titati_battery_device_node titati_battery_device_master.log
+if ! command -v ros2 >/dev/null 2>&1; then
+  echo "Error: ros2 CLI not found in PATH after sourcing ${INSTALL_SETUP}."
+  exit 1
+fi
 
-echo "Master CAN router and battery services are running in the background."
+export ROS_LOG_DIR="${LOG_DIR}"
+
+nohup ros2 launch rl_sar titati_bringup.launch.py role:=master \
+  > "${LOG_DIR}/titati_infrastructure_master.log" 2>&1 &
+echo "Started Titati infrastructure launch (PID $!) -> ${LOG_DIR}/titati_infrastructure_master.log"
