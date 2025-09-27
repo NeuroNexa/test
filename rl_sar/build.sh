@@ -362,6 +362,7 @@ main() {
     local -a MINIMAL_TITATI_PACKAGES=(
         "tita_robot"
         "tita_system_interfaces"
+        "tita_utils"
         "battery_device"
         "hardware_bridge"
         "hw_bringup"

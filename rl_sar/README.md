@@ -200,24 +200,19 @@ cd <workspace>/rl_sar
 sudo ./scripts/can_setup_8m_slave.sh
 ```
 
-### 3. Start background services
+### 3. Start the power handshake helpers
 
-Perform the following on **both** machines (start the slave first, then the master). The `battery_device` node exposes the
-`tita_system_interfaces` services that complete the CAN-FD handshake together with the `titati_canfd_router` client:
+Perform the following on **both** machines (start the slave first, then the master). The helper script keeps the power services
+and CAN-FD bridge in the same namespace, matching the behaviour from `titati_control`:
 
 ```bash
 source /opt/ros/humble/setup.bash
 cd <workspace>/rl_sar
-source install/setup.bash
-
-# Power & MCU status bridge (provides tita_system_interfaces services)
-ros2 launch battery_device battery_device_node.launch.py
-
-# CAN-FD handshake helper
-ros2 run titati_canfd_router titati_canfd_router_node
+./scripts/titati_power_stack.sh
 ```
 
-Keep the two terminals running so that the nodes continue publishing on the shared CAN-FD bus.
+Keep the terminal running so that the nodes continue publishing on the shared CAN-FD bus. You can pass additional ROS launch
+arguments to the script (for example `--ros-args -p log_level:=debug`).
 
 Once both nodes are alive you can verify the handshake from the master controller:
 
