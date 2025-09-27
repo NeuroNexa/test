@@ -36,6 +36,16 @@ elseif($ENV{ROS_DISTRO} MATCHES "foxy|humble")
     DEPENDENCIES diagnostic_msgs
   )
 
+  rosidl_get_typesupport_target(tita_system_interfaces_cpp_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
+  rosidl_get_typesupport_target(tita_system_interfaces_introspection_target ${PROJECT_NAME} "rosidl_typesupport_introspection_cpp")
+  set(TITA_SYSTEM_INTERFACES_INCLUDE_DIRS
+    "${CMAKE_CURRENT_BINARY_DIR}/rosidl_generator_cpp"
+    "${CMAKE_CURRENT_BINARY_DIR}/rosidl_typesupport_cpp"
+    "${CMAKE_CURRENT_BINARY_DIR}/rosidl_typesupport_introspection_cpp"
+    PARENT_SCOPE)
+  set(TITA_SYSTEM_INTERFACES_TYPESUPPORT_CPP_TARGET "${tita_system_interfaces_cpp_target}" PARENT_SCOPE)
+  set(TITA_SYSTEM_INTERFACES_TYPESUPPORT_INTROSPECTION_CPP_TARGET "${tita_system_interfaces_introspection_target}" PARENT_SCOPE)
+
   ament_export_dependencies(rosidl_default_runtime)
   ament_package()
 else()

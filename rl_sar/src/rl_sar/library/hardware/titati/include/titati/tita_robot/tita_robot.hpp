@@ -1,3 +1,10 @@
+#pragma once
+
+#include <array>
+#include <cstdint>
+#include <memory>
+#include <vector>
+
 #include "titati/tita_robot/can_receiver.hpp"
 #include "titati/tita_robot/can_sender.hpp"
 
@@ -97,7 +104,8 @@ public:
      *
      * @return return true if the target is set successfully
      */
-    bool set_target_joint_mit(const std::vector<double> &q, const std::vector<double> &v, const std::vector<double> &kp, const std::vector<double> &kd, const std::vector<double> &t);
+    bool set_target_joint_mit(const std::vector<double> &q, const std::vector<double> &v, const std::vector<double> &kp,
+                              const std::vector<double> &kd, const std::vector<double> &t);
 
     // /**
     //  * @brief Set mcu board control mode, maybe remove in the future.

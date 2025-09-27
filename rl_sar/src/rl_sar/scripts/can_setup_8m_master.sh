@@ -46,4 +46,4 @@ start_node() {
 start_node titati_canfd_router_node titati_canfd_router_master.log
 start_node titati_battery_device_node titati_battery_device_master.log
 
-echo "Master CAN watchdog and battery services are running in the background."
+echo "Master CAN router and battery services are running in the background."

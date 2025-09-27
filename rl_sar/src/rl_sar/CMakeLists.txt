@@ -25,7 +25,9 @@ if(NOT USE_CMAKE)
         add_compile_definitions(USE_ROS2)
     endif()
 else()
-    message(WARNING "ROS_DISTRO not set, assuming non-ROS mode")
+    if(NOT DEFINED ENV{ROS_DISTRO})
+        message(WARNING "ROS_DISTRO not set, assuming ROS 2 environment is already configured")
+    endif()
     add_compile_definitions(USE_CMAKE)
     find_package(ament_cmake QUIET)
     if(NOT ament_cmake_FOUND)
@@ -34,7 +36,8 @@ else()
     find_package(rclcpp REQUIRED)
     find_package(sensor_msgs REQUIRED)
     find_package(diagnostic_msgs REQUIRED)
-    find_package(tita_system_interfaces REQUIRED)
+    find_package(rosidl_default_generators REQUIRED)
+    add_subdirectory(library/hardware/titati/ros_interfaces/tita_system_interfaces)
 endif()
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -404,28 +407,65 @@ endif()
 add_executable(titati_motor_test src/titati_motor_test.cpp)
 target_link_libraries(titati_motor_test titati_hardware)
 
-add_executable(titati_router_watchdog src/titati_router_watchdog.cpp)
-target_link_libraries(titati_router_watchdog titati_hardware)
-
 add_executable(titati_battery_device_node
     ${CMAKE_CURRENT_SOURCE_DIR}/library/hardware/titati/battery_device/src/main.cpp
 )
 target_link_libraries(titati_battery_device_node titati_battery_device)
-ament_target_dependencies(titati_battery_device_node
-    rclcpp
-    diagnostic_msgs
-    sensor_msgs
-    tita_system_interfaces
-)
+if(USE_CMAKE)
+    if(DEFINED TITA_SYSTEM_INTERFACES_INCLUDE_DIRS)
+        target_include_directories(titati_battery_device_node PRIVATE ${TITA_SYSTEM_INTERFACES_INCLUDE_DIRS})
+    endif()
+    if(DEFINED TITA_SYSTEM_INTERFACES_TYPESUPPORT_CPP_TARGET)
+        target_link_libraries(titati_battery_device_node
+            ${TITA_SYSTEM_INTERFACES_TYPESUPPORT_CPP_TARGET}
+        )
+    endif()
+    if(DEFINED TITA_SYSTEM_INTERFACES_TYPESUPPORT_INTROSPECTION_CPP_TARGET)
+        target_link_libraries(titati_battery_device_node
+            ${TITA_SYSTEM_INTERFACES_TYPESUPPORT_INTROSPECTION_CPP_TARGET}
+        )
+    endif()
+    ament_target_dependencies(titati_battery_device_node
+        rclcpp
+        diagnostic_msgs
+        sensor_msgs
+    )
+else()
+    ament_target_dependencies(titati_battery_device_node
+        rclcpp
+        diagnostic_msgs
+        sensor_msgs
+        tita_system_interfaces
+    )
+endif()
 
 add_executable(titati_canfd_router_node
     ${CMAKE_CURRENT_SOURCE_DIR}/library/hardware/titati/canfd_router/src/main.cpp
 )
 target_link_libraries(titati_canfd_router_node titati_canfd_router)
-ament_target_dependencies(titati_canfd_router_node
-    rclcpp
-    tita_system_interfaces
-)
+if(USE_CMAKE)
+    if(DEFINED TITA_SYSTEM_INTERFACES_INCLUDE_DIRS)
+        target_include_directories(titati_canfd_router_node PRIVATE ${TITA_SYSTEM_INTERFACES_INCLUDE_DIRS})
+    endif()
+    if(DEFINED TITA_SYSTEM_INTERFACES_TYPESUPPORT_CPP_TARGET)
+        target_link_libraries(titati_canfd_router_node
+            ${TITA_SYSTEM_INTERFACES_TYPESUPPORT_CPP_TARGET}
+        )
+    endif()
+    if(DEFINED TITA_SYSTEM_INTERFACES_TYPESUPPORT_INTROSPECTION_CPP_TARGET)
+        target_link_libraries(titati_canfd_router_node
+            ${TITA_SYSTEM_INTERFACES_TYPESUPPORT_INTROSPECTION_CPP_TARGET}
+        )
+    endif()
+    ament_target_dependencies(titati_canfd_router_node
+        rclcpp
+    )
+else()
+    ament_target_dependencies(titati_canfd_router_node
+        rclcpp
+        tita_system_interfaces
+    )
+endif()
 
 if(NOT USE_CMAKE)
     if($ENV{ROS_DISTRO} MATCHES "foxy|humble")

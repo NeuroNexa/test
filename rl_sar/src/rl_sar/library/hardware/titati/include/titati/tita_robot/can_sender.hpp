@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstdint>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -25,6 +26,7 @@
 #include <thread>
 #include <utility>
 #include <vector>
+#include <sys/time.h>
 
 #include "titati/protocol/can_utils.hpp"
 

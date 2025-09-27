@@ -46,4 +46,4 @@ start_node() {
 start_node titati_canfd_router_node titati_canfd_router_slave.log
 start_node titati_battery_device_node titati_battery_device_slave.log
 
-echo "Slave CAN watchdog and battery services are running in the background."
+echo "Slave CAN router and battery services are running in the background."

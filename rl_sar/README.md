@@ -195,20 +195,9 @@ tail -f rl_sar/logs/titati_canfd_router_master.log
 tail -f rl_sar/logs/titati_canfd_router_slave.log
 ```
 
-You should see the CAN watchdog report `mode:1` or `mode:2` followed by `set_forcedirect_mode is started`. If the MCU drops back to auto mode the router resends the handshake and the log records the transition, allowing you to spot synchronization issues between master and slave.
+You should see the router log report `mode:1` or `mode:2` followed by `set_forcedirect_mode is started`. If the MCU drops back to auto mode the router resends the handshake and the log records the transition, allowing you to spot synchronization issues between master and slave.
 
-#### 4. (Optional) Run the standalone CAN watchdog
-
-For additional redundancy you can still run the minimal watchdog utility which mirrors the router handshake:
-
-```bash
-cd rl_sar/cmake_build/bin
-./titati_router_watchdog
-```
-
-This is optional because the ported `titati_canfd_router_node` already enforces the handshake, but keeping the watchdog in the background provides another layer of monitoring.
-
-#### 5. Master-side quick diagnostics
+#### 4. Master-side quick diagnostics
 
 Before loading a policy you can verify motor connectivity and state feedback with the standalone motor exerciser:
 
@@ -227,7 +216,7 @@ Options:
 
 The tool streams the current position/velocity/torque of the chosen joint every 200 ms so you can confirm feedback from all actuators.
 
-#### 6. Run the Titati RL controller on the master
+#### 5. Run the Titati RL controller on the master
 
 ```bash
 cd rl_sar/cmake_build/bin

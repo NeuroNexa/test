@@ -14,6 +14,9 @@
 
 #include "titati/tita_robot/can_sender.hpp"
 
+#include <chrono>
+#include <cstring>
+
 namespace can_device
 {
 bool MotorsCanSendApi::send_command_can_channel_input(ChannelInput data)
@@ -22,21 +25,22 @@ bool MotorsCanSendApi::send_command_can_channel_input(ChannelInput data)
   struct canfd_frame frame;
   frame.can_id = CAN_ID_CHANNEL_INPUT;
   frame.len = 40u;
-  memset(frame.data, 0x00U, sizeof(frame.data));
+  std::memset(frame.data, 0x00U, sizeof(frame.data));
   
   std::memcpy(frame.data, &data, sizeof(data));
 
   return can_send_api_->send_can_message(frame);
 }
 
-bool MotorsCanSendApi::send_command_can_rpc_request(RpcRequest data){
+bool MotorsCanSendApi::send_command_can_rpc_request(RpcRequest data)
+{
   data.timestamp = get_current_time();
 
   struct canfd_frame frame;
   frame.can_id = CAN_ID_RPC_REQUEST;
   frame.len = 10U;
 
-  memset(frame.data, 0x00U, sizeof(frame.data));
+  std::memset(frame.data, 0x00U, sizeof(frame.data));
 
   std::memcpy(frame.data, &data.timestamp, sizeof(data.timestamp));
   std::memcpy(frame.data + 4, &data.key, sizeof(data.key));
@@ -63,7 +67,7 @@ bool MotorsCanSendApi::send_motors_can(std::vector<motor_out> motors)
   auto now = get_current_time();
   for (size_t id(0); id < motors.size()/2; id++) {
     frame.can_id = CAN_ID_SEND_MOTORS + id;
-    memset(frame.data, 0x00U, sizeof(frame.data));
+    std::memset(frame.data, 0x00U, sizeof(frame.data));
     auto motor = motors[2 * id];
     motor.timestamp = now;
     std::memcpy(frame.data, &motor.timestamp, sizeof(motor.timestamp));
