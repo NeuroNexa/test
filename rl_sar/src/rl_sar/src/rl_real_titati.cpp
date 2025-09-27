@@ -76,6 +76,7 @@ RL_Real::RL_Real()
 
 RL_Real::~RL_Real()
 {
+    // shutdown() blocks until the associated loop thread exits to avoid races
     this->loop_keyboard->shutdown();
     this->loop_control->shutdown();
     this->loop_rl->shutdown();
