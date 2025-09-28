@@ -9,6 +9,8 @@
 #include "fsm_core.hpp"   // FSM 基类与核心逻辑
 #include "rl_sdk.hpp"     // RL 控制相关的接口
 
+#include <iomanip>
+
 namespace titati_fsm
 {
 
@@ -245,20 +247,38 @@ public:
                   << " yaw:" << rl.control.yaw << std::flush;
 
         // 从 RL 输出队列里取动作（目标关节角/速度）
-        torch::Tensor _output_dof_pos, _output_dof_vel;
-        if (rl.output_dof_pos_queue.try_pop(_output_dof_pos) &&
-            rl.output_dof_vel_queue.try_pop(_output_dof_vel))
+        torch::Tensor latest_pos, latest_vel;
+        torch::Tensor tensor_buffer;
+
+        while (rl.output_dof_pos_queue.try_pop(tensor_buffer))
+        {
+            latest_pos = tensor_buffer;
+        }
+        while (rl.output_dof_vel_queue.try_pop(tensor_buffer))
+        {
+            latest_vel = tensor_buffer;
+        }
+        while (rl.output_dof_tau_queue.try_pop(tensor_buffer))
+        {
+            // 仅用于清空力矩缓存，防止队列堆积
+        }
+
+        if (!latest_pos.defined())
+        {
+            latest_pos = rl.output_dof_pos;
+        }
+        if (!latest_vel.defined())
+        {
+            latest_vel = rl.output_dof_vel;
+        }
+
+        if (latest_pos.defined() && latest_pos.numel() > 0 &&
+            latest_vel.defined() && latest_vel.numel() > 0)
         {
             for (int i = 0; i < rl.params.num_of_dofs; ++i)
             {
-                if (_output_dof_pos.defined() && _output_dof_pos.numel() > 0)
-                {
-                    fsm_command->motor_command.q[i] = rl.output_dof_pos[0][i].item<double>();
-                }
-                if (_output_dof_vel.defined() && _output_dof_vel.numel() > 0)
-                {
-                    fsm_command->motor_command.dq[i] = rl.output_dof_vel[0][i].item<double>();
-                }
+                fsm_command->motor_command.q[i] = latest_pos[0][i].item<double>();
+                fsm_command->motor_command.dq[i] = latest_vel[0][i].item<double>();
                 // 使用 RL 模式的 Kp/Kd
                 fsm_command->motor_command.kp[i] = rl.params.rl_kp[0][i].item<double>();
                 fsm_command->motor_command.kd[i] = rl.params.rl_kd[0][i].item<double>();
