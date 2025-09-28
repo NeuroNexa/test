@@ -13,6 +13,8 @@
 // limitations under the License.
 #include <time.h>
 
+#include <cstddef>
+
 #include <algorithm>
 #include <chrono>
 #include <iostream>
@@ -37,11 +39,11 @@ void test_read()
     auto quat = robot.get_imu_quaternion();
     auto accl = robot.get_imu_acceleration();
     auto gyro = robot.get_imu_angular_velocity();
-    for (auto i = 0; i < q.size(); i++)
+    for (std::size_t i = 0; i < q.size(); ++i)
     {
       std::cout << "q[" << i << "] = " << q[i] << "\tv[" << i << "] = " << v[i] << "\tt[" << i << "] = " << t[i] << std::endl;
     }
-    for (auto i = 0; i < status.size(); i++)
+    for (std::size_t i = 0; i < status.size(); ++i)
     {
       std::cout << "status[" << i << "] = " << status[i] << " ";
     }

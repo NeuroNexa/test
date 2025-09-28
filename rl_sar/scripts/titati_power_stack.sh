@@ -11,8 +11,13 @@ if [ -z "${ROS_DISTRO:-}" ]; then
 fi
 
 if [ -f "$WORKSPACE_DIR/install/setup.bash" ]; then
+  # Source the workspace setup under a relaxed nounset policy because the
+  # generated colcon setup scripts intentionally reference optional variables
+  # such as COLCON_TRACE. The workspace setup re-enables strict mode below.
+  set +u
   # shellcheck disable=SC1090
   source "$WORKSPACE_DIR/install/setup.bash"
+  set -u
 else
   echo "[WARNING] install/setup.bash not found. Make sure you have built the workspace." >&2
 fi

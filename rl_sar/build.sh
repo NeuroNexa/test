@@ -16,6 +16,10 @@ COLOR_INFO='\033[0;34m'      # Blue
 COLOR_DEBUG='\033[0;36m'     # Cyan
 COLOR_RESET='\033[0m'        # Reset
 
+PACKAGE_SYMLINK_ROOT="src/.ros_package_links"
+USE_PACKAGE_LINKS=false
+COLCON_EXTRA_ARGS=()
+
 # ========================
 # Helper Functions
 # ========================
@@ -91,6 +95,7 @@ run_ros_build() {
         create_symlinks_for_all_packages
     else
         create_symlinks_for_specific_packages "${packages[@]}"
+        prepare_package_workspace_symlinks "${packages[@]}"
     fi
 
     # Execute build
@@ -102,7 +107,7 @@ run_ros_build() {
         else
             print_header "[Using colcon build]"
             print_info "Building all packages..."
-            colcon build --merge-install --symlink-install
+            colcon build --merge-install --symlink-install "${COLCON_EXTRA_ARGS[@]}"
         fi
     else
         if [[ "$ROS_DISTRO" == "noetic" ]]; then
@@ -112,7 +117,11 @@ run_ros_build() {
         else
             print_header "[Using colcon build]"
             print_info "Building specific packages: $package_list"
-            colcon build --merge-install --symlink-install --packages-select $package_list
+            if [ "$USE_PACKAGE_LINKS" = true ]; then
+                colcon build --merge-install --symlink-install --base-paths "$PACKAGE_SYMLINK_ROOT" "${COLCON_EXTRA_ARGS[@]}"
+            else
+                colcon build --merge-install --symlink-install --packages-select $package_list "${COLCON_EXTRA_ARGS[@]}"
+            fi
         fi
     fi
 
@@ -141,6 +150,7 @@ clean_workspace() {
     echo "  - directory log/"
     echo "  - directory logs/"
     echo "  - directory .catkin_tools/"
+    echo "  - directory ${PACKAGE_SYMLINK_ROOT}/"
 
     # Ask for confirmation
     if [ ${#packages[@]} -eq 0 ]; then
@@ -159,6 +169,7 @@ clean_workspace() {
     if [ ${#packages[@]} -eq 0 ]; then
         print_info "Removing all package.xml symlinks..."
         find src -name "package.xml" -type l -delete
+        rm -rf "$PACKAGE_SYMLINK_ROOT"
         print_success "Removed all symlinks"
     else
         print_info "Removing symlinks for specific packages..."
@@ -171,6 +182,9 @@ clean_workspace() {
                 else
                     print_warning "No symlink found for $package_name"
                 fi
+                if [ -L "$PACKAGE_SYMLINK_ROOT/$package_name" ]; then
+                    rm -f "$PACKAGE_SYMLINK_ROOT/$package_name"
+                fi
             else
                 print_error "Package '$package_name' not found in src directory"
             fi
@@ -179,7 +193,7 @@ clean_workspace() {
 
     # Clean build artifacts
     print_info "Cleaning build artifacts..."
-    rm -rf build/ devel/ install/ log/ logs/ .catkin_tools/
+    rm -rf build/ devel/ install/ log/ logs/ .catkin_tools/ "$PACKAGE_SYMLINK_ROOT"
 
     print_success "Clean completed!"
 }
@@ -188,6 +202,8 @@ clean_existing_symlinks() {
     local packages=("$@")
 
     print_header "[Cleaning Existing Symlinks]"
+
+    rm -rf "$PACKAGE_SYMLINK_ROOT"
 
     if [ ${#packages[@]} -eq 0 ]; then
         print_info "Removing all existing package.xml symlinks..."
@@ -201,6 +217,9 @@ clean_existing_symlinks() {
             if [ -n "$package_dir" ] && [ -L "$package_dir/package.xml" ]; then
                 rm -f "$package_dir/package.xml"
                 removed_packages+=("$package_name")
+            fi
+            if [ -L "$PACKAGE_SYMLINK_ROOT/$package_name" ]; then
+                rm -f "$PACKAGE_SYMLINK_ROOT/$package_name"
             fi
         done
 
@@ -280,6 +299,37 @@ create_symlinks_for_package() {
     fi
 
     return 1
+}
+
+prepare_package_workspace_symlinks() {
+    local packages=("$@")
+
+    if [ "$USE_PACKAGE_LINKS" = false ] || [ ${#packages[@]} -eq 0 ]; then
+        return 0
+    fi
+
+    rm -rf "$PACKAGE_SYMLINK_ROOT"
+    mkdir -p "$PACKAGE_SYMLINK_ROOT"
+
+    local created_links=()
+    for package_name in "${packages[@]}"; do
+        local package_dir
+        package_dir=$(find src -name "$package_name" -type d | head -n 1)
+        if [ -z "$package_dir" ]; then
+            print_warning "Package '$package_name' not found for workspace linking"
+            continue
+        fi
+
+        local relative_target="../${package_dir#src/}"
+        ln -sf "$relative_target" "$PACKAGE_SYMLINK_ROOT/$package_name"
+        created_links+=("$package_name")
+    done
+
+    if [ ${#created_links[@]} -gt 0 ]; then
+        print_success "Linked packages into minimal workspace: ${created_links[*]}"
+    else
+        print_warning "No packages linked into minimal workspace"
+    fi
 }
 
 create_symlinks_for_all_packages() {
@@ -383,6 +433,11 @@ main() {
             *) packages+=("$1"); shift ;;
         esac
     done
+
+    if [ "$minimal_mode" = true ]; then
+        USE_PACKAGE_LINKS=true
+        COLCON_EXTRA_ARGS+=(--cmake-args -DRL_SAR_HARDWARE_ONLY=ON)
+    fi
 
     # Handle CMake build mode
     if [ "$cmake_mode" = true ]; then

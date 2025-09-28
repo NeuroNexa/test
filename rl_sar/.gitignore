@@ -10,5 +10,6 @@ log
 *.json
 __pycache__
 cmake_build
+src/.ros_package_links
 
 package.xml
