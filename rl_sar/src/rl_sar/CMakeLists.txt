@@ -359,7 +359,7 @@ if(NOT USE_CMAKE)
             geometry_msgs
             titati_can_driver
         )
-        target_link_libraries(rl_real_titati titati_can_driver)
+        target_link_libraries(rl_real_titati titati_can_driver::titati_can_driver)
         install(TARGETS rl_real_titati DESTINATION lib/${PROJECT_NAME})
     endif()
 endif()
