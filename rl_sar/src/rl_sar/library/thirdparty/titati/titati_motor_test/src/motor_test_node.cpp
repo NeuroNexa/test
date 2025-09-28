@@ -12,7 +12,7 @@
 
 using namespace std::chrono_literals;
 
-class MotorTestNode : public rclcpp::Node, public std::enable_shared_from_this<MotorTestNode>
+class MotorTestNode : public rclcpp::Node
 {
 public:
   MotorTestNode()
@@ -127,7 +127,7 @@ public:
         next_status += status_period;
       }
 
-      rclcpp::spin_some(std::enable_shared_from_this<MotorTestNode>::shared_from_this());
+      rclcpp::spin_some(this->shared_from_this());
       std::this_thread::sleep_for(1ms);
     }
 

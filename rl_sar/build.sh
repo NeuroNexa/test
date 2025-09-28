@@ -418,6 +418,7 @@ main() {
         "titati_power_services"
         "titati_canfd_gateway"
         "titati_motor_test"
+        "rl_sar"
     )
 
     # Parse command line arguments
