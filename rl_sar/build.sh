@@ -19,6 +19,7 @@ COLOR_RESET='\033[0m'        # Reset
 PACKAGE_SYMLINK_ROOT="src/.ros_package_links"
 USE_PACKAGE_LINKS=false
 COLCON_EXTRA_ARGS=()
+declare -a CMAKE_EXTRA_ARGS=()
 
 # ========================
 # Helper Functions
@@ -72,7 +73,7 @@ run_cmake_build() {
     print_warning "NOTE: CMake build is for hardware deployment only, not for simulation."
     print_separator
 
-    cmake src/rl_sar/ -B cmake_build -DUSE_CMAKE=ON
+    cmake src/rl_sar/ -B cmake_build -DUSE_CMAKE=ON "${CMAKE_EXTRA_ARGS[@]}"
     cmake --build cmake_build -j4
 
     print_success "CMake build completed!"
@@ -390,16 +391,16 @@ show_usage() {
     echo ""
     echo -e "${COLOR_INFO}Options:${COLOR_RESET}"
     echo -e "  -c, --clean      Clean workspace (remove symlinks and build artifacts)"
-    echo -e "  -m, --minimal    Build minimal ROS2 packages for Titati hardware"
-    echo -e "      --cmake      Build using CMake (for hardware deployment only)"
-    echo -e "  -h, --help     Show this help message"
+    echo -e "  -m, --minimal    Build Titati hardware stack (CMake + minimal ROS packages)"
+    echo -e "      --cmake      Build using CMake only (for hardware deployment)"
+    echo -e "  -h, --help       Show this help message"
     echo ""
     echo -e "${COLOR_INFO}Examples:${COLOR_RESET}"
     echo -e "  $0                    # Build all ROS packages"
     echo -e "  $0 package1 package2  # Build specific ROS packages"
     echo -e "  $0 -c                 # Clean all symlinks and build artifacts"
     echo -e "  $0 --clean package1   # Clean specific package and build artifacts"
-    echo -e "  $0 -m                 # Build Titati minimal hardware stack"
+    echo -e "  $0 -m                 # Build Titati hardware stack (CMake + minimal ROS)"
     echo -e "  $0 --cmake            # Build with CMake for hardware deployment"
 }
 
@@ -408,6 +409,7 @@ main() {
     local clean_mode=false
     local cmake_mode=false
     local minimal_mode=false
+    local cmake_only_mode=false
 
     local -a MINIMAL_TITATI_PACKAGES=(
         "titati_can_driver"
@@ -416,17 +418,14 @@ main() {
         "titati_power_services"
         "titati_canfd_gateway"
         "titati_motor_test"
-        "robot_msgs"
-        "robot_joint_controller"
-        "rl_sar"
     )
 
     # Parse command line arguments
     while [[ $# -gt 0 ]]; do
         case $1 in
             -c|--clean) clean_mode=true; shift ;;
-            -m|--minimal) minimal_mode=true; shift ;;
-            --cmake) cmake_mode=true; shift ;;
+            -m|--minimal) minimal_mode=true; cmake_mode=true; shift ;;
+            --cmake) cmake_mode=true; cmake_only_mode=true; shift ;;
             -h|--help) show_usage; exit 0 ;;
             --) shift; packages+=("$@"); break ;;
             -*) print_error "Unknown option: $1"; show_usage; exit 1 ;;
@@ -437,12 +436,36 @@ main() {
     if [ "$minimal_mode" = true ]; then
         USE_PACKAGE_LINKS=true
         COLCON_EXTRA_ARGS+=(--cmake-args -DRL_SAR_HARDWARE_ONLY=ON)
+        CMAKE_EXTRA_ARGS+=(-DRL_SAR_HARDWARE_ONLY=ON)
+
+        local -a resolved_packages=()
+        declare -A seen_packages=()
+
+        add_minimal_package() {
+            local pkg="$1"
+            if [ -n "$pkg" ] && [ -z "${seen_packages[$pkg]}" ]; then
+                resolved_packages+=("$pkg")
+                seen_packages[$pkg]=1
+            fi
+        }
+
+        for pkg in "${MINIMAL_TITATI_PACKAGES[@]}"; do
+            add_minimal_package "$pkg"
+        done
+
+        for pkg in "${packages[@]}"; do
+            add_minimal_package "$pkg"
+        done
+
+        packages=("${resolved_packages[@]}")
     fi
 
     # Handle CMake build mode
     if [ "$cmake_mode" = true ]; then
         run_cmake_build
-        exit 0
+        if [ "$minimal_mode" = false ] || [ "$cmake_only_mode" = true ]; then
+            exit 0
+        fi
     fi
 
     # Handle clean mode
@@ -451,16 +474,24 @@ main() {
         exit 0
     fi
 
-    # Handle ROS build
-    if [ -z "$ROS_DISTRO" ]; then
-        print_error "ROS environment not detected. Please source your ROS setup.bash first."
-        print_info "For hardware deployment, use the --cmake option instead."
-        exit 1
+    local should_run_ros=true
+
+    if [ "$cmake_mode" = true ] && [ "$minimal_mode" = false ]; then
+        should_run_ros=false
     fi
 
-    if [ "$minimal_mode" = true ]; then
-        run_ros_build "${MINIMAL_TITATI_PACKAGES[@]}"
-    else
+    if [ "$minimal_mode" = true ] && [ -z "$ROS_DISTRO" ]; then
+        print_warning "ROS environment not detected. Skipping Titati ROS package build."
+        should_run_ros=false
+    fi
+
+    if [ "$should_run_ros" = true ]; then
+        if [ -z "$ROS_DISTRO" ]; then
+            print_error "ROS environment not detected. Please source your ROS setup.bash first."
+            print_info "For hardware deployment, use the --cmake option instead."
+            exit 1
+        fi
+
         run_ros_build "${packages[@]}"
     fi
 }
