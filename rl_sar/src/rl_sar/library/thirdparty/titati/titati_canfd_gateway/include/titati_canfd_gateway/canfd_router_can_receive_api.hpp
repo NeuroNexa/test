@@ -25,7 +25,7 @@
 #include <thread>
 #include <vector>
 
-#include "protocol/can_utils.hpp"
+#include "titati_canfd_gateway/protocol/can_utils.hpp"
 
 namespace can_device
 {

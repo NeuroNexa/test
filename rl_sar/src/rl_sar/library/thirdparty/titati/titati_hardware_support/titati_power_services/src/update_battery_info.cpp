@@ -14,7 +14,7 @@
 
 #include "titati_power_services/update_battery_info.hpp"
 
-#include "protocol/can_utils.hpp"
+#include "titati_power_services/protocol/can_utils.hpp"
 
 namespace tita
 {
