@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-sudo systemctl stop tita-slave.service >/dev/null 2>&1 || true
+sudo systemctl stop tita-bringup.service >/dev/null 2>&1 || true
 sudo ip link set can0 down >/dev/null 2>&1 || true
 sudo ip link set can0 up type can \
   bitrate 1000000 sample-point 0.80 \
