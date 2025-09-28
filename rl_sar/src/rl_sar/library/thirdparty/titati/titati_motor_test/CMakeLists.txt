@@ -15,8 +15,7 @@ find_package(titati_can_driver REQUIRED)
 
 add_executable(motor_test_node src/motor_test_node.cpp)
 target_link_libraries(motor_test_node
-  PRIVATE
-    titati_can_driver::titati_can_driver
+  titati_can_driver::titati_can_driver
 )
 ament_target_dependencies(motor_test_node rclcpp titati_can_driver)
 
