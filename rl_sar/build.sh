@@ -163,16 +163,16 @@ clean_workspace() {
     else
         print_info "Removing symlinks for specific packages..."
         for package_name in "${packages[@]}"; do
-            package_dir=$(find src -name "$package_name" -type d | head -n 1)
-            if [ -n "$package_dir" ]; then
-                if [ -L "$package_dir/package.xml" ]; then
-                    rm -f "$package_dir/package.xml"
-                    print_success "Removed symlink from $package_name"
-                else
-                    print_warning "No symlink found for $package_name"
-                fi
-            else
+            local package_dir
+            if ! package_dir=$(locate_package_dir "$package_name"); then
                 print_error "Package '$package_name' not found in src directory"
+                continue
+            fi
+            if [ -L "$package_dir/package.xml" ]; then
+                rm -f "$package_dir/package.xml"
+                print_success "Removed symlink from $package_name"
+            else
+                print_warning "No symlink found for $package_name"
             fi
         done
     fi
@@ -197,8 +197,9 @@ clean_existing_symlinks() {
         print_info "Removing existing symlinks for specified packages..."
         removed_packages=()
         for package_name in "${packages[@]}"; do
-            package_dir=$(find src -name "$package_name" -type d | head -n 1)
-            if [ -n "$package_dir" ] && [ -L "$package_dir/package.xml" ]; then
+            local package_dir
+            package_dir=$(locate_package_dir "$package_name") || continue
+            if [ -L "$package_dir/package.xml" ]; then
                 rm -f "$package_dir/package.xml"
                 removed_packages+=("$package_name")
             fi
@@ -242,6 +243,30 @@ detect_incompatible_build_artifacts() {
     else
         print_success "No incompatible build artifacts found"
     fi
+}
+
+locate_package_dir() {
+    local package_name="$1"
+    local manifest
+
+    manifest=$(find src -type f -name "package.ros1.xml" -path "*/${package_name}/package.ros1.xml" -print -quit)
+    if [ -z "$manifest" ]; then
+        manifest=$(find src -type f -name "package.ros2.xml" -path "*/${package_name}/package.ros2.xml" -print -quit)
+    fi
+
+    if [ -n "$manifest" ]; then
+        dirname "$manifest"
+        return 0
+    fi
+
+    local fallback
+    fallback=$(find src -type d -name "$package_name" -print -quit)
+    if [ -n "$fallback" ]; then
+        echo "$fallback"
+        return 0
+    fi
+
+    return 1
 }
 
 create_symlinks_for_package() {
@@ -318,8 +343,8 @@ create_symlinks_for_specific_packages() {
 
     created_packages=()
     for package_name in "${packages[@]}"; do
-        package_dir=$(find src -name "$package_name" -type d | head -n 1)
-        if [ -n "$package_dir" ] && create_symlinks_for_package "$package_dir"; then
+        local package_dir
+        if package_dir=$(locate_package_dir "$package_name") && create_symlinks_for_package "$package_dir"; then
             created_packages+=("$package_name")
         fi
     done
