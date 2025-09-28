@@ -226,14 +226,17 @@ packages from `titati_control`; run them from the original repository if you sti
 
 ### 4. Motor sanity check
 
-After the services above are running, you can command individual motors from the master using the new test node:
+After the services above are running, you can command individual motors from the master using the new test node. The node prints
+the position/velocity/torque for **all** 16 joints at the configured `status_rate` before it takes control of a specific motor.
+By default it waits five seconds (`command_delay:=5.0`) before streaming commands so you can sanity-check the telemetry first:
 
 ```bash
 ros2 launch titati_motor_test motor_test.launch.py \
   joint_index:=0 mode:=torque torque:=2.0 duration:=3.0
 ```
 
-Switch to MIT mode by adding parameters such as `mode:=mit kp:=40.0 kd:=2.0 position:=0.5`.
+Set `command_delay:=0.0` if you want the commands to start immediately after the node connects. Switch to MIT mode by adding
+parameters such as `mode:=mit kp:=40.0 kd:=2.0 position:=0.5`.
 
 ### 5. Reinforcement learning controller
 

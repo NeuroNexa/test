@@ -5,6 +5,7 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <sstream>
 
 #include <rclcpp/rclcpp.hpp>
 #include "titati_can_driver/tita_robot.hpp"
@@ -26,7 +27,8 @@ public:
     velocity_command_(this->declare_parameter<double>("velocity", 0.0)),
     duration_(this->declare_parameter<double>("duration", 5.0)),
     command_rate_hz_(this->declare_parameter<double>("command_rate", 500.0)),
-    status_rate_hz_(this->declare_parameter<double>("status_rate", 10.0))
+    status_rate_hz_(this->declare_parameter<double>("status_rate", 10.0)),
+    command_delay_(std::max(0.0, this->declare_parameter<double>("command_delay", 5.0)))
   {
     if (joint_index_ < 0 || joint_index_ >= num_motors_)
     {
@@ -55,6 +57,12 @@ public:
     else
     {
       RCLCPP_INFO(this->get_logger(), "SDK control enabled. Starting motor test in %s mode.", mode_.c_str());
+      if (command_delay_ > 0.0)
+      {
+        RCLCPP_INFO(this->get_logger(),
+                    "Command streaming will begin after %.1f seconds. Monitor the joint states above before the test.",
+                    command_delay_);
+      }
     }
 
     zero_vector_ = std::vector<double>(num_motors_, 0.0);
@@ -95,7 +103,14 @@ public:
         break;
       }
 
-      if (now >= next_command)
+      if (!commands_started_ && elapsed >= command_delay_)
+      {
+        commands_started_ = true;
+        next_command = now;
+        RCLCPP_INFO(this->get_logger(), "Command streaming enabled for joint %d.", joint_index_);
+      }
+
+      if (commands_started_ && now >= next_command)
       {
         send_command();
         next_command += command_period;
@@ -153,11 +168,25 @@ private:
     auto velocities = robot_->get_joint_v();
     auto torques = robot_->get_joint_t();
 
-    if (joint_index_ < static_cast<int>(positions.size()))
+    std::ostringstream stream;
+    stream.setf(std::ios::fixed, std::ios::floatfield);
+    stream.precision(3);
+    for (size_t i = 0; i < positions.size(); ++i)
     {
-      RCLCPP_INFO(this->get_logger(),
-                  "Joint %d -> pos: %.3f rad, vel: %.3f rad/s, torque: %.3f Nm",
-                  joint_index_, positions[joint_index_], velocities[joint_index_], torques[joint_index_]);
+      stream << "J" << i
+             << " q=" << positions[i]
+             << " v=" << velocities[i]
+             << " tau=" << torques[i];
+      if (i + 1 < positions.size())
+      {
+        stream << "; ";
+      }
+    }
+
+    const auto status = stream.str();
+    if (!status.empty())
+    {
+      RCLCPP_INFO(this->get_logger(), "Motor states -> %s", status.c_str());
     }
   }
 
@@ -173,7 +202,9 @@ private:
   const double duration_;
   const double command_rate_hz_;
   const double status_rate_hz_;
+  const double command_delay_;
   std::vector<double> zero_vector_;
+  bool commands_started_{false};
 };
 
 int main(int argc, char **argv)
