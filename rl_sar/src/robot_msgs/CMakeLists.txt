@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.5)
 project(robot_msgs VERSION 3.0.0)
 
+option(RL_SAR_HARDWARE_ONLY "Build without simulator extras for RL SAR" OFF)
+mark_as_advanced(RL_SAR_HARDWARE_ONLY)
+
 if($ENV{ROS_DISTRO} MATCHES "noetic")
   find_package(catkin REQUIRED COMPONENTS
     message_generation

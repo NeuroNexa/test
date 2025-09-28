@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.22.1)
 project(titati_system_interfaces LANGUAGES C CXX)
 
+option(RL_SAR_HARDWARE_ONLY "Build without simulator extras for RL SAR" OFF)
+mark_as_advanced(RL_SAR_HARDWARE_ONLY)
+
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
         add_compile_options(-Wall -Wextra -Wpedantic)
 endif()

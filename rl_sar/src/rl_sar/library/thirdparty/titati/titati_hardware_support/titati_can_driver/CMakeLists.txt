@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.8)
 project(titati_can_driver)
 
+option(RL_SAR_HARDWARE_ONLY "Build without simulator extras for RL SAR" OFF)
+mark_as_advanced(RL_SAR_HARDWARE_ONLY)
+
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
@@ -15,6 +18,7 @@ add_library(${PROJECT_NAME} SHARED
   src/can_receiver.cpp
   src/can_sender.cpp
 )
+add_library(${PROJECT_NAME}::${PROJECT_NAME} ALIAS ${PROJECT_NAME})
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_17)
 target_include_directories(${PROJECT_NAME}
   PUBLIC
@@ -34,7 +38,7 @@ install(TARGETS ${PROJECT_NAME}
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
 )
-install(DIRECTORY include/
+install(DIRECTORY include/titati_can_driver
   DESTINATION include
 )
 
