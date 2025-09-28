@@ -20,6 +20,11 @@ ament_auto_find_build_dependencies()
 include_directories(include)
 include_directories(utils)
 
+# Install headers into an include/titati_power_services prefix to match ROS 2's
+# scoped include layout and silence the deprecation warning from
+# ament_auto_package.
+set(USE_SCOPED_HEADER_INSTALL_DIR ON)
+
 ament_auto_add_library(${PROJECT_NAME}_lib SHARED
   src/battery.cpp
   src/battery_device_node.cpp

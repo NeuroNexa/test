@@ -19,6 +19,11 @@ ament_auto_find_build_dependencies()
 
 include_directories(include)
 
+# Ensure headers are installed beneath include/titati_canfd_gateway so the
+# ament_auto_package helper does not emit warnings about the legacy include
+# destination layout.
+set(USE_SCOPED_HEADER_INSTALL_DIR ON)
+
 ament_auto_add_library(${PROJECT_NAME}_lib SHARED
   src/canfd_router_can_receive_api.cpp
 )
