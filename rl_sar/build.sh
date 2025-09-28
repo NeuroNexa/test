@@ -404,7 +404,9 @@ main() {
     fi
 
     if [ "$minimal_mode" = true ]; then
+        export RL_SAR_BUILD_MINIMAL=1
         run_ros_build "${MINIMAL_TITATI_PACKAGES[@]}"
+        unset RL_SAR_BUILD_MINIMAL
     else
         run_ros_build "${packages[@]}"
     fi
