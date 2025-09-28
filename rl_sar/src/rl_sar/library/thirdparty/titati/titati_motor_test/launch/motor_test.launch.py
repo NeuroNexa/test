@@ -17,6 +17,11 @@ def generate_launch_description():
                 "position": 0.0,
                 "velocity": 0.0,
                 "duration": 5.0,
+                "command_rate": 500.0,
+                "status_rate": 10.0,
+                "command_delay": 5.0,
+                "num_motors": 16,
+                "monitor_only": False,
             }],
         )
     ])

@@ -28,7 +28,8 @@ public:
     duration_(this->declare_parameter<double>("duration", 5.0)),
     command_rate_hz_(this->declare_parameter<double>("command_rate", 500.0)),
     status_rate_hz_(this->declare_parameter<double>("status_rate", 10.0)),
-    command_delay_(std::max(0.0, this->declare_parameter<double>("command_delay", 5.0)))
+    command_delay_(std::max(0.0, this->declare_parameter<double>("command_delay", 5.0))),
+    monitor_only_(this->declare_parameter<bool>("monitor_only", false))
   {
     if (joint_index_ < 0 || joint_index_ >= num_motors_)
     {
@@ -57,11 +58,15 @@ public:
     else
     {
       RCLCPP_INFO(this->get_logger(), "SDK control enabled. Starting motor test in %s mode.", mode_.c_str());
-      if (command_delay_ > 0.0)
+      if (!monitor_only_ && command_delay_ > 0.0)
       {
         RCLCPP_INFO(this->get_logger(),
                     "Command streaming will begin after %.1f seconds. Monitor the joint states above before the test.",
                     command_delay_);
+      }
+      if (monitor_only_)
+      {
+        RCLCPP_INFO(this->get_logger(), "Monitor-only mode enabled. No commands will be sent to the motors.");
       }
     }
 
@@ -103,14 +108,14 @@ public:
         break;
       }
 
-      if (!commands_started_ && elapsed >= command_delay_)
+      if (!monitor_only_ && !commands_started_ && elapsed >= command_delay_)
       {
         commands_started_ = true;
         next_command = now;
         RCLCPP_INFO(this->get_logger(), "Command streaming enabled for joint %d.", joint_index_);
       }
 
-      if (commands_started_ && now >= next_command)
+      if (!monitor_only_ && commands_started_ && now >= next_command)
       {
         send_command();
         next_command += command_period;
@@ -203,6 +208,7 @@ private:
   const double command_rate_hz_;
   const double status_rate_hz_;
   const double command_delay_;
+  const bool monitor_only_;
   std::vector<double> zero_vector_;
   bool commands_started_{false};
 };

@@ -226,17 +226,38 @@ packages from `titati_control`; run them from the original repository if you sti
 
 ### 4. Motor sanity check
 
-After the services above are running, you can command individual motors from the master using the new test node. The node prints
-the position/velocity/torque for **all** 16 joints at the configured `status_rate` before it takes control of a specific motor.
-By default it waits five seconds (`command_delay:=5.0`) before streaming commands so you can sanity-check the telemetry first:
+The `titati_motor_test` tool has two common workflows. In both cases keep the terminal open and use `Ctrl+C` to stop the node.
 
-```bash
-ros2 launch titati_motor_test motor_test.launch.py \
-  joint_index:=0 mode:=torque torque:=2.0 duration:=3.0
-```
+1. **Monitor all 16 actuators before touching anything**
 
-Set `command_delay:=0.0` if you want the commands to start immediately after the node connects. Switch to MIT mode by adding
-parameters such as `mode:=mit kp:=40.0 kd:=2.0 position:=0.5`.
+   The `monitor_only` flag keeps the node in telemetry mode so you can verify that every actuator is responding. Increase
+   `status_rate` (Hz) if you want faster printouts.
+
+   ```bash
+   ros2 launch titati_motor_test motor_test.launch.py \
+     monitor_only:=true status_rate:=20.0
+   ```
+
+   You will see messages similar to `Motor states -> J0 q=... v=... tau=...; ...; J15 ...` every `1/status_rate` seconds.
+
+2. **Command a single motor once you are confident in the telemetry**
+
+   Pick the joint index you want to exercise (0–15) and choose a mode:
+
+   - `mode:=torque` applies a constant torque (`torque:=...`).
+   - `mode:=mit` sends MIT-style position/velocity/torque targets (`position`, `velocity`, `kp`, `kd`, `torque`).
+
+   The node streams the state of every joint during the `command_delay` window so you can double-check the robot before the
+   chosen actuator begins moving.
+
+   ```bash
+   ros2 launch titati_motor_test motor_test.launch.py \
+     joint_index:=0 mode:=torque torque:=2.0 duration:=3.0 command_delay:=5.0
+   ```
+
+   Set `command_delay:=0.0` to start immediately, or extend it (for example `command_delay:=10.0`) if you want a longer
+   observation period. Adjust `duration` to change how long the command is applied; `duration:=0.0` keeps the node running until
+   you stop it manually.
 
 ### 5. Reinforcement learning controller
 
