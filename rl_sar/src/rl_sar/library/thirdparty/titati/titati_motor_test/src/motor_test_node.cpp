@@ -76,8 +76,11 @@ public:
 
   void run()
   {
-    auto command_period = std::chrono::duration<double>(1.0 / std::max(1.0, command_rate_hz_));
-    auto status_period = std::chrono::duration<double>(1.0 / std::max(1.0, status_rate_hz_));
+    using steady_duration = std::chrono::steady_clock::duration;
+    auto command_period = std::chrono::duration_cast<steady_duration>(
+      std::chrono::duration<double>(1.0 / std::max(1.0, command_rate_hz_)));
+    auto status_period = std::chrono::duration_cast<steady_duration>(
+      std::chrono::duration<double>(1.0 / std::max(1.0, status_rate_hz_)));
 
     auto start_time = std::chrono::steady_clock::now();
     auto next_command = start_time;
@@ -104,7 +107,7 @@ public:
         next_status += status_period;
       }
 
-      rclcpp::spin_some(shared_from_this());
+      rclcpp::spin_some(std::enable_shared_from_this<MotorTestNode>::shared_from_this());
       std::this_thread::sleep_for(1ms);
     }
 
