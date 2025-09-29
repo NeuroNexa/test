@@ -78,8 +78,7 @@ public:
     try
     {
       robot_->set_target_joint_t(zero_vector_);
-      robot_->set_motors_sdk(false);
-      RCLCPP_INFO(this->get_logger(), "SDK control disabled.");
+      RCLCPP_INFO(this->get_logger(), "Motor torques cleared. SDK control state left unchanged.");
     }
     catch (const std::exception &e)
     {

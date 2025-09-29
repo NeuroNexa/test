@@ -120,7 +120,7 @@ void RL_Real::DisableDirectDrive()
         return;
     }
     robot_->set_target_joint_t(std::vector<double>(this->params.num_of_dofs, 0.0));
-    robot_->set_motors_sdk(false);
+    std::cout << LOGGER::INFO << "Cleared commanded torques; SDK control state left unchanged." << std::endl;
 }
 
 void RL_Real::GetState(RobotState<double> *state)
