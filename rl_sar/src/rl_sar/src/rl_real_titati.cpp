@@ -158,14 +158,15 @@ void RL_Real::GetState(RobotState<double> *state)
     std::fill(mapped_joint_positions.begin(), mapped_joint_positions.end(), 0.0);
     std::fill(mapped_joint_velocities.begin(), mapped_joint_velocities.end(), 0.0);
 
-    for (int hw_index = 0; hw_index < this->params.num_of_dofs; ++hw_index)
+    for (int rl_index = 0; rl_index < this->params.num_of_dofs; ++rl_index)
     {
-        int rl_index = (hw_index < static_cast<int>(inverse_joint_mapping_.size()))
-                           ? inverse_joint_mapping_[hw_index]
-                           : hw_index;
-        double q_val = joint_pos.size() > static_cast<size_t>(hw_index) ? joint_pos[hw_index] : 0.0;
-        double dq_val = joint_vel.size() > static_cast<size_t>(hw_index) ? joint_vel[hw_index] : 0.0;
-        double tau_val = joint_tau.size() > static_cast<size_t>(hw_index) ? joint_tau[hw_index] : 0.0;
+        int hw_index = (rl_index < static_cast<int>(this->params.joint_mapping.size()))
+                           ? this->params.joint_mapping[rl_index]
+                           : rl_index;
+
+        double q_val = (hw_index >= 0 && joint_pos.size() > static_cast<size_t>(hw_index)) ? joint_pos[hw_index] : 0.0;
+        double dq_val = (hw_index >= 0 && joint_vel.size() > static_cast<size_t>(hw_index)) ? joint_vel[hw_index] : 0.0;
+        double tau_val = (hw_index >= 0 && joint_tau.size() > static_cast<size_t>(hw_index)) ? joint_tau[hw_index] : 0.0;
 
         mapped_joint_positions[rl_index] = q_val;
         mapped_joint_velocities[rl_index] = dq_val;
@@ -204,8 +205,10 @@ void RL_Real::SetCommand(const RobotCommand<double> *command)
         double kp = command->motor_command.kp[i];
         double kd = command->motor_command.kd[i];
         double ff_tau = command->motor_command.tau[i];
-        double measured_q = this->robot_state.motor_state.q[i];
-        double measured_dq = this->robot_state.motor_state.dq[i];
+        double measured_q = (i < static_cast<int>(mapped_joint_positions.size())) ? mapped_joint_positions[i]
+                                                                               : this->robot_state.motor_state.q[i];
+        double measured_dq = (i < static_cast<int>(mapped_joint_velocities.size())) ? mapped_joint_velocities[i]
+                                                                                  : this->robot_state.motor_state.dq[i];
 
         double torque = kp * (desired_q - measured_q) + kd * (desired_dq - measured_dq) + ff_tau;
         double limit = this->params.torque_limits[0][i].item<double>();
