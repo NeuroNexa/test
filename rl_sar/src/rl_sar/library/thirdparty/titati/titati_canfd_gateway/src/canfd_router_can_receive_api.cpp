@@ -53,40 +53,62 @@ void CanfdRouterCanReceiveApi::register_canfd_router_device_can_filter()
 
 void CanfdRouterCanReceiveApi::get_board_can_data(std::shared_ptr<struct canfd_frame> recv_frame)
 {
-    if (recv_frame->can_id == CAN_ID_CANFD_ROUTER) {
-        std::memcpy(&mode_, recv_frame->data + 4, sizeof(mode_));
-        std::memcpy(&heart_cnt_, recv_frame->data + 8, sizeof(heart_cnt_));
-        std::cerr << "mode:" << mode_ << std::endl;
-        if(init_flag_ && (mode_ == 2 || mode_ == 1)) {
-          struct canfd_frame frame;
-          frame.can_id = 0x170U;
-          frame.len = 10U;
-          memset(frame.data, 0x00U, sizeof(frame.data));
+  if (recv_frame->can_id == CAN_ID_CANFD_ROUTER) {
+    std::memcpy(&mode_, recv_frame->data + 4, sizeof(mode_));
+    std::memcpy(&heart_cnt_, recv_frame->data + 8, sizeof(heart_cnt_));
 
-          uint32_t timestamp = get_current_time();
-          uint16_t key = 0x200;
-          uint32_t value = 0x00U;
+    const bool mode_in_sdk = (mode_ == 1U || mode_ == 2U);
+    if (has_last_state_) {
+      const bool last_mode_in_sdk = (last_mode_ == 1U || last_mode_ == 2U);
+      if (last_mode_in_sdk && !mode_in_sdk) {
+        init_flag_ = true;
+        std::cerr << "[CanfdRouter] Mode transitioned from " << last_mode_ << " to " << mode_
+                  << ", re-arming handshake replay." << std::endl;
+      }
 
-          std::memcpy(frame.data, &timestamp, sizeof(timestamp));
-          std::memcpy(frame.data + 4, &key, sizeof(key));
-          std::memcpy(frame.data + 6, &value, sizeof(value));
-
-          set_forcedirect_can_send_api->send_can_message(frame);
-
-          std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
-          timestamp = get_current_time();
-          key = 0x200;
-          value = 0x03U;
-
-          std::memcpy(frame.data, &timestamp, sizeof(timestamp));
-          std::memcpy(frame.data + 4, &key, sizeof(key));
-          std::memcpy(frame.data + 6, &value, sizeof(value));
-
-          set_forcedirect_can_send_api->send_can_message(frame);
-          init_flag_ = false;
+      if (heart_cnt_ < last_heart_cnt_) {
+        init_flag_ = true;
+        std::cerr << "[CanfdRouter] Heartbeat counter decreased from " << last_heart_cnt_
+                  << " to " << heart_cnt_ << ", re-arming handshake replay." << std::endl;
       }
     }
+
+    if (init_flag_ && mode_in_sdk) {
+      std::cerr << "[CanfdRouter] Replaying SDK handshake for mode " << mode_ << std::endl;
+      struct canfd_frame frame;
+      frame.can_id = 0x170U;
+      frame.len = 10U;
+      memset(frame.data, 0x00U, sizeof(frame.data));
+
+      uint32_t timestamp = get_current_time();
+      uint16_t key = 0x200;
+      uint32_t value = 0x00U;
+
+      std::memcpy(frame.data, &timestamp, sizeof(timestamp));
+      std::memcpy(frame.data + 4, &key, sizeof(key));
+      std::memcpy(frame.data + 6, &value, sizeof(value));
+
+      set_forcedirect_can_send_api->send_can_message(frame);
+
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+      timestamp = get_current_time();
+      key = 0x200;
+      value = 0x03U;
+
+      std::memcpy(frame.data, &timestamp, sizeof(timestamp));
+      std::memcpy(frame.data + 4, &key, sizeof(key));
+      std::memcpy(frame.data + 6, &value, sizeof(value));
+
+      set_forcedirect_can_send_api->send_can_message(frame);
+      init_flag_ = false;
+      std::cerr << "[CanfdRouter] SDK handshake replay complete." << std::endl;
+    }
+
+    last_mode_ = mode_;
+    last_heart_cnt_ = heart_cnt_;
+    has_last_state_ = true;
+  }
 }
 
 }

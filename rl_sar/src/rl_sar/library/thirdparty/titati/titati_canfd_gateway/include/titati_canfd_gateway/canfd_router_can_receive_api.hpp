@@ -68,6 +68,9 @@ private:
   uint32_t timestamp_;
   uint32_t mode_;
   uint32_t heart_cnt_;
+  uint32_t last_mode_ = 0U;
+  uint32_t last_heart_cnt_ = 0U;
+  bool has_last_state_ = false;
 
   std::string set_forcedirect_can_interface = "can0";
   std::string set_forcedirect_can_name = "set_forcedirect_can";
@@ -88,7 +91,7 @@ private:
   }
 
   bool init_flag_ = false;
- 
+
 };
 
 }
