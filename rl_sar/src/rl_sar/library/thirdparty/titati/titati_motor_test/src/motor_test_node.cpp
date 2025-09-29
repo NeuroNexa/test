@@ -78,7 +78,30 @@ public:
     try
     {
       robot_->set_target_joint_t(zero_vector_);
-      RCLCPP_INFO(this->get_logger(), "Motor torques cleared. SDK control state left unchanged.");
+      bool disabled = false;
+      for (int attempt = 0; attempt < 5 && !disabled; ++attempt)
+      {
+        disabled = robot_->set_motors_sdk(false);
+        if (disabled)
+        {
+          break;
+        }
+        RCLCPP_WARN(this->get_logger(),
+                    "Failed to relinquish SDK control on attempt %d, retrying...",
+                    attempt + 1);
+        std::this_thread::sleep_for(100ms);
+      }
+
+      if (!disabled)
+      {
+        RCLCPP_WARN(this->get_logger(),
+                    "Cleared torques but could not hand control back to MCU. Check CAN bridge state.");
+      }
+      else
+      {
+        RCLCPP_INFO(this->get_logger(),
+                    "Motor torques cleared. MCU control restored (AUTO_LOCOMOTION).");
+      }
     }
     catch (const std::exception &e)
     {

@@ -137,7 +137,28 @@ void RL_Real::DisableDirectDrive()
         robot_->set_target_joint_t(zero_torque);
     }
     last_commanded_torque_ = zero_torque;
-    std::cout << LOGGER::INFO << "Cleared commanded torques; SDK control state left unchanged." << std::endl;
+    bool disabled = false;
+    for (int attempt = 0; attempt < 5 && !disabled; ++attempt)
+    {
+        disabled = robot_->set_motors_sdk(false);
+        if (!disabled)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+    }
+
+    if (!disabled)
+    {
+        std::cout << LOGGER::WARNING
+                  << "Cleared commanded torques but failed to hand control back to MCU."
+                  << std::endl;
+    }
+    else
+    {
+        std::cout << LOGGER::INFO
+                  << "Cleared commanded torques and restored MCU control (AUTO_LOCOMOTION)."
+                  << std::endl;
+    }
 }
 
 void RL_Real::GetState(RobotState<double> *state)
