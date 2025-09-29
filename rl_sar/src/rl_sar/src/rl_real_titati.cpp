@@ -5,7 +5,9 @@
 
 #include "rl_real_titati.hpp"
 
+#include <algorithm>
 #include <chrono>
+#include <numeric>
 #include <thread>
 
 RL_Real::RL_Real()
@@ -47,6 +49,16 @@ RL_Real::RL_Real()
     last_commanded_torque_.assign(this->params.num_of_dofs, 0.0);
     mapped_joint_positions.assign(this->params.num_of_dofs, 0.0);
     mapped_joint_velocities.assign(this->params.num_of_dofs, 0.0);
+    inverse_joint_mapping_.resize(this->params.num_of_dofs);
+    std::iota(inverse_joint_mapping_.begin(), inverse_joint_mapping_.end(), 0);
+    for (int i = 0; i < this->params.num_of_dofs; ++i)
+    {
+        int mapped_index = this->params.joint_mapping[i];
+        if (mapped_index >= 0 && mapped_index < this->params.num_of_dofs)
+        {
+            inverse_joint_mapping_[mapped_index] = i;
+        }
+    }
 
     EnableDirectDrive();
 
@@ -119,7 +131,12 @@ void RL_Real::DisableDirectDrive()
     {
         return;
     }
-    robot_->set_target_joint_t(std::vector<double>(this->params.num_of_dofs, 0.0));
+    std::vector<double> zero_torque(this->params.num_of_dofs, 0.0);
+    {
+        std::lock_guard<std::mutex> lock(robot_mutex_);
+        robot_->set_target_joint_t(zero_torque);
+    }
+    last_commanded_torque_ = zero_torque;
     std::cout << LOGGER::INFO << "Cleared commanded torques; SDK control state left unchanged." << std::endl;
 }
 
@@ -138,11 +155,24 @@ void RL_Real::GetState(RobotState<double> *state)
     auto imu_acc = robot_->get_imu_acceleration();
     auto imu_gyro = robot_->get_imu_angular_velocity();
 
-    for (int i = 0; i < this->params.num_of_dofs; ++i)
+    std::fill(mapped_joint_positions.begin(), mapped_joint_positions.end(), 0.0);
+    std::fill(mapped_joint_velocities.begin(), mapped_joint_velocities.end(), 0.0);
+
+    for (int hw_index = 0; hw_index < this->params.num_of_dofs; ++hw_index)
     {
-        state->motor_state.q[i] = joint_pos.size() > static_cast<size_t>(i) ? joint_pos[i] : 0.0;
-        state->motor_state.dq[i] = joint_vel.size() > static_cast<size_t>(i) ? joint_vel[i] : 0.0;
-        state->motor_state.tau_est[i] = joint_tau.size() > static_cast<size_t>(i) ? joint_tau[i] : 0.0;
+        int rl_index = (hw_index < static_cast<int>(inverse_joint_mapping_.size()))
+                           ? inverse_joint_mapping_[hw_index]
+                           : hw_index;
+        double q_val = joint_pos.size() > static_cast<size_t>(hw_index) ? joint_pos[hw_index] : 0.0;
+        double dq_val = joint_vel.size() > static_cast<size_t>(hw_index) ? joint_vel[hw_index] : 0.0;
+        double tau_val = joint_tau.size() > static_cast<size_t>(hw_index) ? joint_tau[hw_index] : 0.0;
+
+        mapped_joint_positions[rl_index] = q_val;
+        mapped_joint_velocities[rl_index] = dq_val;
+
+        state->motor_state.q[rl_index] = q_val;
+        state->motor_state.dq[rl_index] = dq_val;
+        state->motor_state.tau_est[rl_index] = tau_val;
     }
 
     state->imu.quaternion[0] = quat_xyzw[3];
@@ -164,28 +194,38 @@ void RL_Real::SetCommand(const RobotCommand<double> *command)
         return;
     }
 
-    std::vector<double> q(this->params.num_of_dofs, 0.0);
-    std::vector<double> dq(this->params.num_of_dofs, 0.0);
-    std::vector<double> kp(this->params.num_of_dofs, 0.0);
-    std::vector<double> kd(this->params.num_of_dofs, 0.0);
-    std::vector<double> tau(this->params.num_of_dofs, 0.0);
+    std::vector<double> torques_hw(this->params.num_of_dofs, 0.0);
+    std::vector<double> torques_rl(this->params.num_of_dofs, 0.0);
 
     for (int i = 0; i < this->params.num_of_dofs; ++i)
     {
-        auto mapped_index = this->params.joint_mapping[i];
-        q[mapped_index] = command->motor_command.q[i];
-        dq[mapped_index] = command->motor_command.dq[i];
-        kp[mapped_index] = command->motor_command.kp[i];
-        kd[mapped_index] = command->motor_command.kd[i];
-        tau[mapped_index] = command->motor_command.tau[i];
+        double desired_q = command->motor_command.q[i];
+        double desired_dq = command->motor_command.dq[i];
+        double kp = command->motor_command.kp[i];
+        double kd = command->motor_command.kd[i];
+        double ff_tau = command->motor_command.tau[i];
+        double measured_q = this->robot_state.motor_state.q[i];
+        double measured_dq = this->robot_state.motor_state.dq[i];
+
+        double torque = kp * (desired_q - measured_q) + kd * (desired_dq - measured_dq) + ff_tau;
+        double limit = this->params.torque_limits[0][i].item<double>();
+        torque = std::clamp(torque, -limit, limit);
+
+        torques_rl[i] = torque;
+
+        int mapped_index = this->params.joint_mapping[i];
+        if (mapped_index >= 0 && mapped_index < this->params.num_of_dofs)
+        {
+            torques_hw[mapped_index] = torque;
+        }
     }
 
     {
         std::lock_guard<std::mutex> lock(robot_mutex_);
-        robot_->set_target_joint_mit(q, dq, kp, kd, tau);
+        robot_->set_target_joint_t(torques_hw);
     }
 
-    last_commanded_torque_ = tau;
+    last_commanded_torque_ = torques_rl;
 }
 
 void RL_Real::RobotControl()

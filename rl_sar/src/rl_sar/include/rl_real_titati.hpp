@@ -65,6 +65,7 @@ private:
   std::unique_ptr<tita_robot> robot_;
     std::vector<double> last_commanded_torque_;
     std::mutex robot_mutex_;
+    std::vector<int> inverse_joint_mapping_;
 
     // others
     int motiontime = 0;
