@@ -102,10 +102,13 @@ public:
                       << std::setprecision(2) << pre_running_percent * 100.0f << "%" << std::flush;
         }
 
-        if (pre_running_percent == 1.0f && rl.running_percent < 1.0f)
+        if (pre_running_percent >= 1.0f)
         {
-            rl.running_percent += 1.0f / 400.0f;
-            rl.running_percent = std::min(rl.running_percent, 1.0f);
+            if (rl.running_percent < 1.0f)
+            {
+                rl.running_percent += 1.0f / 400.0f;
+                rl.running_percent = std::min(rl.running_percent, 1.0f);
+            }
 
             for (int i = 0; i < rl.params.num_of_dofs; ++i)
             {
