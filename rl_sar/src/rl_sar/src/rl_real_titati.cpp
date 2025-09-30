@@ -9,9 +9,11 @@
 #include <chrono>
 #include <thread>
 #include <cmath>
+#include <cstddef>
 #include <csignal>
 #include <unistd.h>
 #include <iostream>
+#include <string>
 
 namespace
 {
@@ -19,7 +21,115 @@ constexpr int kMaxAcquireAttempts = 10;
 constexpr double kKeyboardStep = 0.1;
 constexpr double kYawStep = 0.1;
 constexpr double kCommandLimit = 1.0;
+constexpr double kHipAbductionOffset = 1.57;
+constexpr double kThighWrapLowerBound = -2.5;
+constexpr double kWheelWrapThreshold = 1.57;
+constexpr double kTwoPi = 2.0 * M_PI;
 } // namespace
+
+bool RL_Real::IsRearLeg(LegGroup leg)
+{
+    return leg == LegGroup::RearLeft || leg == LegGroup::RearRight;
+}
+
+RL_Real::LegGroup RL_Real::ParseLegGroup(const std::string& joint_name)
+{
+    if (joint_name.rfind("FR_", 0) == 0)
+    {
+        return LegGroup::FrontRight;
+    }
+    if (joint_name.rfind("FL_", 0) == 0)
+    {
+        return LegGroup::FrontLeft;
+    }
+    if (joint_name.rfind("RR_", 0) == 0)
+    {
+        return LegGroup::RearRight;
+    }
+    if (joint_name.rfind("RL_", 0) == 0)
+    {
+        return LegGroup::RearLeft;
+    }
+    return LegGroup::Unknown;
+}
+
+RL_Real::JointKind RL_Real::ParseJointKind(const std::string& joint_name)
+{
+    if (joint_name.find("_hip_joint") != std::string::npos)
+    {
+        return JointKind::Hip;
+    }
+    if (joint_name.find("_thigh_joint") != std::string::npos)
+    {
+        return JointKind::Thigh;
+    }
+    if (joint_name.find("_calf_joint") != std::string::npos)
+    {
+        return JointKind::Calf;
+    }
+    if (joint_name.find("_foot_joint") != std::string::npos)
+    {
+        return JointKind::Wheel;
+    }
+    return JointKind::Unknown;
+}
+
+double RL_Real::PolicyToLegdataPosition(int joint_index, double policy_pos) const
+{
+    if (joint_index < 0 || joint_index >= static_cast<int>(this->policy_to_hardware_.size()))
+    {
+        return policy_pos;
+    }
+
+    const double sign = this->policy_to_hardware_[joint_index].sign;
+    const JointKind kind = this->joint_kind_[joint_index];
+
+    switch (kind)
+    {
+        case JointKind::Hip:
+        {
+            const double raw_policy = sign * policy_pos;
+            return raw_policy - kHipAbductionOffset;
+        }
+        case JointKind::Thigh:
+        case JointKind::Calf:
+        case JointKind::Wheel:
+            return sign * policy_pos;
+        case JointKind::Unknown:
+        default:
+            return sign * policy_pos;
+    }
+}
+
+double RL_Real::PolicyToLegdataVelocity(int joint_index, double policy_vel) const
+{
+    if (joint_index < 0 || joint_index >= static_cast<int>(this->policy_to_hardware_.size()))
+    {
+        return policy_vel;
+    }
+    const double sign = this->policy_to_hardware_[joint_index].sign;
+    return sign * policy_vel;
+}
+
+double RL_Real::PolicyToHardwareTorque(int joint_index, double policy_tau) const
+{
+    if (joint_index < 0 || joint_index >= static_cast<int>(this->policy_to_hardware_.size()))
+    {
+        return policy_tau;
+    }
+    const double sign = this->policy_to_hardware_[joint_index].sign;
+    return sign * policy_tau;
+}
+
+double RL_Real::HardwareToPolicyTorque(int joint_index, double hardware_tau) const
+{
+    if (joint_index < 0 || joint_index >= static_cast<int>(this->policy_to_hardware_.size()))
+    {
+        return hardware_tau;
+    }
+    const double sign = this->policy_to_hardware_[joint_index].sign;
+    return sign * hardware_tau;
+}
 
 RL_Real::RL_Real()
 #if defined(USE_ROS2) && defined(USE_ROS)
@@ -39,6 +149,67 @@ RL_Real::RL_Real()
     this->robot_name = "titati";
     this->ReadYamlBase(this->robot_name);
 
+    const int num_dofs = this->params.num_of_dofs;
+    this->joint_leg_group_.assign(num_dofs, LegGroup::Unknown);
+    this->joint_kind_.assign(num_dofs, JointKind::Unknown);
+    this->policy_to_hardware_.assign(num_dofs, JointTransform{});
+    this->hardware_to_policy_.assign(num_dofs, -1);
+    this->hardware_to_policy_sign_.assign(num_dofs, 1.0);
+    this->legdata_joint_pos_.assign(num_dofs, 0.0);
+    this->legdata_joint_vel_.assign(num_dofs, 0.0);
+    this->hardware_wheel_slot_.assign(num_dofs, -1);
+
+    for (std::size_t idx = 0; idx < this->params.joint_names.size(); ++idx)
+    {
+        if (static_cast<int>(idx) >= num_dofs)
+        {
+            break;
+        }
+        const std::string& joint_name = this->params.joint_names[idx];
+        this->joint_kind_[idx] = ParseJointKind(joint_name);
+        this->joint_leg_group_[idx] = ParseLegGroup(joint_name);
+
+        const int hardware_index = (idx < this->params.joint_mapping.size())
+            ? this->params.joint_mapping[idx]
+            : static_cast<int>(idx);
+        double sign = 1.0;
+        if (idx < this->joint_leg_group_.size() && IsRearLeg(this->joint_leg_group_[idx]))
+        {
+            sign = -1.0;
+        }
+
+        if (idx < this->policy_to_hardware_.size())
+        {
+            this->policy_to_hardware_[idx].hardware_index = hardware_index;
+            this->policy_to_hardware_[idx].sign = sign;
+        }
+        if (hardware_index >= 0 && hardware_index < num_dofs)
+        {
+            this->hardware_to_policy_[hardware_index] = static_cast<int>(idx);
+            this->hardware_to_policy_sign_[hardware_index] = sign;
+        }
+    }
+
+    const std::size_t wheel_count = this->params.wheel_indices.size();
+    this->wheel_round_count_.assign(wheel_count, 0);
+    this->previous_wheel_angle_.assign(
+        wheel_count, std::numeric_limits<double>::quiet_NaN());
+    this->initial_wheel_abs_.assign(
+        wheel_count, std::numeric_limits<double>::quiet_NaN());
+
+    for (std::size_t slot = 0; slot < wheel_count; ++slot)
+    {
+        const int policy_index = this->params.wheel_indices[slot];
+        if (policy_index >= 0 && policy_index < num_dofs)
+        {
+            const int hardware_index = this->policy_to_hardware_[policy_index].hardware_index;
+            if (hardware_index >= 0 && hardware_index < num_dofs)
+            {
+                this->hardware_wheel_slot_[hardware_index] = static_cast<int>(slot);
+            }
+        }
+    }
+
     if (FSMManager::GetInstance().IsTypeSupported(this->robot_name))
     {
         auto fsm_ptr = FSMManager::GetInstance().CreateFSM(this->robot_name, this);
@@ -55,7 +226,6 @@ RL_Real::RL_Real()
     torch::autograd::GradMode::set_enabled(false);
     torch::set_num_threads(4);
 
-    const int num_dofs = this->params.num_of_dofs;
     this->robot_ = std::make_unique<tita_robot>(static_cast<size_t>(num_dofs));
     this->command_tau_.assign(num_dofs, 0.0);
 
@@ -252,20 +422,140 @@ void RL_Real::GetState(RobotState<double>* state)
     auto joint_dq = this->robot_->get_joint_v();
     auto joint_tau = this->robot_->get_joint_t();
 
-    for (int i = 0; i < this->params.num_of_dofs; ++i)
+    const int num_dofs = this->params.num_of_dofs;
+    for (int idx = 0; idx < num_dofs; ++idx)
     {
-        const int physical_index = this->params.joint_mapping[i];
-        if (physical_index >= 0 && physical_index < static_cast<int>(joint_q.size()))
+        state->motor_state.q[idx] = 0.0;
+        state->motor_state.dq[idx] = 0.0;
+        state->motor_state.tau_est[idx] = 0.0;
+    }
+
+    for (int hardware_index = 0; hardware_index < num_dofs; ++hardware_index)
+    {
+        const double raw_position = (hardware_index >= 0 && hardware_index < static_cast<int>(joint_q.size()))
+            ? joint_q[hardware_index]
+            : 0.0;
+        const double raw_velocity = (hardware_index >= 0 && hardware_index < static_cast<int>(joint_dq.size()))
+            ? joint_dq[hardware_index]
+            : 0.0;
+        const double raw_tau = (hardware_index >= 0 && hardware_index < static_cast<int>(joint_tau.size()))
+            ? joint_tau[hardware_index]
+            : 0.0;
+
+        const int policy_index = (hardware_index >= 0 && hardware_index < static_cast<int>(this->hardware_to_policy_.size()))
+            ? this->hardware_to_policy_[hardware_index]
+            : -1;
+
+        JointKind joint_kind = JointKind::Unknown;
+        LegGroup leg_group = LegGroup::Unknown;
+        if (policy_index >= 0 && policy_index < static_cast<int>(this->joint_kind_.size()))
         {
-            state->motor_state.q[i] = joint_q[physical_index];
+            joint_kind = this->joint_kind_[policy_index];
+            leg_group = this->joint_leg_group_[policy_index];
         }
-        if (physical_index >= 0 && physical_index < static_cast<int>(joint_dq.size()))
+
+        double legdata_position = raw_position;
+        if (joint_kind == JointKind::Hip)
         {
-            state->motor_state.dq[i] = joint_dq[physical_index];
+            legdata_position = raw_position - kHipAbductionOffset;
         }
-        if (physical_index >= 0 && physical_index < static_cast<int>(joint_tau.size()))
+        else if (joint_kind == JointKind::Thigh)
         {
-            state->motor_state.tau_est[i] = joint_tau[physical_index];
+            if (raw_position < kThighWrapLowerBound)
+            {
+                legdata_position = raw_position + kTwoPi;
+            }
+        }
+
+        const double legdata_velocity = raw_velocity;
+
+        double relative_wheel_angle = 0.0;
+        bool has_wheel_slot = false;
+        if (joint_kind == JointKind::Wheel)
+        {
+            const int slot = (hardware_index >= 0 && hardware_index < static_cast<int>(this->hardware_wheel_slot_.size()))
+                ? this->hardware_wheel_slot_[hardware_index]
+                : -1;
+            if (slot >= 0 && slot < static_cast<int>(this->wheel_round_count_.size()))
+            {
+                has_wheel_slot = true;
+                double& previous_angle = this->previous_wheel_angle_[slot];
+                if (!std::isnan(previous_angle))
+                {
+                    if (raw_position < -kWheelWrapThreshold && previous_angle > kWheelWrapThreshold)
+                    {
+                        ++this->wheel_round_count_[slot];
+                    }
+                    else if (raw_position > kWheelWrapThreshold && previous_angle < -kWheelWrapThreshold)
+                    {
+                        --this->wheel_round_count_[slot];
+                    }
+                }
+
+                previous_angle = raw_position;
+                const double wheel_abs_position = raw_position + static_cast<double>(this->wheel_round_count_[slot]) * kTwoPi;
+                if (std::isnan(this->initial_wheel_abs_[slot]))
+                {
+                    this->initial_wheel_abs_[slot] = wheel_abs_position;
+                }
+
+                const double baseline = this->initial_wheel_abs_[slot];
+                relative_wheel_angle = std::isnan(baseline) ? 0.0 : (wheel_abs_position - baseline);
+            }
+        }
+
+        if (hardware_index >= 0 && hardware_index < static_cast<int>(this->legdata_joint_pos_.size()))
+        {
+            if (joint_kind == JointKind::Wheel)
+            {
+                this->legdata_joint_pos_[hardware_index] = raw_position;
+            }
+            else
+            {
+                this->legdata_joint_pos_[hardware_index] = legdata_position;
+            }
+        }
+        if (hardware_index >= 0 && hardware_index < static_cast<int>(this->legdata_joint_vel_.size()))
+        {
+            this->legdata_joint_vel_[hardware_index] = legdata_velocity;
+        }
+
+        if (policy_index >= 0 && policy_index < num_dofs)
+        {
+            const double sign = (hardware_index >= 0 && hardware_index < static_cast<int>(this->hardware_to_policy_sign_.size()))
+                ? this->hardware_to_policy_sign_[hardware_index]
+                : 1.0;
+
+            double policy_position = 0.0;
+            switch (joint_kind)
+            {
+                case JointKind::Hip:
+                {
+                    const double raw_with_offset = legdata_position + kHipAbductionOffset;
+                    policy_position = sign * raw_with_offset;
+                    break;
+                }
+                case JointKind::Wheel:
+                {
+                    const double wheel_position = has_wheel_slot ? relative_wheel_angle : legdata_position;
+                    policy_position = sign * wheel_position;
+                    break;
+                }
+                case JointKind::Thigh:
+                case JointKind::Calf:
+                default:
+                {
+                    policy_position = sign * legdata_position;
+                    break;
+                }
+            }
+
+            const double policy_velocity = sign * legdata_velocity;
+            const double policy_tau = sign * raw_tau;
+
+            state->motor_state.q[policy_index] = policy_position;
+            state->motor_state.dq[policy_index] = policy_velocity;
+            state->motor_state.tau_est[policy_index] = policy_tau;
         }
     }
 }
@@ -281,19 +571,29 @@ void RL_Real::SetCommand(const RobotCommand<double>* command)
 
     for (int i = 0; i < this->params.num_of_dofs; ++i)
     {
-        const int physical_index = this->params.joint_mapping[i];
-        if (physical_index >= 0 && physical_index < static_cast<int>(this->command_tau_.size()))
+        if (i < static_cast<int>(this->policy_to_hardware_.size()))
         {
-            const double feedforward = command->motor_command.tau[i];
-            const double kp = command->motor_command.kp[i];
-            const double kd = command->motor_command.kd[i];
-            const double desired_q = command->motor_command.q[i];
-            const double desired_dq = command->motor_command.dq[i];
-            const double measured_q = this->robot_state.motor_state.q[i];
-            const double measured_dq = this->robot_state.motor_state.dq[i];
-            const double torque = feedforward + kp * (desired_q - measured_q) +
-                                  kd * (desired_dq - measured_dq);
-            this->command_tau_[physical_index] = torque;
+            const int hardware_index = this->policy_to_hardware_[i].hardware_index;
+            if (hardware_index >= 0 && hardware_index < static_cast<int>(this->command_tau_.size()))
+            {
+                const double feedforward = command->motor_command.tau[i];
+                const double kp = command->motor_command.kp[i];
+                const double kd = command->motor_command.kd[i];
+                const double desired_q = command->motor_command.q[i];
+                const double desired_dq = command->motor_command.dq[i];
+                const double feedforward_hw = this->PolicyToHardwareTorque(i, feedforward);
+                const double desired_legdata_q = this->PolicyToLegdataPosition(i, desired_q);
+                const double desired_legdata_dq = this->PolicyToLegdataVelocity(i, desired_dq);
+                const double measured_legdata_q = (hardware_index >= 0 && hardware_index < static_cast<int>(this->legdata_joint_pos_.size()))
+                    ? this->legdata_joint_pos_[hardware_index]
+                    : 0.0;
+                const double measured_legdata_dq = (hardware_index >= 0 && hardware_index < static_cast<int>(this->legdata_joint_vel_.size()))
+                    ? this->legdata_joint_vel_[hardware_index]
+                    : 0.0;
+                const double torque = feedforward_hw + kp * (desired_legdata_q - measured_legdata_q) +
+                                      kd * (desired_legdata_dq - measured_legdata_dq);
+                this->command_tau_[hardware_index] = torque;
+            }
         }
     }
 

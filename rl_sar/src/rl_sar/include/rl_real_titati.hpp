@@ -9,7 +9,10 @@
 // #define CSV_LOGGER
 
 #include <atomic>
+#include <cstddef>
+#include <limits>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "rl_sdk.hpp"
@@ -37,6 +40,24 @@ public:
     ~RL_Real();
 
 private:
+    enum class LegGroup
+    {
+        FrontRight,
+        FrontLeft,
+        RearRight,
+        RearLeft,
+        Unknown
+    };
+
+    enum class JointKind
+    {
+        Hip,
+        Thigh,
+        Calf,
+        Wheel,
+        Unknown
+    };
+
     // rl functions
     torch::Tensor Forward() override;
     void GetState(RobotState<double>* state) override;
@@ -58,6 +79,32 @@ private:
     std::unique_ptr<tita_robot> robot_;
     std::vector<double> command_tau_;
     std::atomic<bool> sdk_enabled_{false};
+
+    static bool IsRearLeg(LegGroup leg);
+    static LegGroup ParseLegGroup(const std::string& joint_name);
+    static JointKind ParseJointKind(const std::string& joint_name);
+    struct JointTransform
+    {
+        int hardware_index{-1};
+        double sign{1.0};
+    };
+
+    double PolicyToLegdataPosition(int joint_index, double policy_pos) const;
+    double PolicyToLegdataVelocity(int joint_index, double policy_vel) const;
+    double PolicyToHardwareTorque(int joint_index, double policy_tau) const;
+    double HardwareToPolicyTorque(int joint_index, double hardware_tau) const;
+
+    std::vector<LegGroup> joint_leg_group_;
+    std::vector<JointKind> joint_kind_;
+    std::vector<JointTransform> policy_to_hardware_;
+    std::vector<int> hardware_to_policy_;
+    std::vector<double> hardware_to_policy_sign_;
+    std::vector<double> legdata_joint_pos_;
+    std::vector<double> legdata_joint_vel_;
+    std::vector<int> hardware_wheel_slot_;
+    std::vector<int> wheel_round_count_;
+    std::vector<double> previous_wheel_angle_;
+    std::vector<double> initial_wheel_abs_;
 
 #if defined(USE_ROS1) && defined(USE_ROS)
     geometry_msgs::Twist cmd_vel_{};
