@@ -5,13 +5,14 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <sstream>
 
 #include <rclcpp/rclcpp.hpp>
 #include "titati_can_driver/tita_robot.hpp"
 
 using namespace std::chrono_literals;
 
-class MotorTestNode : public rclcpp::Node, public std::enable_shared_from_this<MotorTestNode>
+class MotorTestNode : public rclcpp::Node
 {
 public:
   MotorTestNode()
@@ -26,7 +27,9 @@ public:
     velocity_command_(this->declare_parameter<double>("velocity", 0.0)),
     duration_(this->declare_parameter<double>("duration", 5.0)),
     command_rate_hz_(this->declare_parameter<double>("command_rate", 500.0)),
-    status_rate_hz_(this->declare_parameter<double>("status_rate", 10.0))
+    status_rate_hz_(this->declare_parameter<double>("status_rate", 10.0)),
+    command_delay_(std::max(0.0, this->declare_parameter<double>("command_delay", 5.0))),
+    monitor_only_(this->declare_parameter<bool>("monitor_only", false))
   {
     if (joint_index_ < 0 || joint_index_ >= num_motors_)
     {
@@ -55,6 +58,16 @@ public:
     else
     {
       RCLCPP_INFO(this->get_logger(), "SDK control enabled. Starting motor test in %s mode.", mode_.c_str());
+      if (!monitor_only_ && command_delay_ > 0.0)
+      {
+        RCLCPP_INFO(this->get_logger(),
+                    "Command streaming will begin after %.1f seconds. Monitor the joint states above before the test.",
+                    command_delay_);
+      }
+      if (monitor_only_)
+      {
+        RCLCPP_INFO(this->get_logger(), "Monitor-only mode enabled. No commands will be sent to the motors.");
+      }
     }
 
     zero_vector_ = std::vector<double>(num_motors_, 0.0);
@@ -65,8 +78,30 @@ public:
     try
     {
       robot_->set_target_joint_t(zero_vector_);
-      robot_->set_motors_sdk(false);
-      RCLCPP_INFO(this->get_logger(), "SDK control disabled.");
+      bool disabled = false;
+      for (int attempt = 0; attempt < 5 && !disabled; ++attempt)
+      {
+        disabled = robot_->set_motors_sdk(false);
+        if (disabled)
+        {
+          break;
+        }
+        RCLCPP_WARN(this->get_logger(),
+                    "Failed to relinquish SDK control on attempt %d, retrying...",
+                    attempt + 1);
+        std::this_thread::sleep_for(100ms);
+      }
+
+      if (!disabled)
+      {
+        RCLCPP_WARN(this->get_logger(),
+                    "Cleared torques but could not hand control back to MCU. Check CAN bridge state.");
+      }
+      else
+      {
+        RCLCPP_INFO(this->get_logger(),
+                    "Motor torques cleared. MCU control restored (AUTO_LOCOMOTION).");
+      }
     }
     catch (const std::exception &e)
     {
@@ -95,7 +130,14 @@ public:
         break;
       }
 
-      if (now >= next_command)
+      if (!monitor_only_ && !commands_started_ && elapsed >= command_delay_)
+      {
+        commands_started_ = true;
+        next_command = now;
+        RCLCPP_INFO(this->get_logger(), "Command streaming enabled for joint %d.", joint_index_);
+      }
+
+      if (!monitor_only_ && commands_started_ && now >= next_command)
       {
         send_command();
         next_command += command_period;
@@ -107,7 +149,7 @@ public:
         next_status += status_period;
       }
 
-      rclcpp::spin_some(std::enable_shared_from_this<MotorTestNode>::shared_from_this());
+      rclcpp::spin_some(this->shared_from_this());
       std::this_thread::sleep_for(1ms);
     }
 
@@ -153,11 +195,25 @@ private:
     auto velocities = robot_->get_joint_v();
     auto torques = robot_->get_joint_t();
 
-    if (joint_index_ < static_cast<int>(positions.size()))
+    std::ostringstream stream;
+    stream.setf(std::ios::fixed, std::ios::floatfield);
+    stream.precision(3);
+    for (size_t i = 0; i < positions.size(); ++i)
     {
-      RCLCPP_INFO(this->get_logger(),
-                  "Joint %d -> pos: %.3f rad, vel: %.3f rad/s, torque: %.3f Nm",
-                  joint_index_, positions[joint_index_], velocities[joint_index_], torques[joint_index_]);
+      stream << "J" << i
+             << " q=" << positions[i]
+             << " v=" << velocities[i]
+             << " tau=" << torques[i];
+      if (i + 1 < positions.size())
+      {
+        stream << "; ";
+      }
+    }
+
+    const auto status = stream.str();
+    if (!status.empty())
+    {
+      RCLCPP_INFO(this->get_logger(), "Motor states -> %s", status.c_str());
     }
   }
 
@@ -173,7 +229,10 @@ private:
   const double duration_;
   const double command_rate_hz_;
   const double status_rate_hz_;
+  const double command_delay_;
+  const bool monitor_only_;
   std::vector<double> zero_vector_;
+  bool commands_started_{false};
 };
 
 int main(int argc, char **argv)

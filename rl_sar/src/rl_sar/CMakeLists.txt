@@ -24,6 +24,21 @@ else()
     add_compile_definitions(USE_CMAKE)
 endif()
 
+if(USE_CMAKE)
+    set(TITATI_CAN_DRIVER_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/library/thirdparty/titati/titati_hardware_support/titati_can_driver")
+    add_library(titati_can_driver_hw
+        ${TITATI_CAN_DRIVER_ROOT}/src/can_receiver.cpp
+        ${TITATI_CAN_DRIVER_ROOT}/src/can_sender.cpp
+        ${TITATI_CAN_DRIVER_ROOT}/src/tita_robot.cpp
+    )
+    target_compile_features(titati_can_driver_hw PUBLIC cxx_std_17)
+    target_include_directories(titati_can_driver_hw
+        PUBLIC
+            ${TITATI_CAN_DRIVER_ROOT}/include
+    )
+    target_link_libraries(titati_can_driver_hw PUBLIC Threads::Threads)
+endif()
+
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -66,8 +81,10 @@ if(NOT USE_CMAKE)
         find_package(ament_cmake REQUIRED)
         find_package(rclcpp REQUIRED)
         find_package(std_msgs REQUIRED)
-        find_package(robot_msgs REQUIRED)
-        find_package(robot_joint_controller REQUIRED)
+        if(NOT RL_SAR_HARDWARE_ONLY)
+            find_package(robot_msgs REQUIRED)
+            find_package(robot_joint_controller REQUIRED)
+        endif()
         find_package(rclpy REQUIRED)
         find_package(std_srvs REQUIRED)
         find_package(geometry_msgs REQUIRED)
@@ -350,6 +367,9 @@ target_link_libraries(rl_real_titati
     observation_buffer
     yaml-cpp
 )
+if(USE_CMAKE)
+    target_link_libraries(rl_real_titati titati_can_driver_hw)
+endif()
 if(NOT USE_CMAKE)
     if($ENV{ROS_DISTRO} MATCHES "noetic")
         target_link_libraries(rl_real_titati ${catkin_LIBRARIES})
